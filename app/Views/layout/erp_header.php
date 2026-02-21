@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <title>INLAUDO ERP</title>
+
+  <!-- FONTS & ICONS -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+  <!-- BOOTSTRAP 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    :root {
+      --sidebar-width: 250px;
+      --sidebar-collapsed-width: 70px;
+      --header-height: 70px;
+      --bg-body: #f8f9fa;
+      --sidebar-bg: #fdfdfd;
+      --sidebar-text: #4a5568;
+      --primary: #00529B;
+      --border-color: #e2e8f0;
+      --transition-speed: 0.3s;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-body);
+      overflow-x: hidden;
+      margin: 0;
+    }
+
+    /* LAYOUT CORE STRUCTURE */
+    .layout-wrapper {
+      display: flex;
+      min-height: 100vh;
+      width: 100%;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: var(--sidebar-width);
+      background-color: var(--sidebar-bg);
+      border-right: 1px solid var(--border-color);
+      position: fixed;
+      height: 100vh;
+      left: 0;
+      top: 0;
+      z-index: 1000;
+      transition: width var(--transition-speed) ease;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar.collapsed {
+      width: var(--sidebar-collapsed-width);
+    }
+
+    /* SIDEBAR LOGO SECTION */
+    .sidebar-header {
+      height: var(--header-height);
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar.collapsed .sidebar-header {
+      padding: 0;
+      justify-content: center;
+    }
+
+    .logo-svg {
+      height: 32px;
+      color: var(--primary);
+      transition: all var(--transition-speed);
+    }
+
+    .logo-text {
+      font-weight: 700;
+      font-size: 1.2rem;
+      margin-left: 10px;
+      white-space: nowrap;
+      opacity: 1;
+      transition: opacity var(--transition-speed);
+    }
+
+    .sidebar.collapsed .logo-text {
+      display: none;
+      opacity: 0;
+    }
+
+    /* SIDEBAR NAVIGATION SECTION */
+    .sidebar-nav {
+      flex-grow: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 1rem 0;
+    }
+
+    /* Custom Scrollbar for Sidebar */
+    .sidebar-nav::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .sidebar-nav::-webkit-scrollbar-thumb {
+      background: #cbd5e0;
+      border-radius: 10px;
+    }
+
+    .nav-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .nav-item {
+      position: relative;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      padding: 0.8rem 1.5rem;
+      color: var(--sidebar-text);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .nav-link i {
+      width: 24px;
+      font-size: 1.1rem;
+      margin-right: 12px;
+      text-align: center;
+    }
+
+    .sidebar.collapsed .nav-link {
+      padding-left: 0;
+      padding-right: 0;
+      justify-content: center;
+    }
+
+    .sidebar.collapsed .nav-link i {
+      margin-right: 0;
+    }
+
+    .sidebar.collapsed .link-text {
+      display: none;
+    }
+
+    .nav-link:hover {
+      background-color: #edf2f7;
+      color: var(--primary);
+    }
+
+    .nav-item.active>.nav-link {
+      background-color: #ebf4ff;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background-color: var(--primary);
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* Labels: MAIÚSCULAS */
+    .nav-label {
+      padding: 1.5rem 1.5rem 0.5rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #a0aec0;
+      font-weight: 700;
+    }
+
+    .sidebar.collapsed .nav-label {
+      display: none;
+    }
+
+    /* SUBMENUS */
+    .submenu {
+      list-style: none;
+      padding-left: 1rem;
+      display: none;
+      background-color: #f7fafc;
+    }
+
+    .nav-item.open .submenu {
+      display: block;
+    }
+
+    .sidebar.collapsed .submenu {
+      display: none !important;
+    }
+
+    .submenu .nav-link {
+      padding: 0.6rem 1.5rem 0.6rem 2.5rem;
+      font-size: 0.8rem;
+    }
+
+    /* SIDEBAR FOOTER */
+    .sidebar-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border-color);
+      font-size: 0.7rem;
+      color: #a0aec0;
+      text-align: center;
+    }
+
+    .sidebar.collapsed .sidebar-footer {
+      display: none;
+    }
+
+    /* MAIN WRAPPER (Header + Content) */
+    .main-wrapper {
+      margin-left: var(--sidebar-width);
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      transition: margin-left var(--transition-speed) ease;
+      min-width: 0;
+      /* Important for responsive grids */
+    }
+
+    .sidebar-collapsed .main-wrapper {
+      margin-left: var(--sidebar-collapsed-width);
+    }
+
+    /* HEADER WRAPPER */
+    .header-area {
+      height: var(--header-height);
+      background-color: #fff;
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+    }
+
+    .page-title-box {
+      margin-left: 1.5rem;
+    }
+
+    .page-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: #1a202c;
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    .breadcrumb {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-size: 0.75rem;
+    }
+
+    .breadcrumb-item+.breadcrumb-item::before {
+      content: "\f105";
+      font-family: "Font Awesome 6 Free";
+      font-weight: 900;
+      color: #a0aec0;
+    }
+
+    .breadcrumb-item a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .notification-btn {
+      color: #a0aec0;
+      position: relative;
+      font-size: 1.25rem;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .notification-btn:hover {
+      color: var(--primary);
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .user-profile:hover {
+      background-color: #f7fafc;
+    }
+
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border-color);
+    }
+
+    .user-info {
+      display: none;
+    }
+
+    @media (min-width: 992px) {
+      .user-info {
+        display: block;
+        text-align: left;
+      }
+    }
+
+    .user-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #2d3748;
+      display: block;
+    }
+
+    .user-role {
+      font-size: 0.75rem;
+      color: #718096;
+      display: block;
+    }
+
+    .dropdown-menu-user {
+      border: 0;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      border-radius: 0.5rem;
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      min-width: 200px;
+    }
+
+    .dropdown-item-user {
+      padding: 0.625rem 1rem;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+      color: #4a5568;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .dropdown-item-user:hover {
+      background-color: #f7fafc;
+      color: var(--primary);
+    }
+
+    /* CONTENT AREA */
+    .content-area {
+      padding: 24px;
+      flex-grow: 1;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+
+      .sidebar.show {
+        transform: translateX(0);
+      }
+
+      .main-wrapper {
+        margin-left: 0 !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div
+    class="layout-wrapper <?php echo isset($_COOKIE['sidebarCollapsed']) && $_COOKIE['sidebarCollapsed'] == 'true' ? 'sidebar-collapsed' : ''; ?>">
+
+    <!-- SIDEBAR -->
+    <aside
+      class="sidebar <?php echo isset($_COOKIE['sidebarCollapsed']) && $_COOKIE['sidebarCollapsed'] == 'true' ? 'collapsed' : ''; ?>"
+      id="mainSidebar">
+
+      <!-- TOP: LOGO -->
+      <div class="sidebar-header">
+        <svg class="logo-svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+          <path d="M2 17L12 22L22 17M2 12L12 17L22 12" />
+        </svg>
+        <span class="logo-text">INLAUDO ERP</span>
+      </div>
+
+      <!-- CENTER: NAV -->
+      <nav class="sidebar-nav">
+        <div class="nav-label">Geral</div>
+        <ul class="nav-list">
+          <li class="nav-item <?php echo strpos($_SERVER['REQUEST_URI'], 'dashboard') !== false ? 'active' : ''; ?>">
+            <a href="/dashboard" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Dashboard">
+              <i class="fas fa-chart-line"></i>
+              <span class="link-text">DASHBOARD</span>
+            </a>
+          </li>
+
+          <div class="nav-label">Cadastros</div>
+          <li class="nav-item <?php echo strpos($_SERVER['REQUEST_URI'], 'clientes') !== false ? 'active' : ''; ?>">
+            <a href="/clientes" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Clientes">
+              <i class="fas fa-users"></i>
+              <span class="link-text">CLIENTES</span>
+            </a>
+          </li>
+
+          <div class="nav-label">Operacional</div>
+          <li class="nav-item has-submenu">
+            <a href="#" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Financeiro">
+              <i class="fas fa-wallet"></i>
+              <span class="link-text">FINANCEIRO</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/financeiro/pagar"
+                  class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/financeiro/pagar') !== false || strpos($_SERVER['REQUEST_URI'], '/financeiro/contas-a-pagar') !== false) ? 'active' : ''; ?>">CONTAS
+                  A PAGAR</a></li>
+              <li><a href="/financeiro/receber"
+                  class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/financeiro/receber') !== false || strpos($_SERVER['REQUEST_URI'], '/financeiro/contas-a-receber') !== false) ? 'active' : ''; ?>">CONTAS
+                  A RECEBER</a></li>
+              <li><a href="/financeiro/plano-contas"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/financeiro/plano-contas') !== false ? 'active' : ''; ?>">PLANO
+                  DE CONTAS</a></li>
+              <li><a href="/financeiro/fornecedores"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/financeiro/fornecedores') !== false ? 'active' : ''; ?>">FORNECEDORES</a>
+              </li>
+            </ul>
+          </li>
+
+          <li
+            class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], '/faturamento') !== false) ? 'active' : ''; ?>">
+            <a href="/faturamento/notas-fiscais" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right"
+              title="Faturamento">
+              <i class="fas fa-file-invoice"></i>
+              <span class="link-text">FATURAMENTO</span>
+            </a>
+          </li>
+
+          <div class="nav-label">Configurações</div>
+          <li
+            class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/integracao') !== false) ? 'open active' : ''; ?>">
+            <a href="#" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Integração">
+              <i class="fas fa-plug"></i>
+              <span class="link-text">INTEGRAÇÃO</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/integracao/asaas"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/asaas') !== false ? 'active' : ''; ?>">ASAAS</a>
+              </li>
+              <li><a href="/integracao/email"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/email') !== false ? 'active' : ''; ?>">E-MAIL</a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </nav>
+
+      <!-- BOTTOM: SYSTEM INFO -->
+      <div class="sidebar-footer">
+        v1.0.2 · InLaudo ERP
+      </div>
+
+    </aside>
+
+    <!-- MAIN BODY -->
+    <div class="main-wrapper">
+
+      <!-- HEADER (PHASE 3) -->
+      <header class="header-area">
+        <div class="header-left">
+          <button class="btn btn-link link-dark p-0" onclick="toggleSidebar()">
+            <i class="fas fa-bars fa-lg"></i>
+          </button>
+
+          <div class="page-title-box">
+            <nav aria-label="breadcrumb">
+              <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/dashboard">Home</a></li>
+                <?php if (isset($breadcrumb)): ?>
+                  <?php foreach ($breadcrumb as $label => $link): ?>
+                    <?php if (is_numeric($label)): ?>
+                      <li class="breadcrumb-item active" aria-current="page"><?php echo $link; ?></li>
+                    <?php else: ?>
+                      <li class="breadcrumb-item"><a href="<?php echo $link; ?>"><?php echo $label; ?></a></li>
+                    <?php endif; ?>
+                  <?php endforeach; ?>
+                <?php endif; ?>
+              </ol>
+            </nav>
+            <h1 class="page-title"><?php echo $title ?? 'Dashboard'; ?></h1>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <!-- Notificações Placeholder -->
+          <div class="notification-btn" title="Notificações">
+            <i class="far fa-bell"></i>
+          </div>
+
+          <!-- Perfil do Usuário -->
+          <div class="dropdown">
+            <div class="user-profile" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+              <img
+                src="https://ui-avatars.com/api/?name=<?php echo urlencode($_SESSION['user_name'] ?? 'User'); ?>&background=00529B&color=fff"
+                alt="Avatar" class="user-avatar">
+              <div class="user-info">
+                <span class="user-name"><?php echo htmlspecialchars($_SESSION['user_name'] ?? 'Usuário'); ?></span>
+                <span class="user-role">Administrador</span>
+              </div>
+              <i class="fas fa-chevron-down ms-2 fs-xs text-muted"></i>
+            </div>
+
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-user" aria-labelledby="userDropdown">
+              <li>
+                <a class="dropdown-item dropdown-item-user" href="/perfil">
+                  <i class="far fa-user"></i> Meu Perfil
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item dropdown-item-user" href="/configuracoes">
+                  <i class="fas fa-cog"></i> Configurações
+                </a>
+              </li>
+              <li>
+                <hr class="dropdown-divider">
+              </li>
+              <li>
+                <a class="dropdown-item dropdown-item-user text-danger" href="javascript:void(0);"
+                  onclick="confirmLogout()">
+                  <i class="fas fa-sign-out-alt"></i> Sair do Sistema
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </header>
+
+      <!-- CONTENT -->
+      <main class="content-area">

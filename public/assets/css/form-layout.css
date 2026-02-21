@@ -1,0 +1,633 @@
+/**
+ * ERP InLaudo - Padrão de Layout de Formulários Enterprise
+ * CSS moderno e reutilizável para todos os módulos CRUD
+ * Versão: 1.0.0
+ */
+
+:root {
+    --form-primary: #00529B;
+    --form-primary-light: #ebf4ff;
+    --form-success: #10b981;
+    --form-danger: #ef4444;
+    --form-warning: #f59e0b;
+    --form-gray-50: #f9fafb;
+    --form-gray-100: #f3f4f6;
+    --form-gray-200: #e5e7eb;
+    --form-gray-300: #d1d5db;
+    --form-gray-400: #9ca3af;
+    --form-gray-500: #6b7280;
+    --form-gray-600: #4b5563;
+    --form-gray-700: #374151;
+    --form-gray-800: #1f2937;
+    --form-gray-900: #111827;
+    --form-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --form-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --form-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --form-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --form-radius: 0.5rem;
+    --form-radius-lg: 0.75rem;
+    --form-transition: all 0.2s ease;
+}
+
+/* Container Principal do Formulário */
+.form-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: var(--form-radius-lg);
+    box-shadow: var(--form-shadow);
+    overflow: hidden;
+}
+
+.form-header {
+    background: linear-gradient(135deg, var(--form-primary) 0%, #004080 100%);
+    color: white;
+    padding: 2rem 2.5rem;
+    border-bottom: 1px solid var(--form-gray-200);
+}
+
+.form-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem 0;
+    line-height: 1.2;
+}
+
+.form-subtitle {
+    font-size: 1rem;
+    opacity: 0.9;
+    margin: 0;
+    font-weight: 400;
+}
+
+/* Sistema de Abas */
+.form-tabs {
+    background: var(--form-gray-50);
+    border-bottom: 1px solid var(--form-gray-200);
+    padding: 0 2.5rem;
+}
+
+.form-tabs-list {
+    display: flex;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-bottom: 2px solid transparent;
+}
+
+.form-tab {
+    flex: 1;
+    max-width: 300px;
+}
+
+.form-tab-button {
+    width: 100%;
+    padding: 1.25rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--form-gray-600);
+    font-weight: 600;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--form-transition);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-tab-button:hover:not(:disabled) {
+    background: var(--form-gray-100);
+    color: var(--form-primary);
+}
+
+.form-tab-button.active {
+    color: var(--form-primary);
+    border-bottom-color: var(--form-primary);
+    background: white;
+}
+
+.form-tab-button:disabled {
+    color: var(--form-gray-400);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.form-tab-button .tab-icon {
+    font-size: 1rem;
+    width: 20px;
+    text-align: center;
+}
+
+.form-tab-button .tab-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: var(--form-gray-200);
+    color: var(--form-gray-600);
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 700;
+    transition: var(--form-transition);
+}
+
+.form-tab-button.active .tab-number {
+    background: var(--form-primary);
+    color: white;
+}
+
+.form-tab-button:disabled .tab-number {
+    background: var(--form-gray-300);
+}
+
+/* Conteúdo das Abas */
+.form-content {
+    padding: 2.5rem;
+    min-height: 400px;
+}
+
+.form-panel {
+    display: none;
+}
+
+.form-panel.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Seções do Formulário */
+.form-section {
+    margin-bottom: 3rem;
+}
+
+.form-section:last-child {
+    margin-bottom: 0;
+}
+
+.form-section-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--form-primary);
+    margin: 0 0 1.5rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--form-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-section-title .section-icon {
+    font-size: 1rem;
+}
+
+/* Grid do Formulário */
+.form-grid {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.form-grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.form-grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.form-grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+.form-row {
+    display: flex;
+    gap: 1.5rem;
+    align-items: end;
+}
+
+.form-col {
+    flex: 1;
+    min-width: 0;
+}
+
+.form-col-auto {
+    flex: 0 0 auto;
+}
+
+/* Campos do Formulário */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--form-gray-700);
+    margin-bottom: 0.5rem;
+    transition: var(--form-transition);
+}
+
+.form-label.required::after {
+    content: " *";
+    color: var(--form-danger);
+}
+
+.form-control,
+.form-select {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--form-gray-300);
+    border-radius: var(--form-radius);
+    font-size: 0.875rem;
+    transition: var(--form-transition);
+    background: white;
+}
+
+.form-control:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--form-primary);
+    box-shadow: 0 0 0 3px rgba(0, 82, 155, 0.1);
+}
+
+.form-control:hover,
+.form-select:hover {
+    border-color: var(--form-gray-400);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+    background: var(--form-gray-100);
+    color: var(--form-gray-500);
+    cursor: not-allowed;
+}
+
+/* Estados dos Campos */
+.form-control.is-valid,
+.form-select.is-valid {
+    border-color: var(--form-success);
+}
+
+.form-control.is-invalid,
+.form-select.is-invalid {
+    border-color: var(--form-danger);
+}
+
+.form-control.is-valid:focus,
+.form-select.is-valid:focus {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.form-control.is-invalid:focus,
+.form-select.is-invalid:focus {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+/* Input Group */
+.form-input-group {
+    display: flex;
+    align-items: stretch;
+}
+
+.form-input-group .form-control {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+
+.form-input-group .form-control:focus {
+    z-index: 1;
+}
+
+.form-input-group .input-group-text {
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    background: var(--form-gray-100);
+    border: 1px solid var(--form-gray-300);
+    border-left: none;
+    border-radius: 0 var(--form-radius) var(--form-radius) 0;
+    color: var(--form-gray-500);
+    font-size: 0.875rem;
+}
+
+.form-input-group .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* Botões */
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    padding: 2rem 2.5rem;
+    background: var(--form-gray-50);
+    border-top: 1px solid var(--form-gray-200);
+    margin: 0 -2.5rem -2.5rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: var(--form-radius);
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: var(--form-transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--form-primary);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #004080;
+    transform: translateY(-1px);
+    box-shadow: var(--form-shadow-md);
+}
+
+.btn-secondary {
+    background: var(--form-gray-200);
+    color: var(--form-gray-700);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--form-gray-300);
+}
+
+.btn-success {
+    background: var(--form-success);
+    color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #059669;
+}
+
+.btn-danger {
+    background: var(--form-danger);
+    color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: #dc2626;
+}
+
+.btn-light {
+    background: white;
+    color: var(--form-gray-700);
+    border: 1px solid var(--form-gray-300);
+}
+
+.btn-light:hover:not(:disabled) {
+    background: var(--form-gray-50);
+    border-color: var(--form-gray-400);
+}
+
+.btn-lg {
+    padding: 1rem 2rem;
+    font-size: 1rem;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+}
+
+/* Feedback Visual */
+.form-feedback {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.form-feedback.valid {
+    color: var(--form-success);
+}
+
+.form-feedback.invalid {
+    color: var(--form-danger);
+}
+
+.form-help {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--form-gray-500);
+}
+
+/* Estados de Loading */
+.form-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.form-loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid var(--form-gray-300);
+    border-top-color: var(--form-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Mensagens */
+.form-message {
+    padding: 1rem 1.5rem;
+    border-radius: var(--form-radius);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-message.success {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--form-success);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.form-message.error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--form-danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.form-message.warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--form-warning);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.form-message.info {
+    background: rgba(0, 82, 155, 0.1);
+    color: var(--form-primary);
+    border: 1px solid rgba(0, 82, 155, 0.2);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .form-header,
+    .form-tabs,
+    .form-content,
+    .form-actions {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+    
+    .form-tabs-list {
+        flex-direction: column;
+    }
+    
+    .form-tab {
+        max-width: none;
+    }
+    
+    .form-row {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+    }
+    
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .form-header,
+    .form-tabs,
+    .form-content,
+    .form-actions {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    .form-title {
+        font-size: 1.5rem;
+    }
+    
+    .form-tab-button {
+        padding: 1rem;
+        font-size: 0.8rem;
+    }
+}
+
+/* Tema Escuro (Futuro) */
+@media (prefers-color-scheme: dark) {
+    /* Implementação futura para tema escuro */
+}
+
+/* Animações Adicionais */
+.form-slide-in {
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from { 
+        opacity: 0; 
+        transform: translateX(-20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateX(0); 
+    }
+}
+
+/* Estados Específicos para Abas Bloqueadas */
+.form-tab-locked {
+    position: relative;
+}
+
+.form-tab-locked::after {
+    content: "\f023";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--form-gray-400);
+    font-size: 0.75rem;
+}
+
+/* Tabelas em Formulários */
+.form-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+.form-table th,
+.form-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--form-gray-200);
+}
+
+.form-table th {
+    background: var(--form-gray-50);
+    font-weight: 600;
+    color: var(--form-gray-700);
+    font-size: 0.875rem;
+}
+
+.form-table tbody tr:hover {
+    background: var(--form-gray-50);
+}
+
+/* Badges */
+.form-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.form-badge.primary {
+    background: var(--form-primary-light);
+    color: var(--form-primary);
+}
+
+.form-badge.success {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--form-success);
+}
+
+.form-badge.warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--form-warning);
+}
+
+.form-badge.danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--form-danger);
+}

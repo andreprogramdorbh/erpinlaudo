@@ -1,0 +1,1 @@
+<div class="col-md-<?php echo $col; ?> <?php echo $class; ?>">

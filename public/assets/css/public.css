@@ -1,0 +1,136 @@
+/* =========================================================
+   PUBLIC.CSS
+   Estilos exclusivos para telas públicas (Login, Reset)
+   NÃO reutilizar no ERP autenticado
+   ========================================================= */
+
+/* Variáveis globais públicas */
+:root {
+  --public-primary: #00529B;
+  --public-primary-dark: #002D54;
+  --public-bg-gradient: linear-gradient(
+    135deg,
+    #00529B 0%,
+    #002D54 100%
+  );
+  --public-font: 'Inter', sans-serif;
+}
+
+/* Reset mínimo */
+* {
+  box-sizing: border-box;
+}
+
+/* Corpo da página pública */
+body {
+  font-family: var(--public-font);
+  background: var(--public-bg-gradient);
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+/* Card central do login */
+.login-card {
+  background: #ffffff;
+  width: 100%;
+  max-width: 420px;
+  border-radius: 12px;
+  padding: 2.5rem 2.25rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+  text-align: center;
+}
+
+/* Logo */
+.login-card .logo {
+  max-width: 160px;
+  margin-bottom: 1.5rem;
+}
+
+/* Título */
+.login-card h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1.5rem;
+}
+
+/* Labels */
+.login-card label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #374151;
+  text-align: left;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+/* Inputs */
+.login-card input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.login-card input:focus {
+  outline: none;
+  border-color: var(--public-primary);
+  box-shadow: 0 0 0 2px rgba(0, 82, 155, 0.15);
+}
+
+/* Botão principal */
+.login-card .btn-primary {
+  width: 100%;
+  background-color: var(--public-primary);
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.login-card .btn-primary:hover {
+  background-color: var(--public-primary-dark);
+}
+
+/* Link de recuperação */
+.login-card .forgot-password {
+  display: block;
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.login-card .forgot-password:hover {
+  text-decoration: underline;
+}
+
+/* Alertas dentro do card (ex.: erro de login) */
+.login-card .alert {
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+/* Rodapé interno do card */
+.login-card .login-footer {
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* Responsividade */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 2rem 1.5rem;
+  }
+}
