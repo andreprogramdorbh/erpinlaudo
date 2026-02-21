@@ -27,6 +27,7 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::group(["middleware" => ["Permission:view_clients"]], function () {
         Router::get("/clientes", "ClientesController@index");
         Router::get("/clientes/buscar-cnpj", "ClientesController@buscarCnpj"); // API Helper
+        Router::get("/clientes/buscar-cep", "ClientesController@buscarCep");   // API Helper
     });
 
     Router::group(["middleware" => ["Permission:create_clients"]], function () {

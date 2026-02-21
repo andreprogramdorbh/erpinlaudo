@@ -34,6 +34,7 @@ if (!window.ClientesForm) {
             this.setupFormTabs();
             this.setupMasks();
             this.setupCnpjSearch();
+            this.setupCepSearch();
             this.setupContactManagement();
             this.setupFormSubmission();
             this.setupValidation();
@@ -171,17 +172,11 @@ if (!window.ClientesForm) {
                 .then(response => {
                     // Trata diferentes códigos de status HTTP
                     if (!response.ok) {
-                        if (response.status === 400) {
-                            throw new Error('CNPJ inválido. Verifique o formato e os dígitos verificadores.');
-                        } else if (response.status === 404) {
-                            throw new Error('CNPJ não encontrado na base de dados da Receita Federal.');
-                        } else if (response.status === 500) {
-                            throw new Error('Erro interno no servidor. Tente novamente em alguns minutos.');
-                        } else {
-                            throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
-                        }
+                        return response.json().then(err => {
+                            throw new Error(err.erro || `Erro HTTP ${response.status}`);
+                        });
                     }
-                    return response.json().then(err => { throw err; });
+                    return response.json();
                 })
                 .then(data => {
                     if (data.erro) throw new Error(data.erro);
@@ -252,7 +247,144 @@ if (!window.ClientesForm) {
             });
         }
 
-        setupContactManagement() {
+        // -----------------------------------------------------------------
+        // Busca de CEP — dispara ao sair do campo (blur) ou ao clicar no botão
+        // -----------------------------------------------------------------
+        setupCepSearch() {
+            const cepInput = document.getElementById('cep');
+            if (!cepInput) return;
+
+            // Cria o botão de busca ao lado do campo CEP
+            const btnBuscarCep = document.createElement('button');
+            btnBuscarCep.type = 'button';
+            btnBuscarCep.id = 'btn_buscar_cep';
+            btnBuscarCep.className = 'btn btn-outline-secondary btn-sm ms-2';
+            btnBuscarCep.title = 'Buscar endereço pelo CEP';
+            btnBuscarCep.innerHTML = '<i class="fas fa-search"></i> Buscar CEP';
+
+            // Envolve o input em um grupo para posicionar o botão
+            const wrapper = cepInput.parentNode;
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'd-flex align-items-center gap-2';
+            wrapper.insertBefore(inputGroup, cepInput);
+            inputGroup.appendChild(cepInput);
+            inputGroup.appendChild(btnBuscarCep);
+
+            // Evento: clique no botão
+            btnBuscarCep.addEventListener('click', () => this.searchCep());
+
+            // Evento: ao sair do campo com CEP completo
+            cepInput.addEventListener('blur', () => {
+                const cep = cepInput.value.replace(/\D/g, '');
+                if (cep.length === 8) this.searchCep();
+            });
+
+            // Evento: ao digitar — dispara quando completa 8 dígitos
+            cepInput.addEventListener('input', () => {
+                const cep = cepInput.value.replace(/\D/g, '');
+                if (cep.length === 8) this.searchCep();
+            });
+        }
+
+        searchCep() {
+            const cepInput = document.getElementById('cep');
+            const btnBuscarCep = document.getElementById('btn_buscar_cep');
+            if (!cepInput) return;
+
+            const cep = cepInput.value.replace(/\D/g, '');
+            if (cep.length !== 8) return;
+
+            // Estado de carregamento
+            const originalHtml = btnBuscarCep ? btnBuscarCep.innerHTML : '';
+            if (btnBuscarCep) {
+                btnBuscarCep.disabled = true;
+                btnBuscarCep.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando...';
+            }
+
+            fetch(`/clientes/buscar-cep?cep=${cep}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => {
+                            throw new Error(err.erro || `Erro HTTP ${response.status}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.erro) throw new Error(data.erro);
+                    this.fillCepData(data);
+                })
+                .catch(error => {
+                    console.error('Erro na busca de CEP:', error);
+                    // Toast não-bloqueante para não atrapalhar o preenchimento manual
+                    this.showToast('CEP não encontrado. Preencha o endereço manualmente.', 'warning');
+                })
+                .finally(() => {
+                    if (btnBuscarCep) {
+                        btnBuscarCep.disabled = false;
+                        btnBuscarCep.innerHTML = originalHtml;
+                    }
+                });
+        }
+
+        fillCepData(data) {
+            const campos = {
+                'endereco':    data.endereco    || '',
+                'complemento': data.complemento || '',
+                'bairro':      data.bairro      || '',
+                'cidade':      data.cidade      || '',
+            };
+
+            Object.entries(campos).forEach(([campo, valor]) => {
+                const input = document.getElementById(campo);
+                if (input) {
+                    // Só preenche se o campo estiver vazio (não sobrescreve dados já digitados)
+                    if (!input.value.trim() && valor) {
+                        input.value = valor;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+            });
+
+            // Seleciona o estado no <select>
+            if (data.estado) {
+                const estadoSelect = document.getElementById('estado');
+                if (estadoSelect && !estadoSelect.value) {
+                    estadoSelect.value = data.estado;
+                    estadoSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+
+            this.showToast('Endereço preenchido automaticamente!', 'success');
+        }
+
+        showToast(message, type = 'info') {
+            // Remove toasts anteriores para evitar empilhamento
+            document.querySelectorAll('.erp-cep-toast').forEach(el => el.remove());
+
+            const icons  = { success: 'check-circle', warning: 'exclamation-triangle', error: 'times-circle', info: 'info-circle' };
+            const colors = { success: '#198754', warning: '#e6a817', error: '#dc3545', info: '#0dcaf0' };
+
+            const toast = document.createElement('div');
+            toast.className = 'erp-cep-toast';
+            toast.style.cssText = [
+                'position:fixed', 'bottom:24px', 'right:24px', 'z-index:9999',
+                'background:#fff', 'border-radius:8px', 'padding:12px 18px',
+                `border-left:4px solid ${colors[type] || colors.info}`,
+                'box-shadow:0 4px 16px rgba(0,0,0,.15)',
+                'display:flex', 'align-items:center', 'gap:10px',
+                'font-size:14px', 'max-width:360px', 'transition:opacity .3s ease'
+            ].join(';');
+            toast.innerHTML = `<i class="fas fa-${icons[type] || icons.info}" style="color:${colors[type]}"></i><span>${message}</span>`;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        setupContactManagement()) {
             // Botão de adicionar contato
             const btnAddContato = document.getElementById('btnSalvarContato');
             if (btnAddContato) {

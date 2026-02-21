@@ -383,24 +383,76 @@ class ClientesController extends Controller
     }
 
     /**
-     * Mapeia dados da BrasilAPI para campos do banco de dados
+     * API para buscar endereço por CEP com fallback entre múltiplas APIs.
+     * Rota: GET /clientes/buscar-cep?cep={cep}
      */
-    private function mapearDadosCnpj($dadosApi)
+    public function buscarCep(): void
+    {
+        $cep = preg_replace('/\D/', '', $_GET['cep'] ?? '');
+        header('Content-Type: application/json');
+
+        try {
+            if (strlen($cep) !== 8) {
+                http_response_code(400);
+                echo json_encode(['erro' => 'CEP inválido. Informe um CEP com 8 dígitos.']);
+                exit();
+            }
+
+            $service   = new \App\Services\CepService();
+            $resultado = $service->consultar($cep);
+
+            if (isset($resultado['erro'])) {
+                AuditLogger::log('client_cep_search_failed', [
+                    'cep'   => $cep,
+                    'error' => $resultado['erro'],
+                ]);
+                http_response_code(404);
+                echo json_encode(['erro' => $resultado['erro']]);
+                exit();
+            }
+
+            AuditLogger::log('client_cep_search_success', [
+                'cep'       => $cep,
+                'cidade'    => $resultado['cidade'] ?? 'N/A',
+                '_provedor' => $resultado['_provedor'] ?? 'N/A',
+            ]);
+
+            unset($resultado['_provedor'], $resultado['ibge']);
+            echo json_encode($resultado);
+
+        } catch (\Exception $e) {
+            AuditLogger::log('client_cep_search_exception', [
+                'cep'   => $cep,
+                'error' => $e->getMessage(),
+            ]);
+            http_response_code(500);
+            echo json_encode(['erro' => 'Erro interno ao consultar o CEP. Tente novamente.']);
+        }
+        exit();
+    }
+
+    /**
+     * Mapeia dados já normalizados pelo CnpjService para os campos do banco.
+     * O CnpjService já retorna os dados no formato interno; este método
+     * apenas garante que campos extras (como _provedor) sejam removidos.
+     */
+    private function mapearDadosCnpj(array $dadosApi): array
     {
         return [
-            'razao_social' => $dadosApi['razao_social'] ?? '',
-            'nome_fantasia' => $dadosApi['nome_fantasia'] ?? '',
-            'email' => $dadosApi['email'] ?? '',
-            'cep' => $dadosApi['cep'] ?? '',
-            'endereco' => $dadosApi['logradouro'] ?? '', // BrasilAPI: logradouro → Banco: endereco
-            'numero' => $dadosApi['numero'] ?? '',
-            'complemento' => $dadosApi['complemento'] ?? '',
-            'bairro' => $dadosApi['bairro'] ?? '',
-            'cidade' => $dadosApi['municipio'] ?? '', // BrasilAPI: municipio → Banco: cidade
-            'estado' => $dadosApi['uf'] ?? '',
-            'telefone' => $dadosApi['ddd_telefone_1'] ?? $dadosApi['telefone'] ?? '',
-            'cnae_principal' => $dadosApi['cnae_fiscal'] ?? '',
-            'descricao_cnae' => $dadosApi['cnae_fiscal_descricao'] ?? ''
+            'razao_social'       => $dadosApi['razao_social'] ?? '',
+            'nome_fantasia'      => $dadosApi['nome_fantasia'] ?? '',
+            'email'              => $dadosApi['email'] ?? '',
+            'cep'                => $dadosApi['cep'] ?? '',
+            'endereco'           => $dadosApi['endereco'] ?? '',
+            'numero'             => $dadosApi['numero'] ?? '',
+            'complemento'        => $dadosApi['complemento'] ?? '',
+            'bairro'             => $dadosApi['bairro'] ?? '',
+            'cidade'             => $dadosApi['cidade'] ?? '',
+            'estado'             => $dadosApi['estado'] ?? '',
+            'telefone'           => $dadosApi['telefone'] ?? '',
+            'cnae_principal'     => $dadosApi['cnae_principal'] ?? '',
+            'descricao_cnae'     => $dadosApi['descricao_cnae'] ?? '',
+            'situacao_cadastral' => $dadosApi['situacao_cadastral'] ?? '',
         ];
     }
 
