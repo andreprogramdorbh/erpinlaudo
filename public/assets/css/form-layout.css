@@ -631,3 +631,44 @@
     background: rgba(239, 68, 68, 0.1);
     color: var(--form-danger);
 }
+
+/* ============================================================
+   Flatpickr - integracao com o design do formulario ERP
+   ============================================================ */
+.flatpickr-input.form-control[readonly] {
+    background-color: #fff;
+    cursor: pointer;
+}
+.flatpickr-input.form-control {
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    padding-right: 2.5rem;
+}
+.flatpickr-calendar {
+    font-family: 'Inter', sans-serif;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+    border: 1px solid #e2e8f0;
+}
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+    background: #00529B;
+    border-color: #00529B;
+}
+.flatpickr-day.today {
+    border-color: #00529B;
+}
+.flatpickr-day.today:hover {
+    background: #ebf4ff;
+    color: #00529B;
+}
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+    color: #cbd5e0;
+    cursor: not-allowed;
+}
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg {
+    fill: #00529B;
+}

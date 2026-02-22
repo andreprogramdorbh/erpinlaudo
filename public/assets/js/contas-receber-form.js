@@ -34,6 +34,7 @@ if (typeof ContasReceberForm === 'undefined') {
             }
             this.setupFormTabs();
             this.setupValorField();
+            this.setupDateFields();
             this.setupPaymentMethods();
             this.setupFormSubmission();
             this.setupValidation();
@@ -108,6 +109,129 @@ if (typeof ContasReceberForm === 'undefined') {
                     this.clearFieldError(displayInput);
                 }
             });
+        }
+
+        // =====================================================================
+        // CAMPOS DE DATA
+        // Usa Flatpickr para evitar o reset nativo do type="date" ao digitar
+        // parcialmente. O campo data_vencimento tem minDate = hoje.
+        // O Flatpickr retorna o valor no formato YYYY-MM-DD (compatível com PHP).
+        // =====================================================================
+        setupDateFields() {
+            // Aguarda o Flatpickr estar disponível (carregado via CDN no footer)
+            const initFlatpickr = () => {
+                if (typeof flatpickr === 'undefined') {
+                    // Fallback: usa type="date" nativo com atributo min
+                    this._setupNativeDateMin();
+                    return;
+                }
+
+                // Locale pt-BR (carregado via CDN)
+                const locale = (window.flatpickr && flatpickr.l10ns && flatpickr.l10ns.pt)
+                    ? flatpickr.l10ns.pt
+                    : 'default';
+
+                const commonConfig = {
+                    locale:        locale,
+                    dateFormat:    'Y-m-d',      // Envia YYYY-MM-DD ao PHP
+                    altInput:      true,          // Exibe formato amigável ao usuário
+                    altFormat:     'd/m/Y',       // Exibe DD/MM/AAAA na tela
+                    allowInput:    true,          // Permite digitação manual
+                    disableMobile: false,         // Usa seletor nativo em mobile
+                };
+
+                // Data de Vencimento: mínimo = hoje
+                const vencimentoInput = this.container.querySelector('input[name="data_vencimento"]');
+                if (vencimentoInput) {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    this._fpVencimento = flatpickr(vencimentoInput, {
+                        ...commonConfig,
+                        minDate:     today,
+                        defaultDate: vencimentoInput.value || null,
+                        onReady: (selectedDates, dateStr, instance) => {
+                            // Aplica estilo ao altInput para combinar com o form
+                            if (instance.altInput) {
+                                instance.altInput.className = vencimentoInput.className;
+                                instance.altInput.placeholder = 'DD/MM/AAAA';
+                            }
+                        },
+                        onChange: (selectedDates, dateStr) => {
+                            // Valida que a data não é anterior a hoje
+                            if (selectedDates.length > 0) {
+                                const selected = selectedDates[0];
+                                selected.setHours(0, 0, 0, 0);
+                                if (selected < today) {
+                                    this._fpVencimento.clear();
+                                    this.showFieldError(
+                                        vencimentoInput,
+                                        'A data de vencimento não pode ser anterior a hoje'
+                                    );
+                                } else {
+                                    this.clearFieldError(vencimentoInput);
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Data de Recebimento: sem restrição de data mínima
+                const recebimentoInput = this.container.querySelector('input[name="data_recebimento"]');
+                if (recebimentoInput) {
+                    this._fpRecebimento = flatpickr(recebimentoInput, {
+                        ...commonConfig,
+                        defaultDate: recebimentoInput.value || null,
+                        onReady: (selectedDates, dateStr, instance) => {
+                            if (instance.altInput) {
+                                instance.altInput.className = recebimentoInput.className;
+                                instance.altInput.placeholder = 'DD/MM/AAAA';
+                            }
+                        }
+                    });
+                }
+            };
+
+            // Flatpickr pode ainda estar carregando — aguarda até 2s
+            if (typeof flatpickr !== 'undefined') {
+                initFlatpickr();
+            } else {
+                let attempts = 0;
+                const interval = setInterval(() => {
+                    attempts++;
+                    if (typeof flatpickr !== 'undefined') {
+                        clearInterval(interval);
+                        initFlatpickr();
+                    } else if (attempts >= 20) {
+                        clearInterval(interval);
+                        this._setupNativeDateMin();
+                    }
+                }, 100);
+            }
+        }
+
+        // Fallback: se Flatpickr não carregar, define min="YYYY-MM-DD" nativo
+        _setupNativeDateMin() {
+            const today = new Date();
+            const yyyy  = today.getFullYear();
+            const mm    = String(today.getMonth() + 1).padStart(2, '0');
+            const dd    = String(today.getDate()).padStart(2, '0');
+            const todayStr = `${yyyy}-${mm}-${dd}`;
+
+            const vencimentoInput = this.container.querySelector('input[name="data_vencimento"]');
+            if (vencimentoInput) {
+                vencimentoInput.setAttribute('min', todayStr);
+                vencimentoInput.addEventListener('change', () => {
+                    if (vencimentoInput.value && vencimentoInput.value < todayStr) {
+                        vencimentoInput.value = '';
+                        this.showFieldError(
+                            vencimentoInput,
+                            'A data de vencimento não pode ser anterior a hoje'
+                        );
+                    } else {
+                        this.clearFieldError(vencimentoInput);
+                    }
+                });
+            }
         }
 
         _formatarMoeda(value) {
