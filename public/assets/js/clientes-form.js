@@ -610,11 +610,15 @@ if (!window.ClientesForm) {
             }
 
             const action = this.options.isEdit ?
-                `/ clientes / update / ${this.options.clientId} ` :
+                `/clientes/update/${this.options.clientId}` :
                 '/clientes/store';
 
             fetch(action, {
                 method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
                 body: formData
             })
                 .then(response => {
@@ -845,8 +849,8 @@ if (!window.ClientesForm) {
         const formContainer = document.querySelector('.form-container');
         if (formContainer) {
             // Extrai configurações da página
-            const isEdit = formContainer.hasAttribute('data-is-edit');
-            const clientId = formContainer.getAttribute('data-client-id');
+            const isEdit = formContainer.getAttribute('data-is-edit') === 'true';
+            const clientId = formContainer.getAttribute('data-client-id') || null;
             const activeTab = new URLSearchParams(window.location.search).get('tab') || 'geral';
 
             // Inicializa o formulário

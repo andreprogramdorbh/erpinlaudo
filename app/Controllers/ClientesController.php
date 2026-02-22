@@ -154,34 +154,21 @@ class ClientesController extends Controller
             ];
 
             $clientId = $this->clienteModel->create($dados);
+            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
+                      str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') ||
+                      (isset($_SERVER['HTTP_FETCH_MODE']) && $_SERVER['HTTP_FETCH_MODE'] === 'cors');
             if ($clientId) {
                 AuditLogger::log('create_client', [
                     'client_id' => $clientId,
                     'razao_social' => $dados['razao_social']
                 ]);
-
-                if ($isAjax) {
-                    echo json_encode(['success' => true, 'client_id' => $clientId, 'message' => 'Cliente cadastrado com sucesso!']);
-                    exit();
-                }
-
                 // Redireciona para edição com aba de contatos ativa
                 header("Location: /clientes/edit/{$clientId}?success=created&tab=contatos");
             } else {
-                if ($isAjax) {
-                    http_response_code(500);
-                    echo json_encode(['success' => false, 'error' => 'Erro ao salvar no banco de dados.']);
-                    exit();
-                }
                 header("Location: /clientes/create?error=db_failure");
             }
         } catch (\Exception $e) {
             $this->logger->error("Erro ao salvar cliente: " . $e->getMessage());
-            if ($isAjax) {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()]);
-                exit();
-            }
             header("Location: /clientes/create?error=fatal");
         }
         exit();
@@ -273,33 +260,20 @@ class ClientesController extends Controller
                 'status' => $_POST['status'] ?? 'ativo'
             ];
 
+            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
+                      str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') ||
+                      (isset($_SERVER['HTTP_FETCH_MODE']) && $_SERVER['HTTP_FETCH_MODE'] === 'cors');
             if ($this->clienteModel->update($id, $dados)) {
                 AuditLogger::log('update_client', [
                     'client_id' => $id,
                     'razao_social' => $dados['razao_social']
                 ]);
-
-                if ($isAjax) {
-                    echo json_encode(['success' => true, 'message' => 'Dados atualizados com sucesso!']);
-                    exit();
-                }
-
                 header("Location: /clientes/edit/{$id}?success=updated&tab=geral");
             } else {
-                if ($isAjax) {
-                    http_response_code(500);
-                    echo json_encode(['success' => false, 'error' => 'Erro ao atualizar no banco de dados.']);
-                    exit();
-                }
                 header("Location: /clientes/edit/{$id}?error=db_failure");
             }
         } catch (\Exception $e) {
             $this->logger->error("Erro ao atualizar cliente: " . $e->getMessage());
-            if ($isAjax) {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()]);
-                exit();
-            }
             header("Location: /clientes/edit/{$id}?error=fatal");
         }
         exit();
