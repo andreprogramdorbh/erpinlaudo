@@ -296,6 +296,43 @@ document.addEventListener('DOMContentLoaded', function() {
             this.closest('.form-group')?.classList.remove('focused');
         });
     });
+
+    // Processa alertas vindos via URL (PHP Redirects)
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    const success = urlParams.get('success');
+
+    if (error) {
+        const errorMessages = {
+            'missing_fields': 'Preencha todos os campos obrigatórios.',
+            'invalid_cpf': 'O CPF informado é inválido.',
+            'invalid_cnpj': 'O CNPJ informado é inválido.',
+            'db_failure': 'Erro ao salvar dados no banco de dados.',
+            'unauthorized': 'Você não tem permissão para esta ação.',
+            'fatal': 'Ocorreu um erro interno inesperado.'
+        };
+        Swal.fire({
+            icon: 'error',
+            title: 'Ops!',
+            text: errorMessages[error] || 'Ocorreu um erro ao processar sua solicitação.',
+            confirmButtonColor: '#00529B'
+        });
+    }
+
+    if (success) {
+        const successMessages = {
+            'created': 'Cliente cadastrado com sucesso!',
+            'updated': 'Alterações salvas com sucesso!',
+            'deleted': 'Cliente removido com sucesso.'
+        };
+        Swal.fire({
+            icon: 'success',
+            title: 'Sucesso!',
+            text: successMessages[success] || 'Operação realizada com sucesso.',
+            timer: 3000,
+            showConfirmButton: false
+        });
+    }
 });
 </script>
 
