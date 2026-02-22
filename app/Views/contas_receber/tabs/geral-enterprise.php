@@ -55,8 +55,14 @@ $clientes = $clientes ?? [];
             </div>
 
             <div class="form-group">
-                <label for="valor" class="form-label required">Valor</label>
-                <input type="number" step="0.01" name="valor" id="valor" class="form-control" value="<?php echo htmlspecialchars($conta->valor ?? ''); ?>" required>
+                <label for="valor_display" class="form-label required">Valor (R$)</label>
+                <!-- O JS transforma este campo em display formatado + input hidden com float puro -->
+                <input type="text" name="valor" id="valor" class="form-control"
+                       value="<?php echo htmlspecialchars($conta->valor ?? ''); ?>"
+                       placeholder="Ex.: 1.500,00"
+                       inputmode="numeric"
+                       autocomplete="off"
+                       required>
             </div>
         </div>
 

@@ -136,10 +136,24 @@ class ContasReceberController extends Controller
             $clienteId    = (int)($_POST['cliente_id'] ?? 0);
             $planoContaId = (int)($_POST['plano_conta_id'] ?? 0);
             $descricao    = trim($_POST['descricao'] ?? '');
-            $valor        = trim($_POST['valor'] ?? '');
-            $dataVencimento = $_POST['data_vencimento'] ?? '';
+            // Sanitiza o valor: aceita float puro (do campo hidden) ou string monetaria (fallback)
+            $valorRaw     = trim($_POST['valor'] ?? '');
+            $valorClean   = preg_replace('/[^\d,.]/', '', $valorRaw);
+            // Suporte a "1.234,56" (pt-BR) e "1234.56" (float puro)
+            if (substr_count($valorClean, ',') === 1 && substr_count($valorClean, '.') >= 1) {
+                $valorClean = str_replace('.', '', $valorClean);
+                $valorClean = str_replace(',', '.', $valorClean);
+            } elseif (substr_count($valorClean, ',') === 1) {
+                $valorClean = str_replace(',', '.', $valorClean);
+            }
+            $valor = (float) $valorClean;
+            $dataVencimento = trim($_POST['data_vencimento'] ?? '');
+            // Valida formato da data (YYYY-MM-DD vindo do input type="date")
+            if ($dataVencimento !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataVencimento)) {
+                $dataVencimento = '';
+            }
 
-            if ($clienteId <= 0 || $planoContaId <= 0 || $descricao === '' || $valor === '' || $dataVencimento === '') {
+            if ($clienteId <= 0 || $planoContaId <= 0 || $descricao === '' || $valor <= 0 || $dataVencimento === '') {
                 header('Location: /financeiro/contas-a-receber/create?error=missing_fields');
                 exit();
             }
@@ -433,10 +447,22 @@ class ContasReceberController extends Controller
             $clienteId    = (int)($_POST['cliente_id'] ?? 0);
             $planoContaId = (int)($_POST['plano_conta_id'] ?? 0);
             $descricao    = trim($_POST['descricao'] ?? '');
-            $valor        = trim($_POST['valor'] ?? '');
-            $dataVencimento = $_POST['data_vencimento'] ?? '';
+            // Sanitiza o valor: aceita float puro (do campo hidden) ou string monetaria (fallback)
+            $valorRaw     = trim($_POST['valor'] ?? '');
+            $valorClean   = preg_replace('/[^\d,.]/', '', $valorRaw);
+            if (substr_count($valorClean, ',') === 1 && substr_count($valorClean, '.') >= 1) {
+                $valorClean = str_replace('.', '', $valorClean);
+                $valorClean = str_replace(',', '.', $valorClean);
+            } elseif (substr_count($valorClean, ',') === 1) {
+                $valorClean = str_replace(',', '.', $valorClean);
+            }
+            $valor = (float) $valorClean;
+            $dataVencimento = trim($_POST['data_vencimento'] ?? '');
+            if ($dataVencimento !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataVencimento)) {
+                $dataVencimento = '';
+            }
 
-            if ($clienteId <= 0 || $planoContaId <= 0 || $descricao === '' || $valor === '' || $dataVencimento === '') {
+            if ($clienteId <= 0 || $planoContaId <= 0 || $descricao === '' || $valor <= 0 || $dataVencimento === '') {
                 header("Location: /financeiro/contas-a-receber/edit/{$id}?error=missing_fields");
                 exit();
             }
