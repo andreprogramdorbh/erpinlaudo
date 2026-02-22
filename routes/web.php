@@ -42,6 +42,7 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     // Contas a Pagar
     Router::get("/portal/contas-a-pagar", "PortalContasPagarController@index");
     Router::get("/portal/contas-a-pagar/pagar/{id}", "PortalContasPagarController@pagar");
+    Router::get("/portal/contas-a-pagar/status/{id}", "PortalContasPagarController@statusCheck");
 
     // Faturamento
     Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");

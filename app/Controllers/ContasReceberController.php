@@ -222,39 +222,65 @@ class ContasReceberController extends Controller
      * Integra conta a receber com o Asaas.
      * Chamado apenas quando AsaasService::isConfigured() === true.
      */
+    /**
+     * Integra conta a receber com o Asaas.
+     * Suporta: PIX (QR Code), Boleto, Checkout (cliente escolhe o meio).
+     * O externalReference usa o formato u:{usuario_id}|cr:{conta_id} para o webhook.
+     */
     private function integrarComAsaas(int $contaId, array $dados, object $cliente): void
     {
         try {
             $asaasCliente = $this->buscarOuCriarClienteAsaas($cliente);
+            $usuarioId    = $_SESSION['usuario_id'] ?? 0;
+            $meio         = $dados['meio_pagamento'] ?? '';
 
-            $dadosCobranca = [
+            $dadosBase = [
                 'customer'          => $asaasCliente['id'],
-                'value'             => (float)str_replace(['R$', ' ', '.'], ['', '', ''], str_replace(',', '.', $dados['valor'])),
+                'value'             => (float) $dados['valor'],
                 'dueDate'           => date('Y-m-d', strtotime($dados['data_vencimento'])),
                 'description'       => $dados['descricao'],
-                'billingType'       => $this->mapearMeioPagamentoAsaas($dados['meio_pagamento']),
-                'externalReference' => 'cr:' . $contaId,
+                'externalReference' => "u:{$usuarioId}|cr:{$contaId}",
                 'postalService'     => false,
             ];
 
-            if ($dados['meio_pagamento'] === 'pix') {
-                $dadosCobranca['pix'] = [
-                    'expirationDate' => date('Y-m-d', strtotime($dados['data_vencimento'] . ' +30 days')),
-                    'addressKey'     => $cliente->pix_key ?? null,
-                ];
+            $asaas = $this->getAsaasService();
+
+            switch ($meio) {
+                case 'pix':
+                    $cobranca = $asaas->criarPix($dadosBase);
+                    break;
+
+                case 'boleto':
+                    $cobranca = $asaas->criarBoleto($dadosBase);
+                    break;
+
+                case 'checkout':
+                default:
+                    $cobranca = $asaas->criarCheckout($dadosBase);
+                    break;
             }
 
-            $cobrancaAsaas = $this->getAsaasService()->criarCobranca($dadosCobranca);
-
+            // Salva o payment_id e atualiza o status
             $this->model->update($contaId, [
-                'asaas_payment_id' => $cobrancaAsaas['id'],
-                'status'           => AsaasService::mapearStatus($cobrancaAsaas['status']),
+                'asaas_payment_id'   => $cobranca['id'],
+                'external_reference' => $dadosBase['externalReference'],
+                'status'             => AsaasService::mapearStatus($cobranca['status'] ?? 'PENDING'),
             ]);
 
-            $this->enviarEmailPagamento($cliente, $cobrancaAsaas, $dados);
+            $this->logger->info('Cobrança Asaas criada', [
+                'conta_id'         => $contaId,
+                'asaas_payment_id' => $cobranca['id'],
+                'billing_type'     => $cobranca['billingType'] ?? $meio,
+                'status'           => $cobranca['status'] ?? '',
+            ]);
+
+            $this->enviarEmailPagamento($cliente, $cobranca, $dados);
 
         } catch (\Exception $e) {
-            $this->logger->error('Erro na integração com Asaas: ' . $e->getMessage());
+            $this->logger->error('Erro na integração com Asaas: ' . $e->getMessage(), [
+                'conta_id' => $contaId,
+                'trace'    => $e->getTraceAsString(),
+            ]);
             AuditLogger::log('asaas_integration_failed', [
                 'conta_id' => $contaId,
                 'error'    => $e->getMessage(),
@@ -262,9 +288,6 @@ class ContasReceberController extends Controller
         }
     }
 
-    /**
-     * Busca cliente no Asaas ou cria um novo.
-     */
     private function buscarOuCriarClienteAsaas(object $cliente): array
     {
         $documento    = AsaasService::formatarDocumento($cliente->cpf_cnpj ?? '');
@@ -292,17 +315,18 @@ class ContasReceberController extends Controller
     }
 
     /**
-     * Mapeia meio de pagamento para formato Asaas.
+     * Mapeia meio de pagamento interno para billingType Asaas.
+     * Nota: checkout usa UNDEFINED (cliente escolhe no Asaas).
      */
     private function mapearMeioPagamentoAsaas(string $meioPagamento): string
     {
-        $mapa = [
-            'boleto' => 'BOLETO',
-            'cartao' => 'CREDIT_CARD',
-            'pix'    => 'PIX',
-            'outro'  => 'UNDEFINED',
-        ];
-        return $mapa[$meioPagamento] ?? 'UNDEFINED';
+        return match ($meioPagamento) {
+            'boleto'   => 'BOLETO',
+            'cartao'   => 'CREDIT_CARD',
+            'pix'      => 'PIX',
+            'checkout' => 'UNDEFINED',
+            default    => 'UNDEFINED',
+        };
     }
 
     /**
