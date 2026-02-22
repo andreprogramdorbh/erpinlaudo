@@ -209,6 +209,9 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/integracao/email/test", "IntegracaoController@testEmail");
     });
 
+    // Logging de Erros do Frontend
+    Router::post("/api/log/error", "LogController@saveClientError");
+
     // Perfil do usuário
     Router::group(["middleware" => ["Permission:view_profile"]], function () {
         Router::get("/perfil", "PerfilController@index");

@@ -14,6 +14,12 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Flatpickr: datepicker leve para campos de data -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- CSS Globais -->
+    <link rel="stylesheet" href="/assets/css/variables.css">
+    <link rel="stylesheet" href="/assets/css/erp-layout.css">
+    
+    <!-- Scripts de Diagnóstico (Carregamento Antecipado) -->
+    <script src="/assets/js/error-logger.js"></script>
 
   <style>
     :root {

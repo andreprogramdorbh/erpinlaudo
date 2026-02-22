@@ -34,6 +34,14 @@ class Logger
     }
 
     /**
+     * Log de erros originados no frontend (JavaScript)
+     */
+    public function clientError(string $message, array $context = []): void
+    {
+        $this->log("clienterror", $message, $context);
+    }
+
+    /**
      * Log detalhado para debug de erros críticos
      * Inclui informações técnicas completas para diagnóstico
      */
