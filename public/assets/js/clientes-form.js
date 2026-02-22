@@ -151,42 +151,42 @@ if (!window.ClientesForm) {
         }
 
         searchCnpj() {
+            const $cpfCnpj = $('#cpf_cnpj');
             const $btnConsulta = $('#btn_consulta');
-            const cnpj = $cpfCnpj.val().replace(/\D/g, '');
+            const cnpj = ($cpfCnpj.val() || '').replace(/\D/g, '');
 
-            if (cnpj.length !== 14) return;
-            if (cnpj === this.lastSearchedCnpj) return; // Evita busca duplicada (blur + click etc)
+            if (cnpj.length !== 14) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Atenção',
+                    text: 'Por favor, digite um CNPJ completo para consulta.',
+                    confirmButtonColor: '#00529B'
+                });
+                return;
+            }
 
+            if (cnpj === this.lastSearchedCnpj) return;
             this.lastSearchedCnpj = cnpj;
-            Swal.fire({
-                icon: 'warning',
-                title: 'Atenção',
-                text: 'Por favor, digite um CNPJ completo para consulta.',
-                confirmButtonColor: '#00529B'
-            });
-            return;
-        }
 
-        // Loading state
-        const originalHtml = $btnConsulta.html();
+            // Loading state
+            const originalHtml = $btnConsulta.html();
             $btnConsulta.prop('disabled', true)
                 .html('<span class="spinner-border spinner-border-sm me-1"></span> Consultando...');
 
-        fetch(`/clientes/buscar-cnpj?cnpj=${cnpj}`)
+            fetch(`/clientes/buscar-cnpj?cnpj=${cnpj}`)
                 .then(response => {
-                    // Trata diferentes códigos de status HTTP
                     if (!response.ok) {
                         return response.json().then(err => {
-                            throw new Error(err.erro || `Erro HTTP ${ response.status } `);
+                            throw new Error(err.erro || `Erro HTTP ${response.status}`);
                         });
                     }
                     return response.json();
                 })
                 .then(data => {
                     if (data.erro) throw new Error(data.erro);
-                    
+
                     this.fillCnpjData(data);
-                    
+
                     Swal.fire({
                         icon: 'success',
                         title: 'Sucesso',
@@ -197,11 +197,10 @@ if (!window.ClientesForm) {
                 })
                 .catch(error => {
                     console.error('Erro na consulta CNPJ:', error);
-
                     Swal.fire({
                         icon: 'error',
                         title: 'Falha na Consulta',
-                        text: error.erro || 'Não foi possível localizar os dados deste CNPJ. Verifique a numeração ou preencha manualmente.',
+                        text: error.message || 'Não foi possível localizar os dados deste CNPJ.',
                         confirmButtonColor: '#00529B'
                     });
                 })
@@ -307,11 +306,11 @@ if (!window.ClientesForm) {
                 btnBuscarCep.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando...';
             }
 
-            fetch(`/ clientes / buscar - cep ? cep = ${ cep } `)
+            fetch(`/clientes/buscar-cep?cep=${cep}`)
                 .then(response => {
                     if (!response.ok) {
                         return response.json().then(err => {
-                            throw new Error(err.erro || `Erro HTTP ${ response.status } `);
+                            throw new Error(err.erro || `Erro HTTP ${response.status}`);
                         });
                     }
                     return response.json();
@@ -335,10 +334,10 @@ if (!window.ClientesForm) {
 
         fillCepData(data) {
             const campos = {
-                'endereco':    data.endereco    || '',
+                'endereco': data.endereco || '',
                 'complemento': data.complemento || '',
-                'bairro':      data.bairro      || '',
-                'cidade':      data.cidade      || '',
+                'bairro': data.bairro || '',
+                'cidade': data.cidade || '',
             };
 
             Object.entries(campos).forEach(([campo, valor]) => {
@@ -368,7 +367,7 @@ if (!window.ClientesForm) {
             // Remove toasts anteriores para evitar empilhamento
             document.querySelectorAll('.erp-cep-toast').forEach(el => el.remove());
 
-            const icons  = { success: 'check-circle', warning: 'exclamation-triangle', error: 'times-circle', info: 'info-circle' };
+            const icons = { success: 'check-circle', warning: 'exclamation-triangle', error: 'times-circle', info: 'info-circle' };
             const colors = { success: '#198754', warning: '#e6a817', error: '#dc3545', info: '#0dcaf0' };
 
             const toast = document.createElement('div');
@@ -376,7 +375,7 @@ if (!window.ClientesForm) {
             toast.style.cssText = [
                 'position:fixed', 'bottom:24px', 'right:24px', 'z-index:9999',
                 'background:#fff', 'border-radius:8px', 'padding:12px 18px',
-                `border - left: 4px solid ${ colors[type] || colors.info } `,
+                `border - left: 4px solid ${colors[type] || colors.info} `,
                 'box-shadow:0 4px 16px rgba(0,0,0,.15)',
                 'display:flex', 'align-items:center', 'gap:10px',
                 'font-size:14px', 'max-width:360px', 'transition:opacity .3s ease'
@@ -435,7 +434,7 @@ if (!window.ClientesForm) {
         // ---------------------------------------------------------------
         addContact() {
             const form = document.getElementById('formAddContato');
-            const btn  = document.getElementById('btnSalvarContato');
+            const btn = document.getElementById('btnSalvarContato');
             if (!form || !btn) return;
 
             const nome = document.getElementById('nome_contato')?.value.trim();
@@ -478,19 +477,19 @@ if (!window.ClientesForm) {
         // Carregar contato para edição (preenche o modal)
         // ---------------------------------------------------------------
         loadContactForEdit(contactId) {
-            fetch(`/ clientes / get - contato ? id = ${ contactId } `)
+            fetch(`/clientes/get-contato?id=${contactId}`)
                 .then(r => r.json())
                 .then(data => {
                     if (!data.success) throw new Error(data.error || 'Contato não encontrado.');
 
                     const c = data.contato;
-                    document.getElementById('contato_id').value           = c.id;
-                    document.getElementById('nome_contato').value         = c.nome         || '';
+                    document.getElementById('contato_id').value = c.id;
+                    document.getElementById('nome_contato').value = c.nome || '';
                     document.getElementById('departamento_contato').value = c.departamento || '';
-                    document.getElementById('email_contato').value        = c.email        || '';
-                    document.getElementById('celular_contato').value      = c.celular      || '';
-                    document.getElementById('telefone_contato').value     = c.telefone     || '';
-                    document.getElementById('observacoes_contato').value  = c.observacoes  || '';
+                    document.getElementById('email_contato').value = c.email || '';
+                    document.getElementById('celular_contato').value = c.celular || '';
+                    document.getElementById('telefone_contato').value = c.telefone || '';
+                    document.getElementById('observacoes_contato').value = c.observacoes || '';
 
                     document.getElementById('modalTitle').textContent = 'Editar Contato';
                     const btn = document.getElementById('btnSalvarContato');
@@ -510,7 +509,7 @@ if (!window.ClientesForm) {
         // ---------------------------------------------------------------
         updateContact(contactId) {
             const form = document.getElementById('formAddContato');
-            const btn  = document.getElementById('btnSalvarContato');
+            const btn = document.getElementById('btnSalvarContato');
             if (!form || !btn) return;
 
             const nome = document.getElementById('nome_contato')?.value.trim();
@@ -554,28 +553,28 @@ if (!window.ClientesForm) {
             fetch('/clientes/remove-contato', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `id = ${ contactId } `
+                body: `id=${contactId}`
             })
                 .then(r => r.json())
                 .then(data => {
                     if (!data.success) throw new Error(data.error || 'Erro ao remover contato.');
 
-                    const row = document.getElementById(`contato - ${ contactId } `);
+                    const row = document.getElementById(`contato-${contactId}`);
                     if (row) {
                         row.style.transition = 'opacity .3s, transform .3s';
-                        row.style.opacity    = '0';
-                        row.style.transform  = 'translateX(-20px)';
+                        row.style.opacity = '0';
+                        row.style.transform = 'translateX(-20px)';
                         setTimeout(() => {
                             row.remove();
                             const tbody = document.querySelector('#tabelaContatos tbody');
                             if (tbody && tbody.querySelectorAll('tr:not(.empty-row)').length === 0) {
-                                tbody.innerHTML = `< tr class="empty-row" >
+                                tbody.innerHTML = `<tr class="empty-row">
         <td colspan="4" class="text-center py-5 text-muted">
             <div class="empty-state">
                 <i class="fas fa-address-book fa-3x mb-3"></i>
                 <p class="mb-0">Nenhum contato cadastrado.</p>
             </div>
-        </td></tr > `;
+        </td></tr>`;
                             }
                         }, 300);
                     }
@@ -611,7 +610,7 @@ if (!window.ClientesForm) {
             }
 
             const action = this.options.isEdit ?
-                `/ clientes / update / ${ this.options.clientId } ` :
+                `/ clientes / update / ${this.options.clientId} ` :
                 '/clientes/store';
 
             fetch(action, {
@@ -648,7 +647,7 @@ if (!window.ClientesForm) {
                         }).then(() => {
                             // Se for novo cliente, redireciona para edição com aba de contatos
                             if (!this.options.isEdit && data.client_id) {
-                                window.location.href = `/ clientes / edit / ${ data.client_id }?tab = contatos`;
+                                window.location.href = `/clientes/edit/${data.client_id}?tab=contatos`;
                             } else {
                                 // Se for edição, desbloqueia aba de contatos
                                 this.unlockContactsTab();
@@ -796,7 +795,7 @@ if (!window.ClientesForm) {
 
             // Cria mensagem
             const messageEl = document.createElement('div');
-            messageEl.className = `form - message ${ type } `;
+            messageEl.className = `form - message ${type} `;
             messageEl.innerHTML = `
         < i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}" ></i >
             <span>${message}</span>
