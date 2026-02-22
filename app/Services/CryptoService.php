@@ -10,24 +10,25 @@ class CryptoService
 
     private function getKey(): string
     {
-        // Tenta obter as chaves de diferentes fontes em ordem de preferência
-        $rawKey = getenv('APP_KEY') ?: getenv('APP_ENCRYPTION_KEY') ?: 
-                  $_ENV['APP_KEY'] ?? $_ENV['APP_ENCRYPTION_KEY'] ?? '';
-        
-        // Debug: registrar tentativas de leitura (remover em produção)
-        if (empty($rawKey)) {
-            error_log('CryptoService: Tentando ler chaves de ambiente...');
-            error_log('getenv(APP_KEY): ' . (getenv('APP_KEY') ? 'OK' : 'NULL'));
-            error_log('getenv(APP_ENCRYPTION_KEY): ' . (getenv('APP_ENCRYPTION_KEY') ? 'OK' : 'NULL'));
-            error_log('$_ENV[APP_KEY]: ' . (isset($_ENV['APP_KEY']) ? 'OK' : 'NULL'));
-            error_log('$_ENV[APP_ENCRYPTION_KEY]: ' . (isset($_ENV['APP_ENCRYPTION_KEY']) ? 'OK' : 'NULL'));
-        }
-        
+        // Dotenv::createImmutable() popula $_ENV e $_SERVER, NÃO getenv()
+        // Prioridade: $_ENV > $_SERVER > getenv() (fallback para ambientes sem Dotenv)
+        $rawKey = $_ENV['APP_KEY']
+            ?? $_ENV['APP_ENCRYPTION_KEY']
+            ?? $_SERVER['APP_KEY']
+            ?? $_SERVER['APP_ENCRYPTION_KEY']
+            ?? (string) getenv('APP_KEY')
+            ?? '';
+
         if ($rawKey === '') {
             throw new \RuntimeException(
-                'Criptografia não configurada. Defina APP_KEY ou APP_ENCRYPTION_KEY no arquivo .env. ' .
-                'Exemplo: APP_KEY=base64:sua-chave-aqui-32-bytes'
+                'Criptografia não configurada. Defina APP_KEY no arquivo .env. ' .
+                'Exemplo: APP_KEY=minha-chave-secreta-de-32-caracteres'
             );
+        }
+
+        // Remove prefixo "base64:" se presente (padrão Laravel/gerado automaticamente)
+        if (str_starts_with($rawKey, 'base64:')) {
+            $rawKey = substr($rawKey, 7);
         }
 
         return hash('sha256', $rawKey, true);
