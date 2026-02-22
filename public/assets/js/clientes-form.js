@@ -375,12 +375,12 @@ if (!window.ClientesForm) {
             toast.style.cssText = [
                 'position:fixed', 'bottom:24px', 'right:24px', 'z-index:9999',
                 'background:#fff', 'border-radius:8px', 'padding:12px 18px',
-                `border - left: 4px solid ${colors[type] || colors.info} `,
+                `border-left: 4px solid ${colors[type] || colors.info}`,
                 'box-shadow:0 4px 16px rgba(0,0,0,.15)',
                 'display:flex', 'align-items:center', 'gap:10px',
                 'font-size:14px', 'max-width:360px', 'transition:opacity .3s ease'
             ].join(';');
-            toast.innerHTML = `< i class="fas fa-${icons[type] || icons.info}" style = "color:${colors[type]}" ></i > <span>${message}</span>`;
+            toast.innerHTML = `<i class="fas fa-${icons[type] || icons.info}" style="color:${colors[type]}"></i> <span>${message}</span>`;
             document.body.appendChild(toast);
 
             setTimeout(() => {
