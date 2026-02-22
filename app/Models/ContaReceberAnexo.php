@@ -18,9 +18,18 @@ class ContaReceberAnexo extends Model
 
     public function findByContaId(int $contaReceberId, int $usuarioId): array
     {
-        $stmt = $this->pdo->prepare("SELECT * FROM {$this->table} WHERE conta_receber_id = ? AND usuario_id = ? ORDER BY id DESC");
-        $stmt->execute([$contaReceberId, $usuarioId]);
-        return $stmt->fetchAll(PDO::FETCH_OBJ);
+        try {
+            $stmt = $this->pdo->prepare("SELECT * FROM {$this->table} WHERE conta_receber_id = ? AND usuario_id = ? ORDER BY id DESC");
+            $stmt->execute([$contaReceberId, $usuarioId]);
+            return $stmt->fetchAll(PDO::FETCH_OBJ);
+        } catch (\PDOException $e) {
+            // Se a tabela não existir, tenta criar e retorna vazio
+            if ($e->getCode() == '42S02' || strpos($e->getMessage(), "doesn't exist") !== false) {
+                $this->createTable();
+                return [];
+            }
+            throw $e;
+        }
     }
 
     public function create(array $data): string|false
@@ -47,5 +56,20 @@ class ContaReceberAnexo extends Model
     {
         $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = ?");
         return $stmt->execute([$id]);
+    }
+
+    public function createTable(): void
+    {
+        $sql = "CREATE TABLE IF NOT EXISTS {$this->table} (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            usuario_id INT NOT NULL,
+            conta_receber_id INT NOT NULL,
+            file_path VARCHAR(255) NOT NULL,
+            original_name VARCHAR(255) NOT NULL,
+            mime_type VARCHAR(100),
+            file_size INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $this->pdo->exec($sql);
     }
 }

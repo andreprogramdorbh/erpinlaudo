@@ -21,7 +21,6 @@ if (!window.FormTabs) {
 
             this.tabs = [];
             this.panels = [];
-            this.activeTabIndex = this.options.activeTab;
             this.isAnimating = false;
 
             this.init();
@@ -35,17 +34,19 @@ if (!window.FormTabs) {
 
             this.findElements();
             this.bindEvents();
+
+            // Resolve índice inicial (pode ser ID ou index)
+            this.activeTabIndex = this.resolveIndex(this.options.activeTab);
+
             this.activateTab(this.activeTabIndex);
             this.restoreState();
         }
 
-        activateTab(index) {
-            if (index < 0 || index >= this.tabs.length) {
-                index = 0;
-            }
+        activateTab(target) {
+            const index = this.resolveIndex(target);
 
             this.tabs.forEach((tab) => {
-                tab.button.classList.remove('active');
+                if (tab.button) tab.button.classList.remove('active');
                 if (tab.panel && tab.panel.classList) {
                     tab.panel.classList.remove('active');
                 }
@@ -54,8 +55,8 @@ if (!window.FormTabs) {
             const newTab = this.tabs[index];
             if (!newTab) return;
 
-            newTab.button.classList.add('active');
-            if (newTab.panel) {
+            if (newTab.button) newTab.button.classList.add('active');
+            if (newTab.panel && newTab.panel.classList) {
                 newTab.panel.classList.add('active');
             }
 
@@ -114,11 +115,14 @@ if (!window.FormTabs) {
             });
         }
 
-        switchToTab(index) {
+        switchToTab(target) {
+            const index = this.resolveIndex(target);
             if (index < 0 || index >= this.tabs.length) return;
 
             const currentTab = this.tabs[this.activeTabIndex];
             const newTab = this.tabs[index];
+
+            if (!newTab) return;
 
             // Verifica se a nova aba está bloqueada
             if (newTab.locked && !this.options.allowLockedTabs) {
@@ -138,8 +142,8 @@ if (!window.FormTabs) {
             }
 
             // Remove classe active da aba atual
-            if (currentTab.button) currentTab.button.classList.remove('active');
-            if (currentTab.panel && currentTab.panel.classList) currentTab.panel.classList.remove('active');
+            if (currentTab && currentTab.button) currentTab.button.classList.remove('active');
+            if (currentTab && currentTab.panel && currentTab.panel.classList) currentTab.panel.classList.remove('active');
 
             // Adiciona classe active na nova aba
             if (newTab.button) newTab.button.classList.add('active');
@@ -315,10 +319,36 @@ if (!window.FormTabs) {
             }
         }
 
+        resolveIndex(target) {
+            // Se for um número, garante que é inteiro e está no range
+            if (typeof target === 'number') {
+                const idx = Math.floor(target);
+                return (idx >= 0 && idx < this.tabs.length) ? idx : 0;
+            }
+
+            // Se for uma string...
+            if (typeof target === 'string' && target.trim() !== '') {
+                // 1. Tenta como ID
+                const idxById = this.tabs.findIndex(t => t.id === target);
+                if (idxById !== -1) return idxById;
+
+                // 2. Tenta como número string (ex: "1")
+                const idxParsed = parseInt(target, 10);
+                if (!isNaN(idxParsed) && idxParsed >= 0 && idxParsed < this.tabs.length) {
+                    return idxParsed;
+                }
+            }
+
+            // Fallback para o primeiro item se for inválido
+            return 0;
+        }
+
         destroy() {
             // Remove eventos
             this.tabs.forEach(tab => {
-                tab.button.removeEventListener('click', () => { });
+                if (tab.button && tab.button.removeEventListener) {
+                    tab.button.removeEventListener('click', () => { });
+                }
             });
 
             // Limpa referências

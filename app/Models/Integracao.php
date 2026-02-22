@@ -95,9 +95,9 @@ class Integracao extends Model
         return $config;
     }
 
-    public function findByProvider(string $provider): object|false
+    public function findByProvider(string $provider, ?int $usuarioId = null): object|false
     {
-        $usuarioId = (int)($_SESSION['user_id'] ?? 0);
+        $usuarioId = $usuarioId ?? (int)($_SESSION['user_id'] ?? 0);
         if ($usuarioId <= 0) {
             return false;
         }

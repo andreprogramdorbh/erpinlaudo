@@ -16,13 +16,13 @@ if (typeof ContasReceberForm === 'undefined') {
                 ? document.querySelector(container)
                 : container;
             this.options = {
-                contaId:     options.contaId     || null,
-                isEdit:      options.isEdit      || false,
-                activeTab:   options.activeTab   || 'geral',
+                contaId: options.contaId || null,
+                isEdit: options.isEdit || false,
+                activeTab: options.activeTab || 'geral',
                 apiEndpoint: options.apiEndpoint || '/financeiro/contas-a-receber',
                 ...options
             };
-            this.formTabs     = null;
+            this.formTabs = null;
             this.isSubmitting = false;
             this.init();
         }
@@ -47,11 +47,22 @@ if (typeof ContasReceberForm === 'undefined') {
         setupFormTabs() {
             const tabsContainer = this.container.querySelector('.form-tabs-container');
             if (tabsContainer && window.FormTabs) {
+                // Se já estiver inicializado, não faz nada (evita conflito com auto-init)
+                if (tabsContainer.classList.contains('form-tabs-initialized') || tabsContainer.formTabs) {
+                    this.formTabs = tabsContainer.formTabs;
+                    return;
+                }
+
+                const activeTabFromDom = tabsContainer.getAttribute('data-active-tab');
+
                 this.formTabs = new window.FormTabs(tabsContainer, {
-                    activeTab: this.options.activeTab,
+                    activeTab: activeTabFromDom || this.options.activeTab,
                     saveState: true,
-                    onTabChange: (index, tab) => this.onTabChange(index, tab)
+                    onTabChange: (oldIdx, newIdx, oldTab, newTab) => this.onTabChange(newIdx, newTab)
                 });
+
+                // Marca como inicializado para evitar que o auto-init do form-tabs.js tente inicializar novamente
+                tabsContainer.classList.add('form-tabs-initialized');
             }
         }
 
@@ -66,13 +77,13 @@ if (typeof ContasReceberForm === 'undefined') {
             if (!valorInput) return;
 
             // Cria o campo de exibição formatado
-            const displayInput       = document.createElement('input');
-            displayInput.type        = 'text';
-            displayInput.id          = 'valor_display';
-            displayInput.className   = valorInput.className;
+            const displayInput = document.createElement('input');
+            displayInput.type = 'text';
+            displayInput.id = 'valor_display';
+            displayInput.className = valorInput.className;
             displayInput.placeholder = 'Ex.: 1.500,00';
             displayInput.autocomplete = 'off';
-            displayInput.inputMode   = 'numeric';
+            displayInput.inputMode = 'numeric';
 
             // O campo original vira hidden — o display assume o required
             valorInput.type = 'hidden';
@@ -92,12 +103,12 @@ if (typeof ContasReceberForm === 'undefined') {
                 const raw = displayInput.value.replace(/\D/g, '');
                 if (raw === '') {
                     displayInput.value = '';
-                    valorInput.value   = '';
+                    valorInput.value = '';
                     return;
                 }
-                const numeric      = parseFloat(raw) / 100;
+                const numeric = parseFloat(raw) / 100;
                 displayInput.value = this._formatarMoeda(numeric);
-                valorInput.value   = numeric.toFixed(2); // float puro para o PHP
+                valorInput.value = numeric.toFixed(2); // float puro para o PHP
             });
 
             // Valida ao sair do campo
@@ -132,11 +143,11 @@ if (typeof ContasReceberForm === 'undefined') {
                     : 'default';
 
                 const commonConfig = {
-                    locale:        locale,
-                    dateFormat:    'Y-m-d',      // Envia YYYY-MM-DD ao PHP
-                    altInput:      true,          // Exibe formato amigável ao usuário
-                    altFormat:     'd/m/Y',       // Exibe DD/MM/AAAA na tela
-                    allowInput:    true,          // Permite digitação manual
+                    locale: locale,
+                    dateFormat: 'Y-m-d',      // Envia YYYY-MM-DD ao PHP
+                    altInput: true,          // Exibe formato amigável ao usuário
+                    altFormat: 'd/m/Y',       // Exibe DD/MM/AAAA na tela
+                    allowInput: true,          // Permite digitação manual
                     disableMobile: false,         // Usa seletor nativo em mobile
                 };
 
@@ -147,7 +158,7 @@ if (typeof ContasReceberForm === 'undefined') {
                     today.setHours(0, 0, 0, 0);
                     this._fpVencimento = flatpickr(vencimentoInput, {
                         ...commonConfig,
-                        minDate:     today,
+                        minDate: today,
                         defaultDate: vencimentoInput.value || null,
                         onReady: (selectedDates, dateStr, instance) => {
                             // Aplica estilo ao altInput para combinar com o form
@@ -212,9 +223,9 @@ if (typeof ContasReceberForm === 'undefined') {
         // Fallback: se Flatpickr não carregar, define min="YYYY-MM-DD" nativo
         _setupNativeDateMin() {
             const today = new Date();
-            const yyyy  = today.getFullYear();
-            const mm    = String(today.getMonth() + 1).padStart(2, '0');
-            const dd    = String(today.getDate()).padStart(2, '0');
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
             const todayStr = `${yyyy}-${mm}-${dd}`;
 
             const vencimentoInput = this.container.querySelector('input[name="data_vencimento"]');
@@ -246,7 +257,7 @@ if (typeof ContasReceberForm === 'undefined') {
         // =====================================================================
         setupPaymentMethods() {
             const meioPagamentoSelect = this.container.querySelector('select[name="meio_pagamento"]');
-            const asaasInfo           = this.container.querySelector('.asaas-integration-info');
+            const asaasInfo = this.container.querySelector('.asaas-integration-info');
             if (!meioPagamentoSelect || !asaasInfo) return;
 
             const updateVisibility = (value) => {
@@ -263,7 +274,7 @@ if (typeof ContasReceberForm === 'undefined') {
             const messages = {
                 boleto: 'O boleto será gerado automaticamente e enviado por e-mail ao cliente.',
                 cartao: 'O link de pagamento com cartão de crédito será enviado ao cliente.',
-                pix:    'O código PIX será gerado e enviado por e-mail ao cliente.'
+                pix: 'O código PIX será gerado e enviado por e-mail ao cliente.'
             };
             const infoDiv = this.container.querySelector('.payment-method-info');
             if (infoDiv && messages[method]) {
@@ -302,7 +313,7 @@ if (typeof ContasReceberForm === 'undefined') {
             });
 
             // Valida campo valor (oculto)
-            const valorHidden  = form.querySelector('input[name="valor"]');
+            const valorHidden = form.querySelector('input[name="valor"]');
             const valorDisplay = form.querySelector('#valor_display');
             if (valorHidden && (valorHidden.value === '' || parseFloat(valorHidden.value) <= 0)) {
                 if (valorDisplay) this.showFieldError(valorDisplay, 'Informe um valor maior que zero');
@@ -322,8 +333,8 @@ if (typeof ContasReceberForm === 'undefined') {
 
                 // fetch segue o redirect automaticamente
                 const response = await fetch(form.action, {
-                    method:   'POST',
-                    body:     formData,
+                    method: 'POST',
+                    body: formData,
                     redirect: 'follow'
                 });
 
@@ -378,7 +389,7 @@ if (typeof ContasReceberForm === 'undefined') {
             field.classList.add('is-invalid');
             let errorDiv = field.parentNode.querySelector('.invalid-feedback');
             if (!errorDiv) {
-                errorDiv           = document.createElement('div');
+                errorDiv = document.createElement('div');
                 errorDiv.className = 'invalid-feedback';
                 field.parentNode.appendChild(errorDiv);
             }
@@ -418,10 +429,10 @@ if (typeof ContasReceberForm === 'undefined') {
             if (!submitBtn) return;
             if (loading) {
                 submitBtn.setAttribute('data-original-text', submitBtn.innerHTML);
-                submitBtn.disabled  = true;
+                submitBtn.disabled = true;
                 submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvando...';
             } else {
-                submitBtn.disabled  = false;
+                submitBtn.disabled = false;
                 submitBtn.innerHTML = submitBtn.getAttribute('data-original-text') || 'Salvar';
             }
         }
@@ -429,9 +440,9 @@ if (typeof ContasReceberForm === 'undefined') {
         showAlert(message, type = 'info') {
             if (window.Swal) {
                 Swal.fire({
-                    icon:               type === 'error' ? 'error' : type === 'success' ? 'success' : 'info',
-                    title:              type === 'error' ? 'Erro' : type === 'success' ? 'Sucesso' : 'Informação',
-                    text:               message,
+                    icon: type === 'error' ? 'error' : type === 'success' ? 'success' : 'info',
+                    title: type === 'error' ? 'Erro' : type === 'success' ? 'Sucesso' : 'Informação',
+                    text: message,
                     confirmButtonColor: '#00529B'
                 });
             } else {
@@ -462,11 +473,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const formContainer = document.querySelector('.contas-receber-form');
     if (formContainer && !formContainer.contasReceberForm) {
         // Lê atributos gerados pelo enterprise-form component
-        const isEdit  = formContainer.getAttribute('data-is-edit') === 'true'
-                     || formContainer.classList.contains('form-edit-mode');
+        const isEdit = formContainer.getAttribute('data-is-edit') === 'true'
+            || formContainer.classList.contains('form-edit-mode');
         const contaId = formContainer.getAttribute('data-client-id');
         formContainer.contasReceberForm = new ContasReceberForm(formContainer, {
-            isEdit:  isEdit,
+            isEdit: isEdit,
             contaId: contaId
         });
     }

@@ -130,7 +130,7 @@ $hoje = date('Y-m-d');
 
             <!-- Ações -->
             <div class="portal-conta-actions">
-                <?php if ($conta->status === 'aberta' && !empty($conta->asaas_payment_id)): ?>
+                <?php if ($conta->status === 'aberta' && (!empty($conta->asaas_payment_id) || ($asaasEnabled ?? false))): ?>
                     <a href="/portal/contas-a-pagar/pagar/<?php echo (int) $conta->id; ?>"
                        class="portal-btn portal-btn-primary portal-btn-sm"
                        onclick="return confirm('Você será redirecionado para a página de pagamento. Deseja continuar?')">

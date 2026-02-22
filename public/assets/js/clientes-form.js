@@ -53,8 +53,14 @@ if (!window.ClientesForm) {
             // Inicializa o sistema de abas
             const tabsContainer = this.container.querySelector('.form-tabs-container');
             if (tabsContainer && window.FormTabs) {
+                // Previne dupla inicialização
+                if (tabsContainer.classList.contains('form-tabs-initialized')) {
+                    return;
+                }
+                tabsContainer.classList.add('form-tabs-initialized');
+
                 this.formTabs = new window.FormTabs(tabsContainer, {
-                    activeTab: this.options.activeTab === 'contatos' ? 1 : 0,
+                    activeTab: this.options.activeTab,
                     saveState: true,
                     onTabChange: (oldIndex, newIndex, oldTab, newTab) => {
                         // Validação antes de mudar de aba

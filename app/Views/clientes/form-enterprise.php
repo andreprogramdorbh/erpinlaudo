@@ -46,6 +46,14 @@ $formConfig = [
             'locked' => !$isEdit,
             'locked_message' => 'Salve os dados gerais primeiro para habilitar os contatos.',
             'view' => $isEdit ? 'clientes.tabs.contatos-enterprise' : null
+        ],
+        [
+            'id' => 'anexos',
+            'title' => 'Anexos',
+            'icon' => 'fas fa-paperclip',
+            'locked' => !$isEdit,
+            'locked_message' => 'Salve os dados gerais primeiro para habilitar os anexos.',
+            'view' => $isEdit ? 'clientes.tabs.anexos-enterprise' : null
         ]
     ],
 

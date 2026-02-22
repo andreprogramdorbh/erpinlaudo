@@ -9,6 +9,8 @@ use App\Core\Audit\AuditLogger;
 use App\Models\PortalCliente;
 use App\Models\ContaReceber;
 use App\Models\ContaReceberAnexo;
+use App\Models\Integracao;
+use App\Models\Cliente;
 use App\Services\AsaasService;
 
 /**
@@ -29,10 +31,11 @@ class PortalContasPagarController extends Controller
 
     public function __construct()
     {
-        $this->portalModel = new PortalCliente();
-        $this->contaModel  = new ContaReceber();
-        $this->anexoModel  = new ContaReceberAnexo();
-        $this->logger      = new Logger();
+        $this->portalModel  = new PortalCliente();
+        $this->contaModel   = new ContaReceber();
+        $this->anexoModel   = new ContaReceberAnexo();
+        $this->clienteModel = new Cliente();
+        $this->logger       = new Logger();
     }
 
     // ---------------------------------------------------------------
@@ -49,6 +52,21 @@ class PortalContasPagarController extends Controller
             exit();
         }
         return $portal;
+    }
+
+    /**
+     * Retorna a instância do AsaasService configurada para o tenant (vendedor).
+     */
+    private function getAsaasService(int $tenantId): ?AsaasService
+    {
+        $integracaoModel = new Integracao();
+        $config = $integracaoModel->findByProvider('asaas', $tenantId);
+
+        if (!$config || $config->status !== 'active' || empty($config->api_key)) {
+            return null;
+        }
+
+        return new AsaasService($config->api_key, $config->environment ?? 'sandbox');
     }
 
     // ---------------------------------------------------------------
@@ -108,6 +126,11 @@ class PortalContasPagarController extends Controller
             $conta->anexos = $this->anexoModel->findByContaId((int) $conta->id, $tenantId);
         }
 
+        // Verifica se Asaas está habilitado para este tenant
+        $integracaoModel = new Integracao();
+        $asaasConfig = $integracaoModel->findByNomeAndUsuarioId('asaas', $tenantId);
+        $asaasEnabled = $asaasConfig && $asaasConfig->status === 'ativo';
+
         View::render('portal/contas-a-pagar/index', [
             'title'            => 'Minhas Contas',
             '_layout'          => 'portal',
@@ -118,6 +141,7 @@ class PortalContasPagarController extends Controller
             'contasRecebidas'  => $contasRecebidas,
             'contasCanceladas' => $contasCanceladas,
             'statusFiltro'     => $statusFiltro,
+            'asaasEnabled'     => $asaasEnabled,
         ]);
     }
 
@@ -169,20 +193,30 @@ class PortalContasPagarController extends Controller
         }
 
         // Meios Asaas — requer payment_id
-        if (empty($conta->asaas_payment_id)) {
-            $this->logger->warning('[Portal] Conta sem asaas_payment_id', ['conta_id' => $id]);
-            header('Location: /portal/contas-a-pagar?error=sem_link_pagamento');
-            exit();
-        }
+        $asaas = $this->getAsaasService($tenantId);
 
-        if (!AsaasService::isConfigured()) {
-            $this->logger->error('[Portal] AsaasService não configurado', ['tenant_id' => $tenantId]);
+        if (!$asaas) {
+            $this->logger->error('[Portal] AsaasService não configurado ou inativo', ['tenant_id' => $tenantId]);
             header('Location: /portal/contas-a-pagar?error=pagamento_indisponivel');
             exit();
         }
 
+        // Se não tem payment_id, tenta gerar um agora (Checkout UNDEFINED)
+        if (empty($conta->asaas_payment_id)) {
+            try {
+                $conta = $this->gerarPagamentoAsaas($conta, $portal, $asaas);
+            } catch (\Exception $e) {
+                $this->logger->error('[Portal] Falha ao gerar pagamento Asaas on-the-fly', [
+                    'conta_id' => $id,
+                    'error'    => $e->getMessage()
+                ]);
+                header('Location: /portal/contas-a-pagar?error=link_indisponivel');
+                exit();
+            }
+        }
+
         try {
-            $asaas = new AsaasService();
+            // $asaas já foi instanciado acima via getAsaasService
 
             AuditLogger::log('portal_pagamento_iniciado', [
                 'portal_id'        => $portal->id,
@@ -318,5 +352,47 @@ class PortalContasPagarController extends Controller
             echo 'Erro ao baixar arquivo';
             exit();
         }
+    }
+
+    /**
+     * Gera uma cobrança no Asaas on-the-fly para contas que ainda não possuem.
+     */
+    private function gerarPagamentoAsaas(object $conta, object $portal, AsaasService $asaas): object
+    {
+        // 1. Buscar ou Criar Cliente no Asaas
+        $documento = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
+        $asaasCliente = $asaas->buscarCliente($documento, $portal->email_principal ?? null);
+
+        if (!$asaasCliente) {
+            $asaasCliente = $asaas->criarCliente([
+                'name'    => $portal->razao_social ?? '',
+                'email'   => $portal->email_principal ?? '',
+                'phone'   => $portal->telefone ?? $portal->celular ?? '',
+                'cpfCnpj' => $documento,
+            ]);
+        }
+
+        // 2. Criar Checkout (UNDEFINED)
+        $dadosBase = [
+            'customer'          => $asaasCliente['id'],
+            'value'             => (float) $conta->valor,
+            'dueDate'           => date('Y-m-d', strtotime($conta->data_vencimento)),
+            'description'       => $conta->descricao,
+            'externalReference' => "u:{$portal->tenant_id}|cr:{$conta->id}",
+            'postalService'     => false,
+        ];
+
+        $cobranca = $asaas->criarCheckout($dadosBase);
+
+        // 3. Atualizar no Banco
+        $this->contaModel->update((int) $conta->id, [
+            'asaas_payment_id'   => $cobranca['id'],
+            'external_reference' => $dadosBase['externalReference'],
+            'meio_pagamento'     => 'checkout', // Força checkout para permitir escolha
+            'status'             => AsaasService::mapearStatus($cobranca['status'] ?? 'PENDING'),
+        ]);
+
+        // Retorna a conta atualizada
+        return $this->contaModel->findById((int) $conta->id);
     }
 }

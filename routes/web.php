@@ -79,6 +79,11 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/clientes/update-contato", "ClientesController@updateContato");
         Router::get("/clientes/get-contato",     "ClientesController@getContato");
         Router::post("/clientes/remove-contato", "ClientesController@removeContato");
+
+        // Anexos de Clientes
+        Router::post("/clientes/anexos/add", "ClientesController@addAnexo");
+        Router::get("/clientes/anexos/download/{id}", "ClientesController@downloadAnexo");
+        Router::post("/clientes/anexos/remove", "ClientesController@removeAnexo");
     });
 
     Router::group(["middleware" => ["Permission:delete_clients"]], function () {

@@ -8,6 +8,7 @@ use App\Core\Logger;
 use App\Core\Auth;
 use App\Models\Cliente;
 use App\Models\ClienteContato;
+use App\Models\ClienteAnexo;
 use App\Core\Audit\AuditLogger;
 use App\Services\CnpjService;
 
@@ -15,12 +16,14 @@ class ClientesController extends Controller
 {
     private Cliente $clienteModel;
     private ClienteContato $contatoModel;
+    private ClienteAnexo $anexoModel;
     private Logger $logger;
 
     public function __construct()
     {
         $this->clienteModel = new Cliente();
         $this->contatoModel = new ClienteContato();
+        $this->anexoModel = new ClienteAnexo();
         $this->logger = new Logger();
     }
 
@@ -192,12 +195,14 @@ class ClientesController extends Controller
         }
 
         $contatos = $this->contatoModel->findByClienteId($id);
+        $anexos = $this->anexoModel->findByClienteId($id, Auth::user()->id);
 
         View::render('clientes/form-enterprise', [
             'title' => 'Editar Cliente',
             'isEdit' => true,
             'cliente' => $cliente,
             'contatos' => $contatos,
+            'anexos' => $anexos,
             'tab' => $_GET['tab'] ?? 'geral',
             '_layout' => 'erp'
         ]);
@@ -623,5 +628,113 @@ class ClientesController extends Controller
         $digito2 = $resto < 2 ? 0 : 11 - $resto;
 
         return $digito2 == $cnpj[13];
+    }
+
+    // ---------------------------------------------------------------
+    // ANEXOS
+    // ---------------------------------------------------------------
+
+    public function addAnexo()
+    {
+        try {
+            if (empty($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK) {
+                throw new \Exception('Nenhum arquivo enviado ou erro no upload.');
+            }
+
+            $id = (int)($_POST['cliente_id'] ?? 0);
+            if ($id <= 0) {
+                throw new \Exception('ID do cliente inválido.');
+            }
+
+            $usuarioId = Auth::user()->id;
+            $file = $_FILES['arquivo'];
+
+            // Diretório de upload
+            $uploadDir = BASE_PATH . "/public/uploads/clientes/{$id}";
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+
+            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+            $fileName = uniqid('arq_') . '.' . $ext;
+            $filePath = "/public/uploads/clientes/{$id}/{$fileName}";
+            $fullPath = BASE_PATH . $filePath;
+
+            if (!move_uploaded_file($file['tmp_name'], $fullPath)) {
+                throw new \Exception('Falha ao mover arquivo para o servidor.');
+            }
+
+            $this->anexoModel->create([
+                'cliente_id' => $id,
+                'usuario_id' => $usuarioId,
+                'file_path' => $filePath,
+                'original_name' => $file['name'],
+                'file_size' => $file['size'],
+                'mime_type' => $file['type']
+            ]);
+
+            $this->logger->info('Anexo adicionado ao cliente', [
+                'cliente_id' => $id,
+                'file' => $file['name']
+            ]);
+
+            header("Location: /clientes/edit/{$id}?success=uploaded&tab=anexos");
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao adicionar anexo: ' . $e->getMessage());
+            $id = (int)($_POST['cliente_id'] ?? 0);
+            $redirect = $id > 0 ? "/clientes/edit/{$id}?error=upload&tab=anexos" : "/clientes";
+            header("Location: {$redirect}");
+        }
+        exit();
+    }
+
+    public function downloadAnexo(int $id)
+    {
+        try {
+            $anexo = $this->anexoModel->findById($id);
+            if (!$anexo || (int)$anexo->usuario_id !== (int)Auth::user()->id) {
+                throw new \Exception('Anexo não encontrado ou acesso negado.');
+            }
+
+            $fullPath = BASE_PATH . $anexo->file_path;
+            if (!is_file($fullPath)) {
+                throw new \Exception('Arquivo físico não encontrado.');
+            }
+
+            header('Content-Type: ' . $anexo->mime_type);
+            header('Content-Disposition: attachment; filename="' . addslashes($anexo->original_name) . '"');
+            header('Content-Length: ' . filesize($fullPath));
+            readfile($fullPath);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('Erro no download de anexo: ' . $e->getMessage());
+            echo 'Erro ao baixar arquivo.';
+        }
+    }
+
+    public function removeAnexo()
+    {
+        try {
+            $id = (int)($_POST['id'] ?? 0);
+            $usuarioId = Auth::user()->id;
+
+            $anexo = $this->anexoModel->findById($id);
+            if (!$anexo || (int)$anexo->usuario_id !== (int)$usuarioId) {
+                throw new \Exception('Acesso negado ou anexo inválido.');
+            }
+
+            // Remove arquivo físico
+            $fullPath = BASE_PATH . $anexo->file_path;
+            if (is_file($fullPath)) {
+                unlink($fullPath);
+            }
+
+            $this->anexoModel->delete($id, $usuarioId);
+
+            echo json_encode(['success' => true]);
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
     }
 }
