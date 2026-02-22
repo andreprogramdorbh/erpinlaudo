@@ -244,36 +244,13 @@ $hasContatos = !empty($contatos) && is_array($contatos);
             });
         }
 
-        // Validação do formulário de contato
+        // Validação do formulário de contato ao submeter via Enter
         const formContato = document.getElementById('formAddContato');
         if (formContato) {
             formContato.addEventListener('submit', function (e) {
                 e.preventDefault();
-
-                const nome = document.getElementById('nome_contato');
-                const valor = document.getElementById('valor_contato');
-                let isValid = true;
-
-                // Validação do nome
-                if (!nome.value.trim()) {
-                    showFieldError(nome, 'Nome é obrigatório');
-                    isValid = false;
-                } else {
-                    hideFieldError(nome);
-                }
-
-                // Validação do valor
-                if (!valor.value.trim()) {
-                    showFieldError(valor, 'Valor é obrigatório');
-                    isValid = false;
-                } else {
-                    hideFieldError(valor);
-                }
-
-                if (isValid) {
-                    // Dispara o clique no botão salvar
-                    document.getElementById('btnSalvarContato').click();
-                }
+                // Delega ao botão principal que já detecta se é novo ou edição
+                document.getElementById('btnSalvarContato')?.click();
             });
         }
 
@@ -298,15 +275,18 @@ $hasContatos = !empty($contatos) && is_array($contatos);
         }
     });
 
-    // Função para editar contato (placeholder para implementação futura)
-    function editContact(contactId) {
-        // TODO: Implementar edição de contato
-        console.log('Editar contato:', contactId);
-
-        // Exemplo de implementação:
-        // 1. Buscar dados do contato via AJAX
-        // 2. Preencher o modal
-        // 3. Alterar o título para "Editar Contato"
-        // 4. Abrir o modal
+    // editContact é exposto globalmente pelo ClientesForm (clientes-form.js)
+    // A função abaixo serve como fallback caso o JS principal ainda não tenha carregado
+    if (typeof window.editContact === 'undefined') {
+        window.editContact = function (contactId) {
+            console.warn('ClientesForm ainda não inicializado. Tentando novamente...');
+            setTimeout(() => {
+                if (window.clientesFormInstance) {
+                    window.clientesFormInstance.loadContactForEdit(contactId);
+                } else {
+                    alert('Erro: o módulo de contatos não foi carregado. Recarregue a página.');
+                }
+            }, 500);
+        };
     }
 </script>

@@ -40,7 +40,9 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/clientes/update/{id}", "ClientesController@update"); // Same logic for ID
 
         // Gestão de Contatos (AJAX)
-        Router::post("/clientes/add-contato", "ClientesController@addContato");
+        Router::post("/clientes/add-contato",   "ClientesController@addContato");
+        Router::post("/clientes/update-contato", "ClientesController@updateContato");
+        Router::get("/clientes/get-contato",     "ClientesController@getContato");
         Router::post("/clientes/remove-contato", "ClientesController@removeContato");
     });
 

@@ -384,27 +384,22 @@ if (!window.ClientesForm) {
             }, 4000);
         }
 
-        setupContactManagement()) {
-            // Botão de adicionar contato
-            const btnAddContato = document.getElementById('btnSalvarContato');
-            if (btnAddContato) {
-                btnAddContato.addEventListener('click', () => {
-                    this.addContact();
+        setupContactManagement() {
+            // Botão Salvar Contato (novo + edição)
+            const btnSalvar = document.getElementById('btnSalvarContato');
+            if (btnSalvar) {
+                btnSalvar.addEventListener('click', () => {
+                    const contatoId = document.getElementById('contato_id')?.value;
+                    if (contatoId && contatoId !== '0' && contatoId !== '') {
+                        this.updateContact(parseInt(contatoId));
+                    } else {
+                        this.addContact();
+                    }
                 });
             }
 
-            // Máscara dinâmica para valor do contato
-            const tipoContatoSelect = document.getElementById('tipo_contato_sel');
-            const valorContatoInput = document.getElementById('valor_contato');
-
-            if (tipoContatoSelect && valorContatoInput) {
-                tipoContatoSelect.addEventListener('change', () => {
-                    this.updateContactMask(tipoContatoSelect.value, valorContatoInput);
-                });
-
-                // Inicializa máscara
-                this.updateContactMask(tipoContatoSelect.value, valorContatoInput);
-            }
+            // Expor editContact globalmente para uso inline no PHP
+            window.editContact = (id) => this.loadContactForEdit(id);
         }
 
         updateContactMask(tipo, input) {
@@ -429,100 +424,160 @@ if (!window.ClientesForm) {
             }
         }
 
+        // ---------------------------------------------------------------
+        // Adicionar contato
+        // ---------------------------------------------------------------
         addContact() {
             const form = document.getElementById('formAddContato');
-            const btn = document.getElementById('btnSalvarContato');
-
+            const btn  = document.getElementById('btnSalvarContato');
             if (!form || !btn) return;
+
+            const nome = document.getElementById('nome_contato')?.value.trim();
+            if (!nome) {
+                this.showToast('O nome do contato é obrigatório.', 'warning');
+                document.getElementById('nome_contato')?.focus();
+                return;
+            }
 
             const formData = new FormData(form);
             const clienteId = formData.get('cliente_id');
-
-            if (!clienteId) {
-                this.showMessage('Cliente não identificado. Salve os dados gerais primeiro.', 'error');
+            if (!clienteId || clienteId === '0') {
+                this.showToast('Salve os dados gerais do cliente antes de adicionar contatos.', 'warning');
                 return;
             }
 
-            // Loading state
+            const originalHtml = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Salvando...';
 
-            fetch('/clientes/add-contato', {
-                method: 'POST',
-                body: formData
-            })
-                .then(response => response.json())
+            fetch('/clientes/add-contato', { method: 'POST', body: formData })
+                .then(r => r.json())
                 .then(data => {
-                    if (data.success) {
-                        // Fecha modal
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('modalContato'));
-                        if (modal) modal.hide();
-
-                        // Recarrega a página para mostrar novo contato
-                        window.location.reload();
-                    } else {
-                        throw new Error(data.error || 'Erro ao salvar contato');
-                    }
+                    if (!data.success) throw new Error(data.error || 'Erro ao salvar contato.');
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('modalContato'));
+                    if (modal) modal.hide();
+                    window.location.reload();
                 })
-                .catch(error => {
-                    console.error('Erro ao adicionar contato:', error);
-                    this.showMessage('Erro ao adicionar contato: ' + error.message, 'error');
+                .catch(err => {
+                    console.error('[addContact]', err);
+                    this.showToast('Erro ao adicionar contato: ' + err.message, 'error');
                 })
                 .finally(() => {
                     btn.disabled = false;
-                    btn.innerHTML = 'Salvar Contato';
-
-                    // Limpa formulário
-                    form.reset();
+                    btn.innerHTML = originalHtml;
                 });
         }
 
-        removeContact(contactId) {
-            if (!confirm('Tem certeza que deseja remover este contato?')) {
+        // ---------------------------------------------------------------
+        // Carregar contato para edição (preenche o modal)
+        // ---------------------------------------------------------------
+        loadContactForEdit(contactId) {
+            fetch(`/clientes/get-contato?id=${contactId}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) throw new Error(data.error || 'Contato não encontrado.');
+
+                    const c = data.contato;
+                    document.getElementById('contato_id').value           = c.id;
+                    document.getElementById('nome_contato').value         = c.nome         || '';
+                    document.getElementById('departamento_contato').value = c.departamento || '';
+                    document.getElementById('email_contato').value        = c.email        || '';
+                    document.getElementById('celular_contato').value      = c.celular      || '';
+                    document.getElementById('telefone_contato').value     = c.telefone     || '';
+                    document.getElementById('observacoes_contato').value  = c.observacoes  || '';
+
+                    document.getElementById('modalTitle').textContent = 'Editar Contato';
+                    const btn = document.getElementById('btnSalvarContato');
+                    if (btn) btn.innerHTML = '<i class="fas fa-save me-1"></i> Atualizar Contato';
+
+                    const modal = new bootstrap.Modal(document.getElementById('modalContato'));
+                    modal.show();
+                })
+                .catch(err => {
+                    console.error('[loadContactForEdit]', err);
+                    this.showToast('Não foi possível carregar os dados do contato.', 'error');
+                });
+        }
+
+        // ---------------------------------------------------------------
+        // Atualizar contato existente
+        // ---------------------------------------------------------------
+        updateContact(contactId) {
+            const form = document.getElementById('formAddContato');
+            const btn  = document.getElementById('btnSalvarContato');
+            if (!form || !btn) return;
+
+            const nome = document.getElementById('nome_contato')?.value.trim();
+            if (!nome) {
+                this.showToast('O nome do contato é obrigatório.', 'warning');
+                document.getElementById('nome_contato')?.focus();
                 return;
             }
 
+            const formData = new FormData(form);
+            formData.set('contato_id', contactId);
+
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Atualizando...';
+
+            fetch('/clientes/update-contato', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) throw new Error(data.error || 'Erro ao atualizar contato.');
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('modalContato'));
+                    if (modal) modal.hide();
+                    window.location.reload();
+                })
+                .catch(err => {
+                    console.error('[updateContact]', err);
+                    this.showToast('Erro ao atualizar contato: ' + err.message, 'error');
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                });
+        }
+
+        // ---------------------------------------------------------------
+        // Remover contato
+        // ---------------------------------------------------------------
+        removeContact(contactId) {
+            if (!confirm('Tem certeza que deseja remover este contato?')) return;
+
             fetch('/clientes/remove-contato', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `id=${contactId}`
             })
-                .then(response => response.json())
+                .then(r => r.json())
                 .then(data => {
-                    if (data.success) {
-                        // Remove linha da tabela
-                        const row = document.getElementById(`contato-${contactId}`);
-                        if (row) {
-                            row.style.opacity = '0';
-                            row.style.transform = 'translateX(-20px)';
+                    if (!data.success) throw new Error(data.error || 'Erro ao remover contato.');
 
-                            setTimeout(() => {
-                                row.remove();
-
-                                // Verifica se não há mais contatos
-                                const tbody = document.querySelector('#tabelaContatos tbody');
-                                if (tbody && tbody.children.length === 0) {
-                                    tbody.innerHTML = `
-                                    <tr class="empty-row text-center">
-                                        <td colspan="4" class="py-5 text-muted small">
-                                            Nenhum contato cadastrado para este cliente.
-                                        </td>
-                                    </tr>
-                                `;
-                                }
-                            }, 300);
-                        }
-
-                        this.showMessage('Contato removido com sucesso!', 'success');
-                    } else {
-                        throw new Error(data.error || 'Erro ao remover contato');
+                    const row = document.getElementById(`contato-${contactId}`);
+                    if (row) {
+                        row.style.transition = 'opacity .3s, transform .3s';
+                        row.style.opacity    = '0';
+                        row.style.transform  = 'translateX(-20px)';
+                        setTimeout(() => {
+                            row.remove();
+                            const tbody = document.querySelector('#tabelaContatos tbody');
+                            if (tbody && tbody.querySelectorAll('tr:not(.empty-row)').length === 0) {
+                                tbody.innerHTML = `<tr class="empty-row">
+                                    <td colspan="4" class="text-center py-5 text-muted">
+                                        <div class="empty-state">
+                                            <i class="fas fa-address-book fa-3x mb-3"></i>
+                                            <p class="mb-0">Nenhum contato cadastrado.</p>
+                                        </div>
+                                    </td></tr>`;
+                            }
+                        }, 300);
                     }
+                    this.showToast('Contato removido com sucesso!', 'success');
                 })
-                .catch(error => {
-                    console.error('Erro ao remover contato:', error);
-                    this.showMessage('Erro ao remover contato: ' + error.message, 'error');
+                .catch(err => {
+                    console.error('[removeContact]', err);
+                    this.showToast('Erro ao remover contato: ' + err.message, 'error');
                 });
         }
 

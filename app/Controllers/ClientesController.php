@@ -251,42 +251,128 @@ class ClientesController extends Controller
     }
 
     /**
-     * Adiciona um contato via AJAX.
+     * Adiciona um novo contato via AJAX.
+     * Campos esperados: cliente_id, nome, departamento, email, celular, telefone, cargo, observacoes
      */
-    public function addContato()
+    public function addContato(): void
     {
         header('Content-Type: application/json');
         try {
-            $clienteId = $_POST['cliente_id'];
-            $cliente = $this->clienteModel->findById($clienteId);
-
-            if (!$cliente || $cliente->usuario_id != \App\Core\Auth::user()->id) {
-                throw new \Exception("Unauthorized");
+            $clienteId = (int) ($_POST['cliente_id'] ?? 0);
+            if (!$clienteId) {
+                throw new \Exception('ID do cliente não informado.');
             }
 
-            $tipo = $_POST['tipo_contato'];
-            $valor = trim($_POST['valor_contato']);
+            $cliente = $this->clienteModel->findById($clienteId);
+            if (!$cliente || $cliente->usuario_id != \App\Core\Auth::user()->id) {
+                throw new \Exception('Acesso não autorizado.');
+            }
+
+            $nome = trim($_POST['nome'] ?? '');
+            if (empty($nome)) {
+                throw new \Exception('O nome do contato é obrigatório.');
+            }
 
             $dados = [
-                'cliente_id' => $clienteId,
-                'nome' => $valor, // Usamos Valor como nome para simplificar a listagem
-                'departamento' => $tipo, // Usamos Tipo como departamento para exibição na badge
-                'email' => str_contains($valor, '@') ? $valor : '',
-                'celular' => ($tipo === 'Celular') ? $valor : '',
-                'telefone' => ($tipo === 'Comercial' || $tipo === 'Residencial') ? $valor : '',
-                'observacoes' => trim($_POST['observacoes'] ?? ''),
-                'status' => 'ativo'
+                'cliente_id'   => $clienteId,
+                'nome'         => $nome,
+                'departamento' => trim($_POST['departamento'] ?? ''),
+                'email'        => trim($_POST['email']        ?? ''),
+                'celular'      => trim($_POST['celular']      ?? ''),
+                'telefone'     => trim($_POST['telefone']     ?? ''),
+                'cargo'        => trim($_POST['cargo']        ?? ''),
+                'observacoes'  => trim($_POST['observacoes']  ?? ''),
+                'status'       => 'ativo',
             ];
 
             $contatoId = $this->contatoModel->create($dados);
             if ($contatoId) {
-                AuditLogger::log('create_contact', [
-                    'client_id' => $clienteId,
-                    'tipo' => $tipo
-                ]);
-                echo json_encode(['success' => true, 'message' => 'Contato adicionado']);
+                AuditLogger::log('create_contact', ['client_id' => $clienteId, 'nome' => $nome]);
+                echo json_encode(['success' => true, 'id' => $contatoId, 'message' => 'Contato adicionado com sucesso.']);
             } else {
-                throw new \Exception("Erro ao criar contato");
+                throw new \Exception('Erro ao salvar contato no banco de dados.');
+            }
+        } catch (\Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * Retorna os dados de um contato via AJAX (para preencher o modal de edição).
+     * Rota: GET /clientes/get-contato?id={id}
+     */
+    public function getContato(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $id = (int) ($_GET['id'] ?? 0);
+            if (!$id) {
+                throw new \Exception('ID do contato não informado.');
+            }
+
+            $contato = $this->contatoModel->findById($id);
+            if (!$contato) {
+                throw new \Exception('Contato não encontrado.');
+            }
+
+            $cliente = $this->clienteModel->findById($contato->cliente_id);
+            if (!$cliente || $cliente->usuario_id != \App\Core\Auth::user()->id) {
+                throw new \Exception('Acesso não autorizado.');
+            }
+
+            echo json_encode(['success' => true, 'contato' => $contato]);
+        } catch (\Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * Atualiza um contato existente via AJAX.
+     * Rota: POST /clientes/update-contato
+     */
+    public function updateContato(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $id = (int) ($_POST['contato_id'] ?? 0);
+            if (!$id) {
+                throw new \Exception('ID do contato não informado.');
+            }
+
+            $contato = $this->contatoModel->findById($id);
+            if (!$contato) {
+                throw new \Exception('Contato não encontrado.');
+            }
+
+            $cliente = $this->clienteModel->findById($contato->cliente_id);
+            if (!$cliente || $cliente->usuario_id != \App\Core\Auth::user()->id) {
+                throw new \Exception('Acesso não autorizado.');
+            }
+
+            $nome = trim($_POST['nome'] ?? '');
+            if (empty($nome)) {
+                throw new \Exception('O nome do contato é obrigatório.');
+            }
+
+            $dados = [
+                'nome'         => $nome,
+                'departamento' => trim($_POST['departamento'] ?? ''),
+                'email'        => trim($_POST['email']        ?? ''),
+                'celular'      => trim($_POST['celular']      ?? ''),
+                'telefone'     => trim($_POST['telefone']     ?? ''),
+                'cargo'        => trim($_POST['cargo']        ?? ''),
+                'observacoes'  => trim($_POST['observacoes']  ?? ''),
+            ];
+
+            if ($this->contatoModel->update($id, $dados)) {
+                AuditLogger::log('update_contact', ['contact_id' => $id, 'nome' => $nome]);
+                echo json_encode(['success' => true, 'message' => 'Contato atualizado com sucesso.']);
+            } else {
+                throw new \Exception('Erro ao atualizar contato no banco de dados.');
             }
         } catch (\Exception $e) {
             http_response_code(400);
