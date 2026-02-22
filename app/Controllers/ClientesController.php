@@ -89,24 +89,41 @@ class ClientesController extends Controller
      */
     public function store()
     {
+        $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest' || isset($_GET['ajax']);
+
         try {
             $usuarioId = Auth::user()->id;
 
             $tipo = $_POST['tipo'] ?? 'PJ';
-            $cpfCnpj = preg_replace('/\D/', '', $_POST['cpf_cnpj']);
+            $cpfCnpj = preg_replace('/\D/', '', $_POST['cpf_cnpj'] ?? '');
 
             // Validação Backend (Regra de Ouro #1 e Requisitos do Usuário)
             if (empty($_POST['razao_social']) || empty($cpfCnpj) || empty($_POST['email'])) {
+                if ($isAjax) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Campos obrigatórios ausentes (Razão Social, CPF/CNPJ ou E-mail).']);
+                    exit();
+                }
                 header("Location: /clientes/create?error=missing_fields");
                 exit();
             }
 
             // Validação de formato CPF/CNPJ
             if ($tipo === 'PF' && strlen($cpfCnpj) !== 11) {
+                if ($isAjax) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'CPF inválido.']);
+                    exit();
+                }
                 header("Location: /clientes/create?error=invalid_cpf");
                 exit();
             }
             if ($tipo === 'PJ' && strlen($cpfCnpj) !== 14) {
+                if ($isAjax) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'CNPJ inválido.']);
+                    exit();
+                }
                 header("Location: /clientes/create?error=invalid_cnpj");
                 exit();
             }
@@ -117,6 +134,7 @@ class ClientesController extends Controller
                 'razao_social' => trim(strip_tags($_POST['razao_social'])),
                 'nome_fantasia' => trim(strip_tags($_POST['nome_fantasia'] ?? '')),
                 'email' => filter_var(trim($_POST['email']), FILTER_SANITIZE_EMAIL),
+                'website' => trim(strip_tags($_POST['website'] ?? '')),
                 'estado' => strtoupper(trim($_POST['estado'] ?? '')),
                 'cidade' => trim(strip_tags($_POST['cidade'] ?? '')),
                 'bairro' => trim(strip_tags($_POST['bairro'] ?? '')),
@@ -126,6 +144,11 @@ class ClientesController extends Controller
                 'cep' => preg_replace('/\D/', '', $_POST['cep'] ?? ''),
                 'telefone' => preg_replace('/\D/', '', $_POST['telefone'] ?? ''),
                 'celular' => preg_replace('/\D/', '', $_POST['celular'] ?? ''),
+                'instagram' => trim(strip_tags($_POST['instagram'] ?? '')),
+                'tiktok' => trim(strip_tags($_POST['tiktok'] ?? '')),
+                'facebook' => trim(strip_tags($_POST['facebook'] ?? '')),
+                'cnae_principal' => trim(strip_tags($_POST['cnae_principal'] ?? '')),
+                'descricao_cnae' => trim(strip_tags($_POST['descricao_cnae'] ?? '')),
                 'usuario_id' => $usuarioId,
                 'status' => 'ativo'
             ];
@@ -136,13 +159,29 @@ class ClientesController extends Controller
                     'client_id' => $clientId,
                     'razao_social' => $dados['razao_social']
                 ]);
+
+                if ($isAjax) {
+                    echo json_encode(['success' => true, 'client_id' => $clientId, 'message' => 'Cliente cadastrado com sucesso!']);
+                    exit();
+                }
+
                 // Redireciona para edição com aba de contatos ativa
                 header("Location: /clientes/edit/{$clientId}?success=created&tab=contatos");
             } else {
+                if ($isAjax) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Erro ao salvar no banco de dados.']);
+                    exit();
+                }
                 header("Location: /clientes/create?error=db_failure");
             }
         } catch (\Exception $e) {
             $this->logger->error("Erro ao salvar cliente: " . $e->getMessage());
+            if ($isAjax) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()]);
+                exit();
+            }
             header("Location: /clientes/create?error=fatal");
         }
         exit();
@@ -182,20 +221,30 @@ class ClientesController extends Controller
      */
     public function update($id)
     {
+        $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest' || isset($_GET['ajax']);
+
         try {
             $cliente = $this->clienteModel->findById($id);
             if (!$cliente || $cliente->usuario_id != \App\Core\Auth::user()->id) {
+                if ($isAjax) {
+                    http_response_code(403);
+                    echo json_encode(['success' => false, 'error' => 'Acesso não autorizado.']);
+                    exit();
+                }
                 header("Location: /clientes?error=unauthorized");
                 exit();
             }
 
-            $cpfCnpj = preg_replace('/\D/', '', $_POST['cpf_cnpj']);
-
             $tipo = $_POST['tipo'] ?? $cliente->tipo;
-            $cpfCnpj = preg_replace('/\D/', '', $_POST['cpf_cnpj']);
+            $cpfCnpj = preg_replace('/\D/', '', $_POST['cpf_cnpj'] ?? '');
 
             // Validação Backend
             if (empty($_POST['razao_social']) || empty($cpfCnpj) || empty($_POST['email'])) {
+                if ($isAjax) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Campos obrigatórios ausentes.']);
+                    exit();
+                }
                 header("Location: /clientes/edit/{$id}?error=missing_fields");
                 exit();
             }
@@ -206,6 +255,7 @@ class ClientesController extends Controller
                 'razao_social' => trim(strip_tags($_POST['razao_social'])),
                 'nome_fantasia' => trim(strip_tags($_POST['nome_fantasia'] ?? '')),
                 'email' => filter_var(trim($_POST['email']), FILTER_SANITIZE_EMAIL),
+                'website' => trim(strip_tags($_POST['website'] ?? '')),
                 'estado' => strtoupper(trim($_POST['estado'] ?? '')),
                 'cidade' => trim(strip_tags($_POST['cidade'] ?? '')),
                 'bairro' => trim(strip_tags($_POST['bairro'] ?? '')),
@@ -215,6 +265,11 @@ class ClientesController extends Controller
                 'cep' => preg_replace('/\D/', '', $_POST['cep'] ?? ''),
                 'telefone' => preg_replace('/\D/', '', $_POST['telefone'] ?? ''),
                 'celular' => preg_replace('/\D/', '', $_POST['celular'] ?? ''),
+                'instagram' => trim(strip_tags($_POST['instagram'] ?? '')),
+                'tiktok' => trim(strip_tags($_POST['tiktok'] ?? '')),
+                'facebook' => trim(strip_tags($_POST['facebook'] ?? '')),
+                'cnae_principal' => trim(strip_tags($_POST['cnae_principal'] ?? '')),
+                'descricao_cnae' => trim(strip_tags($_POST['descricao_cnae'] ?? '')),
                 'status' => $_POST['status'] ?? 'ativo'
             ];
 
@@ -223,12 +278,28 @@ class ClientesController extends Controller
                     'client_id' => $id,
                     'razao_social' => $dados['razao_social']
                 ]);
+
+                if ($isAjax) {
+                    echo json_encode(['success' => true, 'message' => 'Dados atualizados com sucesso!']);
+                    exit();
+                }
+
                 header("Location: /clientes/edit/{$id}?success=updated&tab=geral");
             } else {
+                if ($isAjax) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Erro ao atualizar no banco de dados.']);
+                    exit();
+                }
                 header("Location: /clientes/edit/{$id}?error=db_failure");
             }
         } catch (\Exception $e) {
             $this->logger->error("Erro ao atualizar cliente: " . $e->getMessage());
+            if ($isAjax) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()]);
+                exit();
+            }
             header("Location: /clientes/edit/{$id}?error=fatal");
         }
         exit();

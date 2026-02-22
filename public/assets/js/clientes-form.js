@@ -633,17 +633,25 @@ if (!window.ClientesForm) {
                     if (!data) return; // Redirect handled
 
                     if (data.success) {
-                        this.showMessage('Dados salvos com sucesso!', 'success');
-
-                        // Se for novo cliente, redireciona para edição com aba de contatos
-                        if (!this.options.isEdit && data.client_id) {
-                            setTimeout(() => {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Sucesso!',
+                            text: data.message || 'Dados salvos com sucesso!',
+                            timer: 2000,
+                            showConfirmButton: false
+                        }).then(() => {
+                            // Se for novo cliente, redireciona para edição com aba de contatos
+                            if (!this.options.isEdit && data.client_id) {
                                 window.location.href = `/clientes/edit/${data.client_id}?tab=contatos`;
-                            }, 1500);
-                        } else {
-                            // Se for edição, desbloqueia aba de contatos
-                            this.unlockContactsTab();
-                        }
+                            } else {
+                                // Se for edição, desbloqueia aba de contatos
+                                this.unlockContactsTab();
+                                // Se o sistema de abas permitir, muda para a próxima aba automaticamente
+                                if (this.formTabs && typeof this.formTabs.nextTab === 'function') {
+                                    this.formTabs.nextTab();
+                                }
+                            }
+                        });
                     } else {
                         throw new Error(data.error || 'Erro ao salvar dados');
                     }

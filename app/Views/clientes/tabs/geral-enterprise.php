@@ -79,9 +79,9 @@ $action = $isEdit ? '/clientes/update/' . ($cliente->id ?? '') : '/clientes';
 
         <div class="form-grid form-grid-2 mt-3">
             <div class="form-group">
-                <label for="email" class="form-label">E-mail Principal</label>
+                <label for="email" class="form-label required">E-mail Principal</label>
                 <input type="email" name="email" id="email" class="form-control" placeholder="contato@empresa.com.br"
-                    value="<?php echo htmlspecialchars($cliente->email ?? ''); ?>">
+                    value="<?php echo htmlspecialchars($cliente->email ?? ''); ?>" required>
             </div>
 
             <div class="form-group">
