@@ -51,6 +51,32 @@ class ContaReceber extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Busca contas a receber de um cliente específico (usado no Portal do Cliente).
+     * O tenantId garante que o cliente só veja contas do seu tenant (usuário do ERP).
+     */
+    public function findByClienteIdAndTenantId(int $clienteId, int $tenantId, array $filtros = []): array
+    {
+        $where  = ['cr.cliente_id = :cliente_id', 'cr.usuario_id = :tenant_id'];
+        $params = [':cliente_id' => $clienteId, ':tenant_id' => $tenantId];
+
+        $status = $filtros['status'] ?? '';
+        if ($status !== '') {
+            $where[]           = 'cr.status = :status';
+            $params[':status'] = $status;
+        }
+
+        $sql = "SELECT cr.*, pc.codigo AS plano_codigo
+                FROM {$this->table} cr
+                LEFT JOIN plano_contas pc ON pc.id = cr.plano_conta_id
+                WHERE " . implode(' AND ', $where) . "
+                ORDER BY cr.data_vencimento ASC, cr.id DESC";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     public function findByAsaasPaymentIdAndUsuarioId(int $usuarioId, string $paymentId): object|false
     {
         $stmt = $this->pdo->prepare("SELECT id, status FROM {$this->table} WHERE usuario_id = :usuario_id AND asaas_payment_id = :pid LIMIT 1");

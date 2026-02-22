@@ -15,6 +15,37 @@ Router::post("/reset-password/{token}", "AuthController@resetPassword");
 // Webhooks Públicos
 Router::post("/api/webhooks/asaas", "IntegracaoController@webhook");
 
+// ============================================================
+// Portal do Cliente — Rotas Públicas (login / primeiro acesso)
+// ============================================================
+Router::get("/portal/login", "PortalClienteAuthController@showLogin");
+Router::post("/portal/login", "PortalClienteAuthController@login");
+Router::get("/portal/primeiro-acesso/{token}", "PortalClienteAuthController@showPrimeiroAcesso");
+Router::post("/portal/primeiro-acesso", "PortalClienteAuthController@salvarPrimeiroAcesso");
+
+// ============================================================
+// Portal do Cliente — Rotas Protegidas (requerem sessão do portal)
+// ============================================================
+Router::group(["middleware" => ["PortalCliente"]], function () {
+    Router::post("/portal/logout", "PortalClienteAuthController@logout");
+
+    // Dashboard
+    Router::get("/portal/dashboard", "PortalClienteController@dashboard");
+    Router::get("/portal", "PortalClienteController@dashboard"); // alias
+
+    // Perfil
+    Router::get("/portal/perfil", "PortalClienteController@perfil");
+    Router::post("/portal/perfil/alterar-senha", "PortalClienteController@alterarSenha");
+
+    // Contas a Pagar
+    Router::get("/portal/contas-a-pagar", "PortalContasPagarController@index");
+    Router::get("/portal/contas-a-pagar/pagar/{id}", "PortalContasPagarController@pagar");
+
+    // Faturamento
+    Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");
+    Router::get("/portal/faturamento/nota-fiscal/xml/{id}", "PortalFaturamentoController@downloadXml");
+});
+
 // Rotas protegidas (requerem autenticação)
 Router::group(["middleware" => ["Auth"]], function () {
     // Página inicial redireciona para dashboard

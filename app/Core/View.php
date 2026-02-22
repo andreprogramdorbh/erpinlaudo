@@ -29,21 +29,29 @@ class View
             require $viewFile;
             $content = ob_get_clean();
 
-            // Inclui o layout, que usará a variável $content
+            // Seleciona o layout correto
+            $layoutDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR;
+
             if ($layout === 'erp') {
-                $headerFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'erp_header.php';
-                $footerFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'erp_footer.php';
+                $headerFile = $layoutDir . 'erp_header.php';
+                $footerFile = $layoutDir . 'erp_footer.php';
+            } elseif ($layout === 'portal') {
+                $headerFile = $layoutDir . 'portal_header.php';
+                $footerFile = $layoutDir . 'portal_footer.php';
+            } elseif ($layout === 'portal_public') {
+                $headerFile = $layoutDir . 'portal_public_header.php';
+                $footerFile = $layoutDir . 'portal_public_footer.php';
             } else {
-                $headerFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
-                $footerFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Views' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'footer.php';
+                $headerFile = $layoutDir . 'header.php';
+                $footerFile = $layoutDir . 'footer.php';
             }
 
             if (file_exists($headerFile)) {
                 require $headerFile;
             }
-            
+
             echo $content;
-            
+
             if (file_exists($footerFile)) {
                 require $footerFile;
             }

@@ -49,6 +49,23 @@ class NotaFiscal extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Busca notas fiscais de um cliente específico (usado no Portal do Cliente).
+     * Retorna apenas notas emitidas e importadas (visíveis ao cliente).
+     */
+    public function findByClienteIdAndTenantId(int $clienteId, int $tenantId): array
+    {
+        $sql = "SELECT nf.*
+                FROM {$this->table} nf
+                WHERE nf.cliente_id = :cliente_id
+                  AND nf.usuario_id = :tenant_id
+                  AND nf.status IN ('emitida', 'importada')
+                ORDER BY nf.data_emissao DESC, nf.id DESC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':cliente_id' => $clienteId, ':tenant_id' => $tenantId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     public function create(array $data): string|false
     {
         $sql = "INSERT INTO {$this->table}
