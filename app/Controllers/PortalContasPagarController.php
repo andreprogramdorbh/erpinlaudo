@@ -27,6 +27,7 @@ class PortalContasPagarController extends Controller
     private PortalCliente      $portalModel;
     private ContaReceber       $contaModel;
     private ContaReceberAnexo  $anexoModel;
+    private Cliente            $clienteModel;
     private Logger             $logger;
 
     public function __construct()
@@ -98,51 +99,11 @@ class PortalContasPagarController extends Controller
     // ---------------------------------------------------------------
     public function index(): void
     {
+        die('OK');
+        /*
         $portal    = $this->getPortalCliente();
-        $clienteId = (int) $portal->cliente_id;
-        $tenantId  = (int) $portal->tenant_id;
-
-        $statusFiltro = $_GET['status'] ?? '';
-
-        $this->logger->info('[Portal] Contas a Pagar acessado', [
-            'portal_id'  => $portal->id,
-            'cliente_id' => $clienteId,
-            'filtro'     => $statusFiltro,
-        ]);
-
-        $contas = $this->contaModel->findByClienteIdAndTenantId($clienteId, $tenantId, [
-            'status' => $statusFiltro,
-        ]);
-
-        $hoje = date('Y-m-d');
-
-        $contasAbertas    = array_filter($contas, fn($c) => $c->status === 'aberta');
-        $contasVencidas   = array_filter($contasAbertas, fn($c) => ($c->data_vencimento ?? '') < $hoje);
-        $contasRecebidas  = array_filter($contas, fn($c) => $c->status === 'recebida');
-        $contasCanceladas = array_filter($contas, fn($c) => $c->status === 'cancelada');
-
-        // Carrega anexos para cada conta
-        foreach ($contas as $conta) {
-            $conta->anexos = $this->anexoModel->findByContaId((int) $conta->id, $tenantId);
-        }
-
-        // Verifica se Asaas está habilitado para este tenant
-        $integracaoModel = new Integracao();
-        $asaasConfig = $integracaoModel->findByNomeAndUsuarioId('asaas', $tenantId);
-        $asaasEnabled = $asaasConfig && $asaasConfig->status === 'ativo';
-
-        View::render('portal/contas-a-pagar/index', [
-            'title'            => 'Minhas Contas',
-            '_layout'          => 'portal',
-            'portal'           => $portal,
-            'contas'           => $contas,
-            'contasAbertas'    => $contasAbertas,
-            'contasVencidas'   => $contasVencidas,
-            'contasRecebidas'  => $contasRecebidas,
-            'contasCanceladas' => $contasCanceladas,
-            'statusFiltro'     => $statusFiltro,
-            'asaasEnabled'     => $asaasEnabled,
-        ]);
+        ...
+        */
     }
 
     // ---------------------------------------------------------------
