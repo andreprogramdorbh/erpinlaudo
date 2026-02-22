@@ -24,7 +24,7 @@ class PortalClienteAuthController extends Controller
     }
 
     // ---------------------------------------------------------------
-    // GET /portal/login
+    // GET /login
     // ---------------------------------------------------------------
     public function showLogin(): void
     {
@@ -41,7 +41,7 @@ class PortalClienteAuthController extends Controller
     }
 
     // ---------------------------------------------------------------
-    // POST /portal/login
+    // POST /login
     // ---------------------------------------------------------------
     public function login(): void
     {
@@ -56,7 +56,7 @@ class PortalClienteAuthController extends Controller
         ]);
 
         if (empty($email) || empty($senha)) {
-            header('Location: /portal/login?error=campos_obrigatorios');
+            header('Location: /login?error=campos_obrigatorios');
             exit();
         }
 
@@ -65,7 +65,7 @@ class PortalClienteAuthController extends Controller
         if (!$portal) {
             $this->logger->warning('[Portal] Login falhou — e-mail não encontrado', ['email' => $email, 'ip' => $ip]);
             AuditLogger::log('portal_login_failed', ['email' => $email, 'motivo' => 'email_nao_encontrado', 'ip' => $ip]);
-            header('Location: /portal/login?error=credenciais');
+            header('Location: /login?error=credenciais');
             exit();
         }
 
@@ -73,7 +73,7 @@ class PortalClienteAuthController extends Controller
         if ($portal->primeiro_acesso || empty($portal->password_hash)) {
             $this->logger->info('[Portal] Primeiro acesso detectado', ['email' => $email, 'cliente_id' => $portal->cliente_id]);
             $token = $this->portalModel->criarToken((int) $portal->cliente_id, 'primeiro_acesso');
-            header("Location: /portal/primeiro-acesso?token={$token}");
+            header("Location: /primeiro-acesso?token={$token}");
             exit();
         }
 
@@ -85,7 +85,7 @@ class PortalClienteAuthController extends Controller
                 'hash_prefix' => substr($portal->password_hash, 0, 10),
             ]);
             AuditLogger::log('portal_login_failed', ['email' => $email, 'motivo' => 'senha_incorreta', 'ip' => $ip]);
-            header('Location: /portal/login?error=credenciais');
+            header('Location: /login?error=credenciais');
             exit();
         }
 
@@ -113,14 +113,14 @@ class PortalClienteAuthController extends Controller
     }
 
     // ---------------------------------------------------------------
-    // GET /portal/primeiro-acesso
+    // GET /primeiro-acesso
     // ---------------------------------------------------------------
     public function showPrimeiroAcesso(): void
     {
         $token = trim($_GET['token'] ?? '');
 
         if (empty($token)) {
-            header('Location: /portal/login?error=token_invalido');
+            header('Location: /login?error=token_invalido');
             exit();
         }
 
@@ -128,7 +128,7 @@ class PortalClienteAuthController extends Controller
 
         if (!$tokenData) {
             $this->logger->warning('[Portal] Token de primeiro acesso inválido ou expirado', ['token_prefix' => substr($token, 0, 8)]);
-            header('Location: /portal/login?error=token_expirado');
+            header('Location: /login?error=token_expirado');
             exit();
         }
 
@@ -141,7 +141,7 @@ class PortalClienteAuthController extends Controller
     }
 
     // ---------------------------------------------------------------
-    // POST /portal/primeiro-acesso
+    // POST /primeiro-acesso
     // ---------------------------------------------------------------
     public function salvarPrimeiroAcesso(): void
     {
@@ -150,25 +150,25 @@ class PortalClienteAuthController extends Controller
         $senha2 = $_POST['senha_confirmacao'] ?? '';
 
         if (empty($token)) {
-            header('Location: /portal/login?error=token_invalido');
+            header('Location: /login?error=token_invalido');
             exit();
         }
 
         $tokenData = $this->portalModel->validarToken($token, 'primeiro_acesso');
 
         if (!$tokenData) {
-            header('Location: /portal/login?error=token_expirado');
+            header('Location: /login?error=token_expirado');
             exit();
         }
 
         // Validações de senha
         if (strlen($senha) < 8) {
-            header("Location: /portal/primeiro-acesso?token={$token}&error=senha_curta");
+            header("Location: /primeiro-acesso?token={$token}&error=senha_curta");
             exit();
         }
 
         if ($senha !== $senha2) {
-            header("Location: /portal/primeiro-acesso?token={$token}&error=senhas_diferentes");
+            header("Location: /primeiro-acesso?token={$token}&error=senhas_diferentes");
             exit();
         }
 
@@ -221,7 +221,7 @@ class PortalClienteAuthController extends Controller
             $_SESSION['portal_login_time']
         );
 
-        header('Location: /portal/login?logout=1');
+        header('Location: /login?logout=1');
         exit();
     }
 }

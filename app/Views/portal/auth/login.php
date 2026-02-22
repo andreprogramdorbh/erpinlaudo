@@ -38,7 +38,7 @@
             </div>
         <?php endif; ?>
 
-        <form action="/portal/login" method="POST" class="portal-form" id="portalLoginForm">
+        <form action="/login" method="POST" class="portal-form" id="portalLoginForm">
             <?php echo \App\Core\View::csrfField(); ?>
 
             <div class="portal-form-group">

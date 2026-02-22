@@ -16,18 +16,19 @@ Router::post("/reset-password/{token}", "AuthController@resetPassword");
 Router::post("/api/webhooks/asaas", "IntegracaoController@webhook");
 
 // ============================================================
-// Portal do Cliente — Rotas Públicas (login / primeiro acesso)
+// Primeiro Acesso — Clientes do Portal (via login unificado /login)
 // ============================================================
-Router::get("/portal/login", "PortalClienteAuthController@showLogin");
-Router::post("/portal/login", "PortalClienteAuthController@login");
-Router::get("/portal/primeiro-acesso/{token}", "PortalClienteAuthController@showPrimeiroAcesso");
-Router::post("/portal/primeiro-acesso", "PortalClienteAuthController@salvarPrimeiroAcesso");
+Router::get("/primeiro-acesso", "AuthController@showPrimeiroAcesso");
+Router::post("/primeiro-acesso", "AuthController@processarPrimeiroAcesso");
+Router::post("/primeiro-acesso/salvar", "AuthController@salvarPrimeiroAcesso");
+// Redireciona /portal/login para /login (compatibilidade)
+Router::get("/portal/login", "AuthController@showLoginForm");
 
 // ============================================================
 // Portal do Cliente — Rotas Protegidas (requerem sessão do portal)
 // ============================================================
 Router::group(["middleware" => ["PortalCliente"]], function () {
-    Router::post("/portal/logout", "PortalClienteAuthController@logout");
+    Router::post("/portal/logout", "AuthController@logout");
 
     // Dashboard
     Router::get("/portal/dashboard", "PortalClienteController@dashboard");

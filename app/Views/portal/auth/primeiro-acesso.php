@@ -37,7 +37,7 @@
             </div>
         <?php endif; ?>
 
-        <form action="/portal/primeiro-acesso" method="POST" class="portal-form" id="formPrimeiroAcesso">
+        <form action="/primeiro-acesso" method="POST" class="portal-form" id="formPrimeiroAcesso">
             <?php echo \App\Core\View::csrfField(); ?>
             <input type="hidden" name="token" value="<?php echo htmlspecialchars($token ?? ''); ?>">
 

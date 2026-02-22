@@ -34,7 +34,7 @@ class PortalFaturamentoController extends Controller
         $portal = $this->portalModel->findById($id);
         if (!$portal) {
             session_unset();
-            header('Location: /portal/login?error=sessao_expirada');
+            header('Location: /login?error=sessao_expirada');
             exit();
         }
         return $portal;

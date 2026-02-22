@@ -13,7 +13,7 @@ class PortalClienteMiddleware extends Middleware
     public function handle(): void
     {
         if (empty($_SESSION['portal_cliente_id'])) {
-            header('Location: /portal/login');
+            header('Location: /login');
             exit();
         }
     }

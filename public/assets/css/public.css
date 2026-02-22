@@ -128,6 +128,27 @@ body {
   color: #9ca3af;
 }
 
+/* Grupo de links abaixo do botão (Esqueceu senha + Primeiro acesso) */
+.login-links-group {
+  display: flex;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+.login-links-group .forgot-password {
+  display: inline;
+  margin-top: 0;
+}
+.login-links-group .primeiro-acesso-link {
+  color: #00529B;
+  font-weight: 500;
+}
+.login-links-group .primeiro-acesso-link:hover {
+  color: #002D54;
+  text-decoration: underline;
+}
+
 /* Responsividade */
 @media (max-width: 480px) {
   .login-card {
