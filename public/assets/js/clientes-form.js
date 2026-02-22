@@ -711,7 +711,8 @@ if (!window.ClientesForm) {
         }
 
         validateEmail(input) {
-            const value = input.value.trim();
+            input.value = input.value.trim();
+            const value = input.value;
             const isValid = !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
             this.toggleValidation(input, isValid);
