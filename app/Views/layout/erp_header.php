@@ -15,8 +15,7 @@
   <!-- Flatpickr: datepicker leve para campos de data -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <!-- CSS Globais -->
-    <link rel="stylesheet" href="/assets/css/variables.css">
-    <link rel="stylesheet" href="/assets/css/erp-layout.css">
+    <!-- Estilos são injetados via componente ou carregados sob demanda -->
     
     <!-- Scripts de Diagnóstico (Carregamento Antecipado) -->
     <script src="/assets/js/error-logger.js"></script>

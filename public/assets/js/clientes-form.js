@@ -21,6 +21,8 @@ if (!window.ClientesForm) {
             this.formTabs = null;
             this.contatos = [];
             this.isSubmitting = false;
+            this.lastSearchedCnpj = '';
+            this.lastSearchedCep = '';
 
             this.init();
         }
@@ -149,31 +151,33 @@ if (!window.ClientesForm) {
         }
 
         searchCnpj() {
-            const $cpfCnpj = $('#cpf_cnpj');
             const $btnConsulta = $('#btn_consulta');
             const cnpj = $cpfCnpj.val().replace(/\D/g, '');
 
-            if (cnpj.length !== 14) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Atenção',
-                    text: 'Por favor, digite um CNPJ completo para consulta.',
-                    confirmButtonColor: '#00529B'
-                });
-                return;
-            }
+            if (cnpj.length !== 14) return;
+            if (cnpj === this.lastSearchedCnpj) return; // Evita busca duplicada (blur + click etc)
 
-            // Loading state
-            const originalHtml = $btnConsulta.html();
+            this.lastSearchedCnpj = cnpj;
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atenção',
+                text: 'Por favor, digite um CNPJ completo para consulta.',
+                confirmButtonColor: '#00529B'
+            });
+            return;
+        }
+
+        // Loading state
+        const originalHtml = $btnConsulta.html();
             $btnConsulta.prop('disabled', true)
                 .html('<span class="spinner-border spinner-border-sm me-1"></span> Consultando...');
 
-            fetch(`/clientes/buscar-cnpj?cnpj=${cnpj}`)
+        fetch(`/clientes/buscar-cnpj?cnpj=${cnpj}`)
                 .then(response => {
                     // Trata diferentes códigos de status HTTP
                     if (!response.ok) {
                         return response.json().then(err => {
-                            throw new Error(err.erro || `Erro HTTP ${response.status}`);
+                            throw new Error(err.erro || `Erro HTTP ${ response.status } `);
                         });
                     }
                     return response.json();
@@ -292,7 +296,9 @@ if (!window.ClientesForm) {
             if (!cepInput) return;
 
             const cep = cepInput.value.replace(/\D/g, '');
-            if (cep.length !== 8) return;
+            if (cep.length !== 8 || cep === this.lastSearchedCep) return;
+
+            this.lastSearchedCep = cep;
 
             // Estado de carregamento
             const originalHtml = btnBuscarCep ? btnBuscarCep.innerHTML : '';
@@ -301,11 +307,11 @@ if (!window.ClientesForm) {
                 btnBuscarCep.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando...';
             }
 
-            fetch(`/clientes/buscar-cep?cep=${cep}`)
+            fetch(`/ clientes / buscar - cep ? cep = ${ cep } `)
                 .then(response => {
                     if (!response.ok) {
                         return response.json().then(err => {
-                            throw new Error(err.erro || `Erro HTTP ${response.status}`);
+                            throw new Error(err.erro || `Erro HTTP ${ response.status } `);
                         });
                     }
                     return response.json();
@@ -370,12 +376,12 @@ if (!window.ClientesForm) {
             toast.style.cssText = [
                 'position:fixed', 'bottom:24px', 'right:24px', 'z-index:9999',
                 'background:#fff', 'border-radius:8px', 'padding:12px 18px',
-                `border-left:4px solid ${colors[type] || colors.info}`,
+                `border - left: 4px solid ${ colors[type] || colors.info } `,
                 'box-shadow:0 4px 16px rgba(0,0,0,.15)',
                 'display:flex', 'align-items:center', 'gap:10px',
                 'font-size:14px', 'max-width:360px', 'transition:opacity .3s ease'
             ].join(';');
-            toast.innerHTML = `<i class="fas fa-${icons[type] || icons.info}" style="color:${colors[type]}"></i><span>${message}</span>`;
+            toast.innerHTML = `< i class="fas fa-${icons[type] || icons.info}" style = "color:${colors[type]}" ></i > <span>${message}</span>`;
             document.body.appendChild(toast);
 
             setTimeout(() => {
@@ -472,7 +478,7 @@ if (!window.ClientesForm) {
         // Carregar contato para edição (preenche o modal)
         // ---------------------------------------------------------------
         loadContactForEdit(contactId) {
-            fetch(`/clientes/get-contato?id=${contactId}`)
+            fetch(`/ clientes / get - contato ? id = ${ contactId } `)
                 .then(r => r.json())
                 .then(data => {
                     if (!data.success) throw new Error(data.error || 'Contato não encontrado.');
@@ -548,13 +554,13 @@ if (!window.ClientesForm) {
             fetch('/clientes/remove-contato', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `id=${contactId}`
+                body: `id = ${ contactId } `
             })
                 .then(r => r.json())
                 .then(data => {
                     if (!data.success) throw new Error(data.error || 'Erro ao remover contato.');
 
-                    const row = document.getElementById(`contato-${contactId}`);
+                    const row = document.getElementById(`contato - ${ contactId } `);
                     if (row) {
                         row.style.transition = 'opacity .3s, transform .3s';
                         row.style.opacity    = '0';
@@ -563,13 +569,13 @@ if (!window.ClientesForm) {
                             row.remove();
                             const tbody = document.querySelector('#tabelaContatos tbody');
                             if (tbody && tbody.querySelectorAll('tr:not(.empty-row)').length === 0) {
-                                tbody.innerHTML = `<tr class="empty-row">
-                                    <td colspan="4" class="text-center py-5 text-muted">
-                                        <div class="empty-state">
-                                            <i class="fas fa-address-book fa-3x mb-3"></i>
-                                            <p class="mb-0">Nenhum contato cadastrado.</p>
-                                        </div>
-                                    </td></tr>`;
+                                tbody.innerHTML = `< tr class="empty-row" >
+        <td colspan="4" class="text-center py-5 text-muted">
+            <div class="empty-state">
+                <i class="fas fa-address-book fa-3x mb-3"></i>
+                <p class="mb-0">Nenhum contato cadastrado.</p>
+            </div>
+        </td></tr > `;
                             }
                         }, 300);
                     }
@@ -605,7 +611,7 @@ if (!window.ClientesForm) {
             }
 
             const action = this.options.isEdit ?
-                `/clientes/update/${this.options.clientId}` :
+                `/ clientes / update / ${ this.options.clientId } ` :
                 '/clientes/store';
 
             fetch(action, {
@@ -642,7 +648,7 @@ if (!window.ClientesForm) {
                         }).then(() => {
                             // Se for novo cliente, redireciona para edição com aba de contatos
                             if (!this.options.isEdit && data.client_id) {
-                                window.location.href = `/clientes/edit/${data.client_id}?tab=contatos`;
+                                window.location.href = `/ clientes / edit / ${ data.client_id }?tab = contatos`;
                             } else {
                                 // Se for edição, desbloqueia aba de contatos
                                 this.unlockContactsTab();
@@ -790,11 +796,11 @@ if (!window.ClientesForm) {
 
             // Cria mensagem
             const messageEl = document.createElement('div');
-            messageEl.className = `form-message ${type}`;
+            messageEl.className = `form - message ${ type } `;
             messageEl.innerHTML = `
-                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-                <span>${message}</span>
-            `;
+        < i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}" ></i >
+            <span>${message}</span>
+    `;
 
             // Insere no topo do formulário
             const content = this.container.querySelector('.form-content');

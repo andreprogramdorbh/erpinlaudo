@@ -51,7 +51,7 @@ class CnpjService
 
         foreach ($provedores as $nome => $consultar) {
             try {
-                $this->logger->info("CnpjService: tentando provedor {$nome}", ['cnpj' => $cnpj]);
+                $this->logger->debug("CnpjService: tentando provedor {$nome}", ['cnpj' => $cnpj]);
 
                 $resultado = $consultar();
 
@@ -109,6 +109,7 @@ class CnpjService
 
         $data = json_decode($response['body'], true);
         if (json_last_error() !== JSON_ERROR_NONE || empty($data)) {
+            $this->logger->debug('BrasilAPI: resposta JSON inválida ou vazia', ['body' => $response['body']]);
             return ['erro' => 'BrasilAPI: resposta JSON inválida'];
         }
 

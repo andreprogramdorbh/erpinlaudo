@@ -51,7 +51,7 @@ class CepService
 
         foreach ($provedores as $nome => $consultar) {
             try {
-                $this->logger->info("CepService: tentando provedor {$nome}", ['cep' => $cep]);
+                $this->logger->debug("CepService: tentando provedor {$nome}", ['cep' => $cep]);
 
                 $resultado = $consultar();
 
@@ -110,6 +110,7 @@ class CepService
 
         $data = json_decode($response['body'], true);
         if (json_last_error() !== JSON_ERROR_NONE || empty($data)) {
+            $this->logger->debug('ViaCEP: resposta JSON inválida ou vazia', ['body' => $response['body']]);
             return ['erro' => 'ViaCEP: resposta JSON inválida'];
         }
 
