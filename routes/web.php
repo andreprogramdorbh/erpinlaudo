@@ -14,6 +14,7 @@ Router::post("/reset-password/{token}", "AuthController@resetPassword");
 
 // Webhooks Públicos
 Router::post("/api/webhooks/asaas", "IntegracaoController@webhook");
+Router::get("/api/webhooks/asaas/ping", "IntegracaoController@webhookPing");
 
 // ============================================================
 // Primeiro Acesso — Clientes do Portal (via login unificado /login)
