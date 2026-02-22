@@ -111,6 +111,23 @@ $hoje = date('Y-m-d');
                 <?php endif; ?>
             </div>
 
+            <?php if (!empty($conta->anexos)): ?>
+            <div class="portal-conta-attachments mt-3 p-2 rounded bg-light border">
+                <span class="d-block small fw-bold text-muted mb-2"><i class="fa fa-paperclip me-1"></i>Anexos:</span>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php foreach ($conta->anexos as $anexo): ?>
+                        <a href="/portal/contas-a-pagar/anexos/download/<?php echo (int) $anexo->id; ?>"
+                           class="btn btn-sm btn-outline-secondary py-0 px-2"
+                           style="font-size: 0.75rem;"
+                           title="Baixar <?php echo htmlspecialchars($anexo->original_name); ?>">
+                            <i class="fa fa-download me-1"></i>
+                            <?php echo htmlspecialchars($anexo->original_name); ?>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Ações -->
             <div class="portal-conta-actions">
                 <?php if ($conta->status === 'aberta' && !empty($conta->asaas_payment_id)): ?>

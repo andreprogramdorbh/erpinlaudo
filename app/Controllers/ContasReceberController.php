@@ -8,6 +8,7 @@ use App\Core\Logger;
 use App\Core\Auth;
 use App\Core\Audit\AuditLogger;
 use App\Models\ContaReceber;
+use App\Models\ContaReceberAnexo;
 use App\Models\PlanoConta;
 use App\Models\Cliente;
 use App\Services\ContaReceberRecorrenciaService;
@@ -17,6 +18,7 @@ use App\Services\MailService;
 class ContasReceberController extends Controller
 {
     private ContaReceber $model;
+    private ContaReceberAnexo $anexoModel;
     private PlanoConta $planoContaModel;
     private Cliente $clienteModel;
     private Logger $logger;
@@ -27,10 +29,11 @@ class ContasReceberController extends Controller
 
     public function __construct()
     {
-        $this->model          = new ContaReceber();
+        $this->model           = new ContaReceber();
+        $this->anexoModel      = new ContaReceberAnexo();
         $this->planoContaModel = new PlanoConta();
-        $this->clienteModel   = new Cliente();
-        $this->logger         = new Logger();
+        $this->clienteModel    = new Cliente();
+        $this->logger          = new Logger();
     }
 
     /**
@@ -113,6 +116,7 @@ class ContasReceberController extends Controller
                 'conta'    => null,
                 'planos'   => $planos,
                 'clientes' => $clientes,
+                'anexos'   => [],
                 'tab'      => 'geral',
             ]);
         } catch (\Throwable $e) {
@@ -207,7 +211,7 @@ class ContasReceberController extends Controller
                     'meio_pagamento' => $meioPagamento,
                 ]);
 
-                header('Location: /financeiro/contas-a-receber?success=created');
+                header("Location: /financeiro/contas-a-receber/edit/{$id}?success=created&tab=anexos");
             } else {
                 header('Location: /financeiro/contas-a-receber/create?error=create_failed');
             }
@@ -435,12 +439,15 @@ class ContasReceberController extends Controller
             $planos   = $this->planoContaModel->findByUsuarioId($usuarioId, ['status' => 'ativo']);
             $clientes = $this->clienteModel->findByUsuarioId($usuarioId, ['status' => 'ativo', 'pesquisa' => '', 'uf' => '']);
 
+            $anexos   = $this->anexoModel->findByContaId((int)$conta->id, $usuarioId);
+
             View::render('contas_receber/form-enterprise', [
                 '_layout'  => 'erp',
                 'title'    => 'Editar Conta a Receber',
                 'conta'    => $conta,
                 'planos'   => $planos,
                 'clientes' => $clientes,
+                'anexos'   => $anexos,
                 'tab'      => $_GET['tab'] ?? 'geral',
             ]);
         } catch (\Throwable $e) {
@@ -572,5 +579,174 @@ class ContasReceberController extends Controller
             header('Location: /financeiro/contas-a-receber?error=fatal');
         }
         exit();
+    }
+
+    public function uploadAnexo(): void
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                header('Location: /login?error=session_expired');
+                exit();
+            }
+            $usuarioId = $user->id;
+            $contaId = (int)($_POST['conta_receber_id'] ?? 0);
+
+            if ($contaId <= 0) {
+                header('Location: /financeiro/contas-a-receber?error=invalid_request');
+                exit();
+            }
+
+            $conta = $this->model->findById($contaId);
+            if (!$conta || (int)$conta->usuario_id !== (int)$usuarioId) {
+                header('Location: /financeiro/contas-a-receber?error=unauthorized');
+                exit();
+            }
+
+            if (!isset($_FILES['anexo']) || $_FILES['anexo']['error'] !== UPLOAD_ERR_OK) {
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
+                exit();
+            }
+
+            $file = $_FILES['anexo'];
+            $maxSize = 5 * 1024 * 1024;
+            if (($file['size'] ?? 0) > $maxSize) {
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=file_too_large&tab=anexos");
+                exit();
+            }
+
+            $tmpPath = $file['tmp_name'];
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $mime = $finfo->file($tmpPath) ?: '';
+
+            $allowed = [
+                'application/pdf' => 'pdf',
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+            ];
+
+            if (!isset($allowed[$mime])) {
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=invalid_file_type&tab=anexos");
+                exit();
+            }
+
+            $baseDir = BASE_PATH . '/storage/uploads/contas_receber/' . $usuarioId . '/' . $contaId;
+            if (!is_dir($baseDir)) {
+                mkdir($baseDir, 0755, true);
+            }
+
+            $ext = $allowed[$mime];
+            $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
+            $destPath = $baseDir . '/' . $safeName;
+
+            if (!move_uploaded_file($tmpPath, $destPath)) {
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
+                exit();
+            }
+
+            $relativePath = 'storage/uploads/contas_receber/' . $usuarioId . '/' . $contaId . '/' . $safeName;
+
+            $anexoId = $this->anexoModel->create([
+                'usuario_id' => $usuarioId,
+                'conta_receber_id' => $contaId,
+                'file_path' => $relativePath,
+                'original_name' => $file['name'] ?? 'anexo',
+                'mime_type' => $mime,
+                'file_size' => $file['size'] ?? null,
+            ]);
+
+            if ($anexoId) {
+                AuditLogger::log('upload_conta_receber_anexo', ['id' => $anexoId, 'conta_receber_id' => $contaId]);
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?success=upload&tab=anexos");
+            } else {
+                @unlink($destPath);
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=db_failure&tab=anexos");
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao enviar anexo (contas a receber): ' . $e->getMessage());
+            $contaId = (int)($_POST['conta_receber_id'] ?? 0);
+            if ($contaId > 0) {
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=fatal&tab=anexos");
+            } else {
+                header('Location: /financeiro/contas-a-receber?error=fatal');
+            }
+        }
+        exit();
+    }
+
+    public function deleteAnexo($id): void
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                header('Location: /login?error=session_expired');
+                exit();
+            }
+            $usuarioId = $user->id;
+            $anexo = $this->anexoModel->findById((int)$id);
+
+            if (!$anexo || (int)$anexo->usuario_id !== (int)$usuarioId) {
+                header('Location: /financeiro/contas-a-receber?error=unauthorized');
+                exit();
+            }
+
+            $contaId = (int)($anexo->conta_receber_id ?? 0);
+            $filePath = BASE_PATH . '/' . ltrim((string)($anexo->file_path ?? ''), '/');
+
+            if ($this->anexoModel->delete((int)$id)) {
+                if (is_file($filePath)) {
+                    @unlink($filePath);
+                }
+                AuditLogger::log('delete_conta_receber_anexo', ['id' => (int)$id, 'conta_receber_id' => $contaId]);
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?success=deleted_anexo&tab=anexos");
+            } else {
+                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=db_failure&tab=anexos");
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao remover anexo (contas a receber): ' . $e->getMessage());
+            header('Location: /financeiro/contas-a-receber?error=fatal');
+        }
+        exit();
+    }
+
+    public function downloadAnexo($id): void
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                http_response_code(401);
+                exit();
+            }
+            $usuarioId = $user->id;
+            $anexo = $this->anexoModel->findById((int)$id);
+
+            if (!$anexo || (int)$anexo->usuario_id !== (int)$usuarioId) {
+                http_response_code(403);
+                echo '403 - Acesso Negado';
+                exit();
+            }
+
+            $fileRel = (string)($anexo->file_path ?? '');
+            $fileAbs = BASE_PATH . '/' . ltrim($fileRel, '/');
+            if (!is_file($fileAbs)) {
+                http_response_code(404);
+                echo '404 - Arquivo não encontrado';
+                exit();
+            }
+
+            $mime = $anexo->mime_type ?? 'application/octet-stream';
+            $name = $anexo->original_name ?? basename($fileAbs);
+
+            header('Content-Type: ' . $mime);
+            header('Content-Length: ' . filesize($fileAbs));
+            header('Content-Disposition: attachment; filename="' . addslashes($name) . '"');
+            readfile($fileAbs);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao baixar anexo (contas a receber): ' . $e->getMessage());
+            http_response_code(500);
+            echo 'Erro ao baixar arquivo';
+            exit();
+        }
     }
 }

@@ -8,6 +8,7 @@ use App\Core\Logger;
 use App\Core\Audit\AuditLogger;
 use App\Models\PortalCliente;
 use App\Models\ContaReceber;
+use App\Models\ContaReceberAnexo;
 use App\Services\AsaasService;
 
 /**
@@ -21,14 +22,16 @@ use App\Services\AsaasService;
  */
 class PortalContasPagarController extends Controller
 {
-    private PortalCliente $portalModel;
-    private ContaReceber  $contaModel;
-    private Logger        $logger;
+    private PortalCliente      $portalModel;
+    private ContaReceber       $contaModel;
+    private ContaReceberAnexo  $anexoModel;
+    private Logger             $logger;
 
     public function __construct()
     {
         $this->portalModel = new PortalCliente();
         $this->contaModel  = new ContaReceber();
+        $this->anexoModel  = new ContaReceberAnexo();
         $this->logger      = new Logger();
     }
 
@@ -99,6 +102,11 @@ class PortalContasPagarController extends Controller
         $contasVencidas   = array_filter($contasAbertas, fn($c) => ($c->data_vencimento ?? '') < $hoje);
         $contasRecebidas  = array_filter($contas, fn($c) => $c->status === 'recebida');
         $contasCanceladas = array_filter($contas, fn($c) => $c->status === 'cancelada');
+
+        // Carrega anexos para cada conta
+        foreach ($contas as $conta) {
+            $conta->anexos = $this->anexoModel->findByContaId((int) $conta->id, $tenantId);
+        }
 
         View::render('portal/contas-a-pagar/index', [
             'title'            => 'Minhas Contas',
@@ -262,6 +270,52 @@ class PortalContasPagarController extends Controller
                 'trace'    => $e->getTraceAsString(),
             ]);
             header('Location: /portal/contas-a-pagar?error=erro_pagamento');
+            exit();
+        }
+    }
+
+    public function downloadAnexo(int $id): void
+    {
+        try {
+            $portal    = $this->getPortalCliente();
+            $clienteId = (int) $portal->cliente_id;
+            $tenantId  = (int) $portal->tenant_id;
+
+            $anexo = $this->anexoModel->findById($id);
+            if (!$anexo || (int) $anexo->usuario_id !== $tenantId) {
+                http_response_code(403);
+                echo '403 - Acesso Negado';
+                exit();
+            }
+
+            // Verifica se a conta vinculada a este anexo realmente pertence ao cliente
+            $conta = $this->contaModel->findById((int) $anexo->conta_receber_id);
+            if (!$conta || (int) $conta->cliente_id !== $clienteId) {
+                http_response_code(403);
+                echo '403 - Acesso Negado (Conta Inválida)';
+                exit();
+            }
+
+            $fileRel = (string)($anexo->file_path ?? '');
+            $fileAbs = BASE_PATH . '/' . ltrim($fileRel, '/');
+            if (!is_file($fileAbs)) {
+                http_response_code(404);
+                echo '404 - Arquivo não encontrado';
+                exit();
+            }
+
+            $mime = $anexo->mime_type ?? 'application/octet-stream';
+            $name = $anexo->original_name ?? basename($fileAbs);
+
+            header('Content-Type: ' . $mime);
+            header('Content-Length: ' . filesize($fileAbs));
+            header('Content-Disposition: attachment; filename="' . addslashes($name) . '"');
+            readfile($fileAbs);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('[Portal] Erro ao baixar anexo: ' . $e->getMessage());
+            http_response_code(500);
+            echo 'Erro ao baixar arquivo';
             exit();
         }
     }

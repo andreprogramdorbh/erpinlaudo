@@ -32,6 +32,14 @@ $formConfig = [
             'icon' => 'fas fa-hand-holding-usd',
             'locked' => false,
             'view' => 'contas_receber.tabs.geral-enterprise'
+        ],
+        [
+            'id' => 'anexos',
+            'title' => 'Anexos',
+            'icon' => 'fas fa-paperclip',
+            'locked' => !$isEdit,
+            'locked_message' => 'Salve o recebimento primeiro para habilitar anexos.',
+            'view' => $isEdit ? 'contas_receber.tabs.anexos-enterprise' : null
         ]
     ],
 

@@ -43,6 +43,7 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     Router::get("/portal/contas-a-pagar", "PortalContasPagarController@index");
     Router::get("/portal/contas-a-pagar/pagar/{id}", "PortalContasPagarController@pagar");
     Router::get("/portal/contas-a-pagar/status/{id}", "PortalContasPagarController@statusCheck");
+    Router::get("/portal/contas-a-pagar/anexos/download/{id}", "PortalContasPagarController@downloadAnexo");
 
     // Faturamento
     Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");
@@ -153,6 +154,7 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::group(["middleware" => ["Permission:view_contas_receber"]], function () {
         Router::get("/financeiro/receber", "ContasReceberController@index");
         Router::get("/financeiro/contas-a-receber", "ContasReceberController@index");
+        Router::get("/financeiro/contas-a-receber/anexos/download/{id}", "ContasReceberController@downloadAnexo");
     });
 
     Router::group(["middleware" => ["Permission:create_contas_receber"]], function () {
@@ -163,6 +165,8 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::group(["middleware" => ["Permission:edit_contas_receber"]], function () {
         Router::get("/financeiro/contas-a-receber/edit/{id}", "ContasReceberController@edit");
         Router::post("/financeiro/contas-a-receber/update/{id}", "ContasReceberController@update");
+        Router::post("/financeiro/contas-a-receber/anexos/upload", "ContasReceberController@uploadAnexo");
+        Router::post("/financeiro/contas-a-receber/anexos/delete/{id}", "ContasReceberController@deleteAnexo");
     });
 
     Router::group(["middleware" => ["Permission:delete_contas_receber"]], function () {
