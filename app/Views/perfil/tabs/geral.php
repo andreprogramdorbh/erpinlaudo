@@ -66,7 +66,7 @@ $action = '/perfil/update';
             <div class="form-group">
                 <label for="last_login" class="form-label">Último Acesso</label>
                 <input type="text" name="last_login_display" id="last_login_display" class="form-control"
-                    value="<?php echo $usuario->last_login ? date('d/m/Y H:i', strtotime($usuario->last_login)) : 'Primeiro acesso'; ?>" readonly>
+                    value="<?php echo !empty($usuario->last_login ?? null) ? date('d/m/Y H:i', strtotime((string) $usuario->last_login)) : 'Primeiro acesso'; ?>" readonly>
             </div>
 
             <div class="form-group">

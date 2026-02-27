@@ -22,12 +22,14 @@ class PerfilController extends Controller
      */
     public function index(): void
     {
-        $usuario = Auth::user();
-        
-        if (!$usuario) {
+        $sessionUser = Auth::user();
+         
+        if (!$sessionUser) {
             header("Location: /login");
             exit();
         }
+
+        $usuario = $this->userModel->findById((int) $sessionUser->id) ?: $sessionUser;
 
         View::render('perfil/index', [
             'title' => 'Meu Perfil',
@@ -97,8 +99,8 @@ class PerfilController extends Controller
                 ]);
 
                 // Atualiza sessão
-                $_SESSION['user']->name = $nome;
-                $_SESSION['user']->email = $email;
+                $_SESSION['user_name'] = $nome;
+                $_SESSION['user_email'] = $email;
 
                 header("Location: /perfil?success=profile_updated");
             } else {

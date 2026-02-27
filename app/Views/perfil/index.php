@@ -109,7 +109,7 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
     <div class="prf-avatar"><?php echo $initials; ?></div>
     <div>
       <h1 class="prf-hero-name"><?php echo htmlspecialchars($usuario->name); ?></h1>
-      <p class="prf-hero-email"><i class="fas fa-envelope me-1"></i><?php echo htmlspecialchars($usuario->email); ?></p>
+      <p class="prf-hero-email"><i class="fas fa-envelope me-1"></i><?php echo htmlspecialchars((string)($usuario->email ?? '')); ?></p>
       <span class="prf-hero-role"><i class="fas <?php echo $rInfo[2]; ?>"></i> <?php echo $rInfo[0]; ?></span>
     </div>
     <div class="prf-hero-stats d-none d-md-block">

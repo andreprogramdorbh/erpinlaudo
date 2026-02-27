@@ -43,6 +43,7 @@ class Auth
             self::regenerateSession();
             $_SESSION['user_id'] = $user->id;
             $_SESSION['user_name'] = $user->name;
+            $_SESSION['user_email'] = $user->email;
             $_SESSION['user_role'] = $user->role ?? 'user'; // Buscar role real do banco
             $_SESSION['login_time'] = time();
 
@@ -74,6 +75,7 @@ class Auth
         return (object) [
             'id' => $_SESSION['user_id'],
             'name' => $_SESSION['user_name'],
+            'email' => $_SESSION['user_email'] ?? null,
             'role' => $_SESSION['user_role']
         ];
     }

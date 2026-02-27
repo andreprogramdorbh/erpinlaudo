@@ -52,8 +52,9 @@ if ($isProduction) {
             'file' => $file,
             'line' => $line,
             'severity' => $severity,
-            'severity_name' => self::getSeverityName($severity)
+            'severity_name' => getSeverityName($severity)
         ]);
+        return true;
     });
 
     set_exception_handler(function ($exception) {
