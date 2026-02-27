@@ -491,7 +491,9 @@ class IntegracaoController extends Controller
         }
 
         // 3. Valida token de autenticacao do webhook
-        $tokenHeader = (string)($_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? '');
+        $tokenHeaderRaw  = (string)($_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? '');
+        $tokenHeaderTrim = trim($tokenHeaderRaw);
+        $tokenHeader     = $tokenHeaderRaw;
 
         if ($tenantId) {
             try {
@@ -510,15 +512,52 @@ class IntegracaoController extends Controller
                             $this->logger->warning('Webhook Asaas: token ausente no header', [
                                 'tenant_id'  => $tenantId,
                                 'payment_id' => $payment['id'] ?? null,
+                                'ip'         => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                                'ua'         => $_SERVER['HTTP_USER_AGENT'] ?? '',
+                                'ext_ref'    => $extRef,
+                                'cfg'        => [
+                                    'has_integration'   => (bool) $configRow,
+                                    'has_token_config'  => !empty($cfg['webhook_token_enc']),
+                                    'expected_len'      => strlen($expected),
+                                ],
+                                'headers'    => [
+                                    'has_ASAAS_ACCESS_TOKEN' => isset($_SERVER['HTTP_ASAAS_ACCESS_TOKEN']),
+                                    'has_AUTHORIZATION'      => isset($_SERVER['HTTP_AUTHORIZATION']),
+                                    'content_type'           => $_SERVER['CONTENT_TYPE'] ?? '',
+                                ],
                             ]);
                             http_response_code(403);
                             echo json_encode(['error' => 'Missing authentication token']);
                             exit();
                         }
+
+                        // Tolerância a espaços acidentais no header (ex.: proxy/WAF adicionando whitespace)
+                        $matchTrim = ($tokenHeaderTrim !== '' && hash_equals($expected, $tokenHeaderTrim));
+                        if ($matchTrim) {
+                            $this->logger->warning('Webhook Asaas: token recebido com whitespace (aceito apos trim)', [
+                                'tenant_id'         => $tenantId,
+                                'payment_id'        => $payment['id'] ?? null,
+                                'received_len_raw'  => strlen($tokenHeaderRaw),
+                                'received_len_trim' => strlen($tokenHeaderTrim),
+                            ]);
+                            $tokenHeader = $tokenHeaderTrim;
+                        }
+
                         if (!hash_equals($expected, $tokenHeader)) {
                             $this->logger->warning('Webhook Asaas: token invalido', [
                                 'tenant_id'  => $tenantId,
                                 'payment_id' => $payment['id'] ?? null,
+                                'ip'         => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                                'ua'         => $_SERVER['HTTP_USER_AGENT'] ?? '',
+                                'ext_ref'    => $extRef,
+                                'diag'       => [
+                                    'expected_len'      => strlen($expected),
+                                    'received_len_raw'  => strlen($tokenHeaderRaw),
+                                    'received_len_trim' => strlen($tokenHeaderTrim),
+                                    'received_trim_eq'  => $matchTrim,
+                                    'expected_sha256_12' => substr(hash('sha256', $expected), 0, 12),
+                                    'received_sha256_12' => substr(hash('sha256', $tokenHeaderRaw), 0, 12),
+                                ],
                             ]);
                             http_response_code(403);
                             echo json_encode(['error' => 'Invalid authentication token']);
