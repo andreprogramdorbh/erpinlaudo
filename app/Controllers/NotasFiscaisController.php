@@ -229,14 +229,33 @@ class NotasFiscaisController extends Controller
             $usuarioId = Auth::user()->id;
             $notaId    = (int)($_POST['nota_fiscal_id'] ?? 0);
 
+            // LOG DETALHADO PARA DEBUG
+            $this->logger->info('uploadAnexo_NF_debug', [
+                'usuario_id'         => $usuarioId,
+                'nota_fiscal_id_raw' => $_POST['nota_fiscal_id'] ?? 'NAO_ENVIADO',
+                'nota_id_parsed'     => $notaId,
+                'files_error'        => $_FILES['anexo']['error'] ?? 'SEM_ARQUIVO',
+                'files_size'         => $_FILES['anexo']['size'] ?? 0,
+                'files_name'         => $_FILES['anexo']['name'] ?? 'SEM_NOME',
+                'post_keys'          => implode(',', array_keys($_POST)),
+            ]);
+
             if ($notaId <= 0) {
+                $this->logger->error('uploadAnexo_NF: nota_fiscal_id invalido');
                 header('Location: /faturamento/notas-fiscais?error=invalid_nota');
                 exit();
             }
 
             // Verifica se a nota pertence ao tenant
             $nota = $this->model->findById($notaId);
+            $this->logger->info('uploadAnexo_NF_findById', [
+                'nota_encontrada'    => $nota ? 'SIM' : 'NAO',
+                'nota_usuario_id'    => $nota ? $nota->usuario_id : 'N/A',
+                'usuario_id_sessao'  => $usuarioId,
+                'match'              => $nota ? ((int)$nota->usuario_id === (int)$usuarioId ? 'SIM' : 'NAO') : 'N/A',
+            ]);
             if (!$nota || (int)$nota->usuario_id !== (int)$usuarioId) {
+                $this->logger->error('uploadAnexo_NF: unauthorized', ['nota_id' => $notaId, 'usuario_id' => $usuarioId]);
                 header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=unauthorized&tab=anexos");
                 exit();
             }

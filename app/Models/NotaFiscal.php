@@ -13,7 +13,7 @@ class NotaFiscal extends Model
     {
         $sql = "SELECT nf.*, c.razao_social AS cliente_nome
                 FROM {$this->table} nf
-                INNER JOIN clientes c ON c.id = nf.cliente_id
+                LEFT JOIN clientes c ON c.id = nf.cliente_id
                 WHERE nf.id = ?";
 
         $stmt = $this->pdo->prepare($sql);
