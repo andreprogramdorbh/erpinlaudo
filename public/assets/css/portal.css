@@ -888,3 +888,121 @@ body { font-family: 'Inter', sans-serif; color: var(--portal-text); }
     .portal-cards-grid { grid-template-columns: 1fr; }
     .portal-quick-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ============================================================
+   SUMMARY CARDS — Resumo financeiro no portal de contas
+   ============================================================ */
+.portal-summary-card {
+    background: #fff;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius);
+    padding: .875rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: .875rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.portal-summary-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    width: 2.5rem;
+    text-align: center;
+}
+.portal-summary-value {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--portal-text);
+    line-height: 1.2;
+}
+.portal-summary-label {
+    font-size: .75rem;
+    color: var(--portal-muted);
+    margin-top: .125rem;
+}
+/* ============================================================
+   FILTER BADGE — Contador de itens no filtro de abas
+   ============================================================ */
+.portal-filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: #fff;
+    font-size: .625rem;
+    font-weight: 700;
+    border-radius: 999px;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    padding: 0 .25rem;
+    margin-left: .25rem;
+    vertical-align: middle;
+}
+.portal-filter-tab.active .portal-filter-badge {
+    background: rgba(255,255,255,.35);
+}
+/* ============================================================
+   PORTAL CONTA ATTACHMENTS
+   ============================================================ */
+.portal-conta-attachments {
+    border-top: 1px solid var(--portal-border);
+    padding-top: .75rem;
+    margin-top: .75rem;
+}
+
+
+/* ============================================================
+   SUMMARY CARDS — Resumo financeiro no portal de contas
+   ============================================================ */
+.portal-summary-card {
+    background: #fff;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius);
+    padding: .875rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: .875rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.portal-summary-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    width: 2.5rem;
+    text-align: center;
+}
+.portal-summary-value {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--portal-text);
+    line-height: 1.2;
+}
+.portal-summary-label {
+    font-size: .75rem;
+    color: var(--portal-muted);
+    margin-top: .125rem;
+}
+/* ============================================================
+   FILTER BADGE
+   ============================================================ */
+.portal-filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: #fff;
+    font-size: .625rem;
+    font-weight: 700;
+    border-radius: 999px;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    padding: 0 .25rem;
+    margin-left: .25rem;
+    vertical-align: middle;
+}
+.portal-filter-tab.active .portal-filter-badge {
+    background: rgba(255,255,255,.35);
+}
+.portal-conta-attachments {
+    border-top: 1px solid var(--portal-border);
+    padding-top: .75rem;
+    margin-top: .75rem;
+}

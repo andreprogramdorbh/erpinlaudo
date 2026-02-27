@@ -99,11 +99,69 @@ class PortalContasPagarController extends Controller
     // ---------------------------------------------------------------
     public function index(): void
     {
-        die('OK');
-        /*
         $portal    = $this->getPortalCliente();
-        ...
-        */
+        $clienteId = (int) $portal->cliente_id;
+        $tenantId  = (int) $portal->tenant_id;
+
+        $this->logger->info('[Portal] Minhas Contas acessado', [
+            'portal_id'  => $portal->id,
+            'cliente_id' => $clienteId,
+        ]);
+
+        // Filtro de status via GET
+        $statusFiltro  = $_GET['status'] ?? '';
+        $statusValidos = ['', 'aberta', 'recebida', 'cancelada'];
+        if (!in_array($statusFiltro, $statusValidos, true)) {
+            $statusFiltro = '';
+        }
+
+        // Busca todas as contas do cliente neste tenant
+        $todasContas = $this->contaModel->findByClienteIdAndTenantId($clienteId, $tenantId);
+
+        // Contadores para o resumo
+        $totalAbertas   = count(array_filter($todasContas, fn($c) => $c->status === 'aberta'));
+        $totalRecebidas = count(array_filter($todasContas, fn($c) => $c->status === 'recebida'));
+        $totalValorAberto = array_sum(array_map(
+            fn($c) => $c->status === 'aberta' ? (float)$c->valor : 0,
+            $todasContas
+        ));
+
+        // Aplica filtro de status se solicitado
+        if ($statusFiltro !== '') {
+            $contas = array_values(array_filter($todasContas, fn($c) => $c->status === $statusFiltro));
+        } else {
+            $contas = array_values($todasContas);
+        }
+
+        // Carrega anexos de cada conta
+        foreach ($contas as $conta) {
+            try {
+                $conta->anexos = $this->anexoModel->findByContaId((int)$conta->id, $tenantId);
+            } catch (\Throwable $e) {
+                $conta->anexos = [];
+            }
+        }
+
+        // Verifica se o Asaas está configurado para este tenant
+        $asaasEnabled = false;
+        try {
+            $asaas = $this->getAsaasService($tenantId);
+            $asaasEnabled = ($asaas !== null);
+        } catch (\Throwable $e) {
+            $asaasEnabled = false;
+        }
+
+        View::render('portal/contas-a-pagar/index', [
+            'title'           => 'Minhas Contas',
+            '_layout'         => 'portal',
+            'portal'          => $portal,
+            'contas'          => $contas,
+            'totalAbertas'    => $totalAbertas,
+            'totalRecebidas'  => $totalRecebidas,
+            'totalValorAberto'=> $totalValorAberto,
+            'statusFiltro'    => $statusFiltro,
+            'asaasEnabled'    => $asaasEnabled,
+        ]);
     }
 
     // ---------------------------------------------------------------
