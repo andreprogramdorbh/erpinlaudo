@@ -112,9 +112,9 @@ if ($config['is_edit']) {
     </header>
 
     <!-- Sistema de Abas -->
+    <div class="form-tabs-container" data-active-tab="<?php echo $activeTabIndex; ?>">
     <nav class="form-tabs">
-        <div class="form-tabs-container" data-active-tab="<?php echo $activeTabIndex; ?>">
-            <div class="form-tabs-list">
+        <div class="form-tabs-list">
                 <?php foreach ($config['tabs'] as $index => $tab): ?>
                     <?php
                     $isActive = $index === $activeTabIndex;
@@ -138,7 +138,6 @@ if ($config['is_edit']) {
                         </button>
                     </div>
                 <?php endforeach; ?>
-            </div>
         </div>
     </nav>
 
@@ -176,6 +175,7 @@ if ($config['is_edit']) {
             </section>
         <?php endforeach; ?>
     </main>
+    </div><!-- /.form-tabs-container -->
 
     <!-- Ações do Formulário (Rodapé) -->
     <?php if (!empty($config['footer_actions'])): ?>
