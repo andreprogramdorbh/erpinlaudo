@@ -225,6 +225,34 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/integracao/email/test", "IntegracaoController@testEmail");
     });
 
+    // ===== Módulo CRM =====
+    Router::group(["middleware" => ["Permission:view_crm"]], function () {
+        Router::get("/crm/funil",         "CrmFunilController@index");
+        Router::get("/crm/leads",         "CrmLeadsController@index");
+        Router::get("/crm/oportunidades", "CrmOportunidadesController@index");
+    });
+    Router::group(["middleware" => ["Permission:manage_leads"]], function () {
+        Router::get("/crm/leads/create",                  "CrmLeadsController@create");
+        Router::post("/crm/leads",                        "CrmLeadsController@store");
+        Router::get("/crm/leads/edit/{id}",               "CrmLeadsController@edit");
+        Router::post("/crm/leads/update/{id}",            "CrmLeadsController@update");
+        Router::post("/crm/leads/delete/{id}",            "CrmLeadsController@delete");
+        Router::get("/crm/leads/converter/{id}",          "CrmLeadsController@converter");
+        Router::post("/crm/leads/interacao/add",          "CrmLeadsController@addInteracao");
+        Router::post("/crm/leads/interacao/delete/{id}",  "CrmLeadsController@deleteInteracao");
+        Router::get("/crm/leads/buscar-cnpj",             "CrmLeadsController@buscarCnpj");
+    });
+    Router::group(["middleware" => ["Permission:manage_oportunidades"]], function () {
+        Router::get("/crm/oportunidades/create",                   "CrmOportunidadesController@create");
+        Router::post("/crm/oportunidades",                         "CrmOportunidadesController@store");
+        Router::get("/crm/oportunidades/edit/{id}",                "CrmOportunidadesController@edit");
+        Router::post("/crm/oportunidades/update/{id}",             "CrmOportunidadesController@update");
+        Router::post("/crm/oportunidades/delete/{id}",             "CrmOportunidadesController@delete");
+        Router::post("/crm/oportunidades/mover",                   "CrmOportunidadesController@moverEtapa");
+        Router::post("/crm/oportunidades/interacao/add",           "CrmOportunidadesController@addInteracao");
+        Router::post("/crm/oportunidades/interacao/delete/{id}",   "CrmOportunidadesController@deleteInteracao");
+    });
+
     // Logging de Erros do Frontend
     Router::post("/api/log/error", "LogController@saveClientError");
 

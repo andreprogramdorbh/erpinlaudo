@@ -478,6 +478,22 @@
             </a>
           </li>
 
+          <div class="nav-label">CRM</div>
+          <li class="nav-item has-submenu <?php echo strpos($_SERVER['REQUEST_URI'], '/crm') !== false ? 'open active' : ''; ?>">
+            <a href="/crm/funil" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="CRM">
+              <i class="fas fa-headset"></i>
+              <span class="link-text">CRM</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/crm/funil"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/crm/funil') !== false ? 'active' : ''; ?>"><i class="fas fa-filter me-1"></i> FUNIL</a></li>
+              <li><a href="/crm/leads"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/crm/leads') !== false ? 'active' : ''; ?>"><i class="fas fa-user-plus me-1"></i> LEADS</a></li>
+              <li><a href="/crm/oportunidades"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/crm/oportunidades') !== false ? 'active' : ''; ?>"><i class="fas fa-chart-line me-1"></i> OPORTUNIDADES</a></li>
+            </ul>
+          </li>
+
           <div class="nav-label">Configurações</div>
           <li
             class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/integracao') !== false) ? 'open active' : ''; ?>">

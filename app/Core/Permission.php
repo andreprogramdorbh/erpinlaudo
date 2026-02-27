@@ -46,6 +46,11 @@ class Permission implements PermissionProviderInterface
             'view_integracoes',
             'manage_integracoes',
 
+            // CRM
+            'view_crm',
+            'manage_leads',
+            'manage_oportunidades',
+
             'view_profile',
             'edit_profile',
 
@@ -95,6 +100,11 @@ class Permission implements PermissionProviderInterface
             'view_integracoes',
             'manage_integracoes',
 
+            // CRM
+            'view_crm',
+            'manage_leads',
+            'manage_oportunidades',
+
             'view_profile',
             'edit_profile',
 
@@ -139,6 +149,11 @@ class Permission implements PermissionProviderInterface
             'create_clients',
             'edit_clients',
 
+            // CRM — operador pode gerenciar leads e oportunidades
+            'view_crm',
+            'manage_leads',
+            'manage_oportunidades',
+
             'view_profile',
             'edit_profile',
         ],
@@ -154,6 +169,9 @@ class Permission implements PermissionProviderInterface
             'view_faturamento',
             'view_notas_fiscais',
             'view_integracoes',
+
+            // CRM — leitura pode visualizar o funil
+            'view_crm',
 
             'view_profile',
         ],
