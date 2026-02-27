@@ -607,7 +607,7 @@ if (!window.ClientesForm) {
 
             this.isSubmitting = true;
             const formData = new FormData(form);
-            const submitBtn = form.querySelector('button[type="submit"]');
+            const submitBtn = document.querySelector(`button[type="submit"][form="${form.id}"]`) || form.querySelector('button[type="submit"]');
 
             // Loading state
             if (submitBtn) {
@@ -615,24 +615,32 @@ if (!window.ClientesForm) {
                 submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Salvando...';
             }
 
-            const action = this.options.isEdit ?
-                `/clientes/update/${this.options.clientId}` :
-                '/clientes/store';
+            const action = form.getAttribute('action') || (this.options.isEdit ? `/clientes/update/${this.options.clientId}` : '/clientes');
 
-            fetch(action, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                },
-                body: formData
-            })
-                .then(response => {
-                    // Verifica se é redirect ou JSON
-                    if (response.redirected) {
-                        window.location.href = response.url;
-                        return;
-                    }
+                fetch(action, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: formData
+                })
+                    .then(response => {
+                        if (!response.ok && !response.redirected) {
+                            return response.text().then(text => {
+                                try {
+                                    const json = JSON.parse(text);
+                                    throw new Error(json.error || json.message || `Erro HTTP ${response.status}`);
+                                } catch {
+                                    throw new Error(`Erro HTTP ${response.status}`);
+                                }
+                            });
+                        }
+                        // Verifica se é redirect ou JSON
+                        if (response.redirected) {
+                            window.location.href = response.url;
+                            return;
+                        }
 
                     return response.text().then(text => {
                         try {
@@ -658,6 +666,8 @@ if (!window.ClientesForm) {
                             // Se for novo cliente, redireciona para edição com aba de contatos
                             if (!this.options.isEdit && data.client_id) {
                                 window.location.href = `/clientes/edit/${data.client_id}?tab=contatos`;
+                            } else if (!this.options.isEdit && data.redirect_url) {
+                                window.location.href = data.redirect_url;
                             } else {
                                 // Se for edição, desbloqueia aba de contatos
                                 this.unlockContactsTab();

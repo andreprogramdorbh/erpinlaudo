@@ -92,13 +92,32 @@ class ClientesController extends Controller
      */
     public function store()
     {
-        $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest' || isset($_GET['ajax']);
+        $isAjax =
+            (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string) $_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
+            str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') ||
+            isset($_GET['ajax']);
+
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
 
         try {
             $usuarioId = Auth::user()->id;
 
             $tipo = $_POST['tipo'] ?? 'PJ';
             $cpfCnpj = preg_replace('/\D/', '', $_POST['cpf_cnpj'] ?? '');
+
+            $this->logger->info('[Clientes] store iniciado', [
+                'usuario_id' => $usuarioId,
+                'is_ajax' => $isAjax,
+                'tipo' => $tipo,
+                'cpf_cnpj_len' => strlen((string) $cpfCnpj),
+                'email_domain' => (function () {
+                    $email = (string) ($_POST['email'] ?? '');
+                    $parts = explode('@', $email);
+                    return isset($parts[1]) ? strtolower($parts[1]) : '';
+                })(),
+            ]);
 
             // Validação Backend (Regra de Ouro #1 e Requisitos do Usuário)
             if (empty($_POST['razao_social']) || empty($cpfCnpj) || empty($_POST['email'])) {
@@ -157,21 +176,47 @@ class ClientesController extends Controller
             ];
 
             $clientId = $this->clienteModel->create($dados);
-            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
-                      str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') ||
-                      (isset($_SERVER['HTTP_FETCH_MODE']) && $_SERVER['HTTP_FETCH_MODE'] === 'cors');
             if ($clientId) {
+                $this->logger->info('[Clientes] store OK', [
+                    'usuario_id' => $usuarioId,
+                    'client_id' => $clientId,
+                ]);
                 AuditLogger::log('create_client', [
                     'client_id' => $clientId,
                     'razao_social' => $dados['razao_social']
                 ]);
                 // Redireciona para edição com aba de contatos ativa
+                if ($isAjax) {
+                    echo json_encode([
+                        'success' => true,
+                        'client_id' => $clientId,
+                        'redirect_url' => "/clientes/edit/{$clientId}?success=created&tab=contatos",
+                        'message' => 'Cliente cadastrado com sucesso.',
+                    ]);
+                    exit();
+                }
                 header("Location: /clientes/edit/{$clientId}?success=created&tab=contatos");
             } else {
+                $this->logger->error('[Clientes] store falhou: create() retornou false', [
+                    'usuario_id' => $usuarioId,
+                ]);
+                if ($isAjax) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Falha ao salvar cliente no banco de dados.']);
+                    exit();
+                }
                 header("Location: /clientes/create?error=db_failure");
             }
-        } catch (\Exception $e) {
-            $this->logger->error("Erro ao salvar cliente: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            $this->logger->error("Erro ao salvar cliente: " . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            if ($isAjax) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Erro inesperado ao salvar cliente.']);
+                exit();
+            }
             header("Location: /clientes/create?error=fatal");
         }
         exit();
@@ -213,7 +258,14 @@ class ClientesController extends Controller
      */
     public function update($id)
     {
-        $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest' || isset($_GET['ajax']);
+        $isAjax =
+            (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string) $_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
+            str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') ||
+            isset($_GET['ajax']);
+
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
 
         try {
             $cliente = $this->clienteModel->findById($id);
@@ -265,20 +317,39 @@ class ClientesController extends Controller
                 'status' => $_POST['status'] ?? 'ativo'
             ];
 
-            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
-                      str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') ||
-                      (isset($_SERVER['HTTP_FETCH_MODE']) && $_SERVER['HTTP_FETCH_MODE'] === 'cors');
             if ($this->clienteModel->update($id, $dados)) {
                 AuditLogger::log('update_client', [
                     'client_id' => $id,
                     'razao_social' => $dados['razao_social']
                 ]);
+                if ($isAjax) {
+                    echo json_encode([
+                        'success' => true,
+                        'client_id' => $id,
+                        'redirect_url' => "/clientes/edit/{$id}?success=updated&tab=geral",
+                        'message' => 'Cliente atualizado com sucesso.',
+                    ]);
+                    exit();
+                }
                 header("Location: /clientes/edit/{$id}?success=updated&tab=geral");
             } else {
+                if ($isAjax) {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'error' => 'Falha ao atualizar cliente no banco de dados.']);
+                    exit();
+                }
                 header("Location: /clientes/edit/{$id}?error=db_failure");
             }
-        } catch (\Exception $e) {
-            $this->logger->error("Erro ao atualizar cliente: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            $this->logger->error("Erro ao atualizar cliente: " . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            if ($isAjax) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Erro inesperado ao atualizar cliente.']);
+                exit();
+            }
             header("Location: /clientes/edit/{$id}?error=fatal");
         }
         exit();
