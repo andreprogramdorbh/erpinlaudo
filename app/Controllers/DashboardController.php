@@ -268,14 +268,19 @@ class DashboardController extends Controller
         ]);
 
         // --- CRM Oportunidades ---
+        $probCol = $this->firstExistingColumn('crm_oportunidades', ['probabilidade_sucesso', 'probabilidade']);
+        $probExpr = $probCol
+            ? "COALESCE(AVG(CASE WHEN status_oportunidade='aberta' THEN {$probCol} ELSE NULL END),0)"
+            : "0";
+
         $oportunidades = $this->fetchObjSafe('crm_oportunidades_resumo', "
             SELECT COUNT(*) AS total,
                    COUNT(CASE WHEN status_oportunidade='aberta'  THEN 1 END) AS abertas,
                    COUNT(CASE WHEN status_oportunidade='ganha'   THEN 1 END) AS ganhas,
                    COUNT(CASE WHEN status_oportunidade='perdida' THEN 1 END) AS perdidas,
-                   COALESCE(SUM(CASE WHEN status_oportunidade='aberta' THEN valor_estimado ELSE 0 END),0) AS pipeline_valor,
-                   COALESCE(SUM(CASE WHEN status_oportunidade='ganha'  THEN valor_estimado ELSE 0 END),0) AS ganho_valor,
-                   COALESCE(AVG(CASE WHEN status_oportunidade='aberta' THEN probabilidade  ELSE NULL END),0) AS prob_media
+                    COALESCE(SUM(CASE WHEN status_oportunidade='aberta' THEN valor_estimado ELSE 0 END),0) AS pipeline_valor,
+                    COALESCE(SUM(CASE WHEN status_oportunidade='ganha'  THEN valor_estimado ELSE 0 END),0) AS ganho_valor,
+                    {$probExpr} AS prob_media
             FROM crm_oportunidades WHERE usuario_id=:uid
         ", [':uid'=>$uid], (object)[
             'total' => 0,
