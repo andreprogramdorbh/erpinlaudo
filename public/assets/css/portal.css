@@ -700,6 +700,11 @@ body { font-family: 'Inter', sans-serif; color: var(--portal-text); }
     gap: .625rem;
     flex-wrap: wrap;
 }
+.portal-conta-attachments {
+    border-top: 1px solid var(--portal-border);
+    padding-top: .75rem;
+    margin-top: .75rem;
+}
 
 .portal-overdue-tag {
     display: inline-block;

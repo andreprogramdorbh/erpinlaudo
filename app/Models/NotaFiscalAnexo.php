@@ -12,6 +12,25 @@ class NotaFiscalAnexo extends Model
 {
     protected string $table = 'notas_fiscais_anexos';
 
+    public function __construct()
+    {
+        parent::__construct();
+        // Garante que a tabela existe ao instanciar o model
+        $this->ensureTableExists();
+    }
+
+    /**
+     * Verifica se a tabela existe e cria se necessário.
+     */
+    private function ensureTableExists(): void
+    {
+        try {
+            $this->pdo->query("SELECT 1 FROM {$this->table} LIMIT 1");
+        } catch (\PDOException $e) {
+            $this->createTable();
+        }
+    }
+
     /**
      * Busca um anexo pelo ID.
      */
