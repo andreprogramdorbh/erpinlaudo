@@ -4,15 +4,78 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
+use App\Core\Logger;
 use App\Core\View;
 
 class DashboardController extends Controller
 {
     private \PDO $pdo;
+    private Logger $logger;
 
     public function __construct()
     {
         $this->pdo = Database::getInstance();
+        $this->logger = new Logger();
+    }
+
+    private function isMissingTable(\PDOException $e): bool
+    {
+        $code = (string) $e->getCode();
+        if ($code === '42S02') {
+            return true;
+        }
+        $msg = $e->getMessage();
+        return (strpos($msg, 'Base table or view not found') !== false) || (strpos($msg, "doesn't exist") !== false);
+    }
+
+    private function fetchObjSafe(string $label, string $sql, array $params, object $default): object
+    {
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetch(\PDO::FETCH_OBJ) ?: $default;
+        } catch (\PDOException $e) {
+            if ($this->isMissingTable($e)) {
+                $this->logger->warning('Dashboard: tabela ausente (ignorando)', [
+                    'label' => $label,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->logger->auth('Dashboard: tabela ausente', [
+                    'label' => $label,
+                ]);
+                return $default;
+            }
+            $this->logger->error('Dashboard: erro SQL', [
+                'label' => $label,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    private function fetchAllSafe(string $label, string $sql, array $params): array
+    {
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_OBJ) ?: [];
+        } catch (\PDOException $e) {
+            if ($this->isMissingTable($e)) {
+                $this->logger->warning('Dashboard: tabela ausente (ignorando)', [
+                    'label' => $label,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->logger->auth('Dashboard: tabela ausente', [
+                    'label' => $label,
+                ]);
+                return [];
+            }
+            $this->logger->error('Dashboard: erro SQL', [
+                'label' => $label,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
     }
 
     public function index(): void
@@ -24,7 +87,7 @@ class DashboardController extends Controller
         $mesPassado = date('Y-m', strtotime('-1 month'));
 
         // --- Contas a Receber ---
-        $stmt = $this->pdo->prepare("
+        $receber = $this->fetchObjSafe('contas_receber_resumo', "
             SELECT
                 COALESCE(SUM(CASE WHEN status IN ('pendente','aberta') THEN valor ELSE 0 END),0) AS total_aberto,
                 COALESCE(SUM(CASE WHEN status = 'recebida' THEN valor ELSE 0 END),0)             AS total_recebido,
@@ -33,12 +96,17 @@ class DashboardController extends Controller
                 COUNT(CASE WHEN status = 'recebida' THEN 1 END)                                  AS qtd_recebido,
                 COUNT(CASE WHEN status IN ('pendente','aberta') AND data_vencimento < :hoje2 THEN 1 END) AS qtd_vencido
             FROM contas_receber WHERE usuario_id = :uid
-        ");
-        $stmt->execute([':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
-        $receber = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje], (object)[
+            'total_aberto' => 0,
+            'total_recebido' => 0,
+            'total_vencido' => 0,
+            'qtd_aberto' => 0,
+            'qtd_recebido' => 0,
+            'qtd_vencido' => 0,
+        ]);
 
         // --- Contas a Pagar ---
-        $stmt = $this->pdo->prepare("
+        $pagar = $this->fetchObjSafe('contas_pagar_resumo', "
             SELECT
                 COALESCE(SUM(CASE WHEN status = 'aberta' THEN valor ELSE 0 END),0) AS total_aberto,
                 COALESCE(SUM(CASE WHEN status = 'paga'   THEN valor ELSE 0 END),0) AS total_pago,
@@ -46,12 +114,16 @@ class DashboardController extends Controller
                 COUNT(CASE WHEN status = 'aberta' THEN 1 END)                      AS qtd_aberto,
                 COUNT(CASE WHEN status = 'aberta' AND data_vencimento < :hoje2 THEN 1 END) AS qtd_vencido
             FROM contas_pagar WHERE usuario_id = :uid
-        ");
-        $stmt->execute([':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
-        $pagar = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje], (object)[
+            'total_aberto' => 0,
+            'total_pago' => 0,
+            'total_vencido' => 0,
+            'qtd_aberto' => 0,
+            'qtd_vencido' => 0,
+        ]);
 
         // --- Resultado do mes ---
-        $stmt = $this->pdo->prepare("
+        $resultado = $this->fetchObjSafe('resultado_mes', "
             SELECT
                 COALESCE(SUM(CASE WHEN tipo='receber' AND DATE_FORMAT(data_ref,'%Y-%m')=:mes  THEN valor ELSE 0 END),0) AS recebido_mes,
                 COALESCE(SUM(CASE WHEN tipo='pagar'   AND DATE_FORMAT(data_ref,'%Y-%m')=:mes2 THEN valor ELSE 0 END),0) AS pago_mes
@@ -60,12 +132,13 @@ class DashboardController extends Controller
                 UNION ALL
                 SELECT valor,'pagar'   AS tipo, data_pagamento   AS data_ref FROM contas_pagar   WHERE usuario_id=:uid2
             ) t
-        ");
-        $stmt->execute([':uid'=>$uid,':uid2'=>$uid,':mes'=>$mesAtual,':mes2'=>$mesAtual]);
-        $resultado = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':uid2'=>$uid,':mes'=>$mesAtual,':mes2'=>$mesAtual], (object)[
+            'recebido_mes' => 0,
+            'pago_mes' => 0,
+        ]);
 
         // --- Evolucao mensal 12 meses ---
-        $stmt = $this->pdo->prepare("
+        $evolucaoMensal = $this->fetchAllSafe('evolucao_mensal', "
             SELECT DATE_FORMAT(data_vencimento,'%Y-%m') AS mes,
                    COALESCE(SUM(CASE WHEN tipo='receber' THEN valor ELSE 0 END),0) AS receber,
                    COALESCE(SUM(CASE WHEN tipo='pagar'   THEN valor ELSE 0 END),0) AS pagar
@@ -75,12 +148,10 @@ class DashboardController extends Controller
                 SELECT valor,data_vencimento,'pagar'   AS tipo FROM contas_pagar   WHERE usuario_id=:uid2 AND data_vencimento>=DATE_SUB(CURDATE(),INTERVAL 12 MONTH)
             ) t
             GROUP BY mes ORDER BY mes ASC
-        ");
-        $stmt->execute([':uid'=>$uid,':uid2'=>$uid]);
-        $evolucaoMensal = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':uid2'=>$uid]);
 
         // --- Notas Fiscais ---
-        $stmt = $this->pdo->prepare("
+        $nfs = $this->fetchObjSafe('notas_fiscais_resumo', "
             SELECT COUNT(*) AS total_nfs,
                    COALESCE(SUM(valor_total),0) AS valor_total,
                    COUNT(CASE WHEN DATE_FORMAT(data_emissao,'%Y-%m')=:mes THEN 1 END) AS nfs_mes,
@@ -88,22 +159,29 @@ class DashboardController extends Controller
                    COUNT(CASE WHEN status='emitida'   THEN 1 END) AS emitidas,
                    COUNT(CASE WHEN status='cancelada' THEN 1 END) AS canceladas
             FROM notas_fiscais WHERE usuario_id=:uid
-        ");
-        $stmt->execute([':uid'=>$uid,':mes'=>$mesAtual,':mes2'=>$mesAtual]);
-        $nfs = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':mes'=>$mesAtual,':mes2'=>$mesAtual], (object)[
+            'total_nfs' => 0,
+            'valor_total' => 0,
+            'nfs_mes' => 0,
+            'valor_mes' => 0,
+            'emitidas' => 0,
+            'canceladas' => 0,
+        ]);
 
         // --- Clientes ---
-        $stmt = $this->pdo->prepare("
+        $clientes = $this->fetchObjSafe('clientes_resumo', "
             SELECT COUNT(*) AS total,
                    COUNT(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=:mes        THEN 1 END) AS novos_mes,
                    COUNT(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=:mes_passado THEN 1 END) AS novos_mes_passado
             FROM clientes WHERE usuario_id=:uid
-        ");
-        $stmt->execute([':uid'=>$uid,':mes'=>$mesAtual,':mes_passado'=>$mesPassado]);
-        $clientes = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':mes'=>$mesAtual,':mes_passado'=>$mesPassado], (object)[
+            'total' => 0,
+            'novos_mes' => 0,
+            'novos_mes_passado' => 0,
+        ]);
 
         // --- CRM Leads ---
-        $stmt = $this->pdo->prepare("
+        $leads = $this->fetchObjSafe('crm_leads_resumo', "
             SELECT COUNT(*) AS total,
                    COUNT(CASE WHEN status_lead='novo'         THEN 1 END) AS novos,
                    COUNT(CASE WHEN status_lead='qualificado'  THEN 1 END) AS qualificados,
@@ -112,12 +190,18 @@ class DashboardController extends Controller
                    COUNT(CASE WHEN status_lead='perdido'      THEN 1 END) AS perdidos,
                    COUNT(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=:mes THEN 1 END) AS novos_mes
             FROM crm_leads WHERE usuario_id=:uid
-        ");
-        $stmt->execute([':uid'=>$uid,':mes'=>$mesAtual]);
-        $leads = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':mes'=>$mesAtual], (object)[
+            'total' => 0,
+            'novos' => 0,
+            'qualificados' => 0,
+            'oportunidades' => 0,
+            'convertidos' => 0,
+            'perdidos' => 0,
+            'novos_mes' => 0,
+        ]);
 
         // --- CRM Oportunidades ---
-        $stmt = $this->pdo->prepare("
+        $oportunidades = $this->fetchObjSafe('crm_oportunidades_resumo', "
             SELECT COUNT(*) AS total,
                    COUNT(CASE WHEN status_oportunidade='aberta'  THEN 1 END) AS abertas,
                    COUNT(CASE WHEN status_oportunidade='ganha'   THEN 1 END) AS ganhas,
@@ -126,23 +210,27 @@ class DashboardController extends Controller
                    COALESCE(SUM(CASE WHEN status_oportunidade='ganha'  THEN valor_estimado ELSE 0 END),0) AS ganho_valor,
                    COALESCE(AVG(CASE WHEN status_oportunidade='aberta' THEN probabilidade  ELSE NULL END),0) AS prob_media
             FROM crm_oportunidades WHERE usuario_id=:uid
-        ");
-        $stmt->execute([':uid'=>$uid]);
-        $oportunidades = $stmt->fetch(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid], (object)[
+            'total' => 0,
+            'abertas' => 0,
+            'ganhas' => 0,
+            'perdidas' => 0,
+            'pipeline_valor' => 0,
+            'ganho_valor' => 0,
+            'prob_media' => 0,
+        ]);
 
         // --- Funil por etapa ---
-        $stmt = $this->pdo->prepare("
+        $funilEtapas = $this->fetchAllSafe('crm_funil_etapas', "
             SELECT etapa_funil, COUNT(*) AS qtd, COALESCE(SUM(valor_estimado),0) AS valor
             FROM crm_oportunidades
             WHERE usuario_id=:uid AND status_oportunidade='aberta'
             GROUP BY etapa_funil
             ORDER BY FIELD(etapa_funil,'qualificacao','proposta','negociacao','fechamento')
-        ");
-        $stmt->execute([':uid'=>$uid]);
-        $funilEtapas = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid]);
 
         // --- Proximos vencimentos (7 dias) ---
-        $stmt = $this->pdo->prepare("
+        $proximosVencimentos = $this->fetchAllSafe('proximos_vencimentos', "
             SELECT cr.descricao, cr.valor, cr.data_vencimento, cr.status,
                    c.razao_social AS cliente_nome
             FROM contas_receber cr
@@ -151,12 +239,10 @@ class DashboardController extends Controller
               AND cr.status IN ('pendente','aberta')
               AND cr.data_vencimento BETWEEN :hoje AND DATE_ADD(:hoje2,INTERVAL 7 DAY)
             ORDER BY cr.data_vencimento ASC LIMIT 8
-        ");
-        $stmt->execute([':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
-        $proximosVencimentos = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
 
         // --- Contas vencidas ---
-        $stmt = $this->pdo->prepare("
+        $contasVencidas = $this->fetchAllSafe('contas_vencidas', "
             SELECT cr.descricao, cr.valor, cr.data_vencimento,
                    c.razao_social AS cliente_nome,
                    DATEDIFF(:hoje,cr.data_vencimento) AS dias_atraso
@@ -166,12 +252,10 @@ class DashboardController extends Controller
               AND cr.status IN ('pendente','aberta')
               AND cr.data_vencimento < :hoje2
             ORDER BY cr.data_vencimento ASC LIMIT 6
-        ");
-        $stmt->execute([':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
-        $contasVencidas = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
 
         // --- Ultimas interacoes CRM ---
-        $stmt = $this->pdo->prepare("
+        $ultimasInteracoes = $this->fetchAllSafe('crm_ultimas_interacoes', "
             SELECT i.tipo_interacao, i.descricao, i.created_at,
                    COALESCE(l.nome_contato, o.titulo) AS nome_referencia,
                    IF(i.lead_id IS NOT NULL,'lead','oportunidade') AS origem,
@@ -181,33 +265,27 @@ class DashboardController extends Controller
             LEFT JOIN crm_oportunidades o ON o.id=i.oportunidade_id
             WHERE i.usuario_id=:uid
             ORDER BY i.created_at DESC LIMIT 6
-        ");
-        $stmt->execute([':uid'=>$uid]);
-        $ultimasInteracoes = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid]);
 
         // --- Faturamento mensal 6 meses ---
-        $stmt = $this->pdo->prepare("
+        $faturamentoMensal = $this->fetchAllSafe('notas_fiscais_faturamento_mensal', "
             SELECT DATE_FORMAT(data_emissao,'%Y-%m') AS mes, COUNT(*) AS qtd,
                    COALESCE(SUM(valor_total),0) AS valor
             FROM notas_fiscais
             WHERE usuario_id=:uid AND data_emissao>=DATE_SUB(CURDATE(),INTERVAL 6 MONTH)
               AND status IN ('emitida','importada')
             GROUP BY mes ORDER BY mes ASC
-        ");
-        $stmt->execute([':uid'=>$uid]);
-        $faturamentoMensal = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid]);
 
         // --- Ultimas NFs ---
-        $stmt = $this->pdo->prepare("
+        $ultimasNfs = $this->fetchAllSafe('notas_fiscais_ultimas', "
             SELECT nf.numero_nf, nf.valor_total, nf.data_emissao, nf.status,
                    c.razao_social AS cliente_nome
             FROM notas_fiscais nf
             LEFT JOIN clientes c ON c.id=nf.cliente_id
             WHERE nf.usuario_id=:uid
             ORDER BY nf.data_emissao DESC, nf.id DESC LIMIT 5
-        ");
-        $stmt->execute([':uid'=>$uid]);
-        $ultimasNfs = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        ", [':uid'=>$uid]);
 
         View::render('dashboard/index', [
             'title'               => 'Dashboard',

@@ -5,11 +5,20 @@ namespace App\Core;
 class Logger
 {
     private string $logDir = __DIR__ . '/../../storage/logs';
+    private array $fileMap = [
+        'auth' => 'auth.txt',
+    ];
 
     public function __construct()
     {
         if (!is_dir($this->logDir)) {
             mkdir($this->logDir, 0755, true);
+        }
+        foreach ($this->fileMap as $fileName) {
+            $path = $this->logDir . "/" . $fileName;
+            if (!file_exists($path)) {
+                file_put_contents($path, "");
+            }
         }
     }
 
@@ -30,7 +39,7 @@ class Logger
 
     public function auth(string $message, array $context = []): void
     {
-        $this->log("info", $message, $context);
+        $this->log("auth", $message, $context);
     }
 
     /**
@@ -53,7 +62,8 @@ class Logger
     private function log(string $type, string $message, array $context = []): void
     {
         $timestamp = date("Y-m-d H:i:s");
-        $logFile = $this->logDir . "/" . $type . ".log";
+        $fileName = $this->fileMap[$type] ?? ($type . ".log");
+        $logFile = $this->logDir . "/" . $fileName;
 
         $userId = $_SESSION["user_id"] ?? "-";
         $ipAddress = $_SERVER["REMOTE_ADDR"] ?? "-";
@@ -70,6 +80,6 @@ class Logger
         $logMessage .= " | User-Agent: {$userAgent}";
         $logMessage .= "\n";
 
-        file_put_contents($logFile, $logMessage, FILE_APPEND);
+        file_put_contents($logFile, $logMessage, FILE_APPEND | LOCK_EX);
     }
 }

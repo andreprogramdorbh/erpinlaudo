@@ -26,6 +26,15 @@ $requiredEnvVars = ['DB_HOST', 'DB_DATABASE', 'DB_USERNAME'];
 
 foreach ($requiredEnvVars as $var) {
     if (empty($_ENV[$var] ?? null)) {
+        $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+        if ($uri !== '' && (strpos($uri, '/login') === 0 || strpos($uri, '/dashboard') === 0 || strpos($uri, '/logout') === 0 || strpos($uri, '/reset-password') === 0 || strpos($uri, '/forgot-password') === 0)) {
+            $logger->auth('Exception em rota de autenticação', [
+                'uri'   => $uri,
+                'error' => $exception->getMessage(),
+                'file'  => $exception->getFile(),
+                'line'  => $exception->getLine(),
+            ]);
+        }
         http_response_code(500);
         echo "❌ Erro de Configuração: Variável de ambiente '{$var}' não está configurada no arquivo .env\n";
         echo "Por favor, configure o arquivo .env com as credenciais corretas do banco de dados.\n";
