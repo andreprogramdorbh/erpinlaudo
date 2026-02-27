@@ -50,6 +50,8 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
 
     // Faturamento
     Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");
+    Router::post("/portal/faturamento/emitir-nfs/{id}", "PortalFaturamentoController@emitirNfs");
+    Router::get("/portal/faturamento/nota-fiscal/pdf/{id}", "PortalFaturamentoController@downloadPdf");
     Router::get("/portal/faturamento/nota-fiscal/xml/{id}", "PortalFaturamentoController@downloadXml");
     Router::get("/portal/faturamento/nota-fiscal/anexo/{id}", "PortalFaturamentoController@downloadAnexo");
 });

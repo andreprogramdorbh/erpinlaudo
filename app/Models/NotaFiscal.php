@@ -52,41 +52,133 @@ class NotaFiscal extends Model
     /**
      * Busca notas fiscais de um cliente específico (usado no Portal do Cliente).
      * Retorna apenas notas emitidas e importadas (visíveis ao cliente).
+     * Suporta filtros: numero_nf, data_inicio, data_fim, status, pesquisa.
      */
-    public function findByClienteIdAndTenantId(int $clienteId, int $tenantId): array
+    public function findByClienteIdAndTenantId(int $clienteId, int $tenantId, array $filtros = []): array
     {
+        $where  = [
+            "nf.cliente_id = :cliente_id",
+            "nf.usuario_id = :tenant_id",
+            "nf.status IN ('emitida', 'importada', 'emitida_asaas')",
+        ];
+        $params = [':cliente_id' => $clienteId, ':tenant_id' => $tenantId];
+
+        // Filtro por número da NF
+        $numeroNf = trim($filtros['numero_nf'] ?? '');
+        if ($numeroNf !== '') {
+            $where[] = 'nf.numero_nf LIKE :numero_nf';
+            $params[':numero_nf'] = '%' . $numeroNf . '%';
+        }
+
+        // Filtro por data início
+        $dataInicio = trim($filtros['data_inicio'] ?? '');
+        if ($dataInicio !== '') {
+            $where[] = 'nf.data_emissao >= :data_inicio';
+            $params[':data_inicio'] = $dataInicio;
+        }
+
+        // Filtro por data fim
+        $dataFim = trim($filtros['data_fim'] ?? '');
+        if ($dataFim !== '') {
+            $where[] = 'nf.data_emissao <= :data_fim';
+            $params[':data_fim'] = $dataFim;
+        }
+
+        // Filtro por status específico (ex: emitida, importada, emitida_asaas)
+        $statusFiltro = trim($filtros['status'] ?? '');
+        if ($statusFiltro !== '') {
+            // Substitui o IN genérico por um status específico
+            $where = array_filter($where, fn($w) => !str_contains($w, 'status IN'));
+            $where[] = 'nf.status = :status';
+            $params[':status'] = $statusFiltro;
+        }
+
+        // Filtro por pesquisa geral
+        $pesquisa = trim($filtros['pesquisa'] ?? '');
+        if ($pesquisa !== '') {
+            $where[] = '(nf.numero_nf LIKE :pesquisa OR nf.serie LIKE :pesquisa)';
+            $params[':pesquisa'] = '%' . $pesquisa . '%';
+        }
+
         $sql = "SELECT nf.*
                 FROM {$this->table} nf
-                WHERE nf.cliente_id = :cliente_id
-                  AND nf.usuario_id = :tenant_id
-                  AND nf.status IN ('emitida', 'importada')
+                WHERE " . implode(' AND ', $where) . "
                 ORDER BY nf.data_emissao DESC, nf.id DESC";
+
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':cliente_id' => $clienteId, ':tenant_id' => $tenantId]);
+        $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Busca uma NF pelo asaas_invoice_id e tenant.
+     */
+    public function findByAsaasInvoiceId(string $invoiceId, int $tenantId): object|false
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table}
+             WHERE asaas_invoice_id = :invoice_id AND usuario_id = :tenant_id
+             LIMIT 1"
+        );
+        $stmt->execute([':invoice_id' => $invoiceId, ':tenant_id' => $tenantId]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Busca uma NF pelo conta_receber_id e tenant.
+     */
+    public function findByContaReceberId(int $contaReceberId, int $tenantId): object|false
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table}
+             WHERE conta_receber_id = :cr_id AND usuario_id = :tenant_id
+             LIMIT 1"
+        );
+        $stmt->execute([':cr_id' => $contaReceberId, ':tenant_id' => $tenantId]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
     }
 
     public function create(array $data): string|false
     {
         $sql = "INSERT INTO {$this->table}
-                (usuario_id, cliente_id, numero_nf, serie, valor_total, data_emissao, status, xml_path)
+                (usuario_id, cliente_id, numero_nf, serie, valor_total, data_emissao,
+                 status, xml_path, asaas_invoice_id, origem_emissao, conta_receber_id,
+                 asaas_pdf_url, asaas_status, servico_descricao, servico_codigo,
+                 servico_id_asaas, observacoes_nf)
                 VALUES
-                (:usuario_id, :cliente_id, :numero_nf, :serie, :valor_total, :data_emissao, :status, :xml_path)";
+                (:usuario_id, :cliente_id, :numero_nf, :serie, :valor_total, :data_emissao,
+                 :status, :xml_path, :asaas_invoice_id, :origem_emissao, :conta_receber_id,
+                 :asaas_pdf_url, :asaas_status, :servico_descricao, :servico_codigo,
+                 :servico_id_asaas, :observacoes_nf)";
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':usuario_id', (int)$data['usuario_id'], PDO::PARAM_INT);
-        $stmt->bindValue(':cliente_id', (int)$data['cliente_id'], PDO::PARAM_INT);
-        $stmt->bindValue(':numero_nf', trim((string)$data['numero_nf']));
-        $stmt->bindValue(':serie', trim((string)$data['serie']));
-        $stmt->bindValue(':valor_total', $data['valor_total']);
-        $stmt->bindValue(':data_emissao', $data['data_emissao']);
-        $stmt->bindValue(':status', $data['status'] ?? 'rascunho');
+        $stmt->bindValue(':usuario_id',       (int)$data['usuario_id'], PDO::PARAM_INT);
+        $stmt->bindValue(':cliente_id',       (int)$data['cliente_id'], PDO::PARAM_INT);
+        $stmt->bindValue(':numero_nf',        trim((string)($data['numero_nf'] ?? '')));
+        $stmt->bindValue(':serie',            trim((string)($data['serie'] ?? '')));
+        $stmt->bindValue(':valor_total',      $data['valor_total']);
+        $stmt->bindValue(':data_emissao',     $data['data_emissao']);
+        $stmt->bindValue(':status',           $data['status'] ?? 'rascunho');
 
-        $xmlPath = $data['xml_path'] ?? null;
-        if ($xmlPath === '' || $xmlPath === null) {
-            $stmt->bindValue(':xml_path', null, PDO::PARAM_NULL);
+        // Campos nullable
+        $nullable = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_status',
+                     'servico_descricao', 'servico_codigo', 'servico_id_asaas', 'observacoes_nf'];
+        foreach ($nullable as $f) {
+            $v = $data[$f] ?? null;
+            if ($v === '' || $v === null) {
+                $stmt->bindValue(':' . $f, null, PDO::PARAM_NULL);
+            } else {
+                $stmt->bindValue(':' . $f, $v);
+            }
+        }
+
+        $stmt->bindValue(':origem_emissao',   $data['origem_emissao'] ?? 'manual');
+
+        $crId = $data['conta_receber_id'] ?? null;
+        if ($crId === null || $crId === '') {
+            $stmt->bindValue(':conta_receber_id', null, PDO::PARAM_NULL);
         } else {
-            $stmt->bindValue(':xml_path', $xmlPath);
+            $stmt->bindValue(':conta_receber_id', (int)$crId, PDO::PARAM_INT);
         }
 
         if ($stmt->execute()) {
@@ -106,6 +198,15 @@ class NotaFiscal extends Model
             'data_emissao',
             'status',
             'xml_path',
+            'asaas_invoice_id',
+            'origem_emissao',
+            'conta_receber_id',
+            'asaas_pdf_url',
+            'asaas_status',
+            'servico_descricao',
+            'servico_codigo',
+            'servico_id_asaas',
+            'observacoes_nf',
         ];
 
         $updateFields = [];
@@ -117,16 +218,15 @@ class NotaFiscal extends Model
             }
 
             $updateFields[] = "{$field} = :{$field}";
-
             $value = $data[$field];
-            if ($field === 'xml_path') {
-                if ($value === '' || $value === null) {
-                    $params[":{$field}"] = null;
-                    continue;
-                }
-            }
 
-            if ($field === 'cliente_id') {
+            $nullableFields = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_status',
+                               'servico_descricao', 'servico_codigo', 'servico_id_asaas',
+                               'observacoes_nf', 'conta_receber_id'];
+
+            if (in_array($field, $nullableFields, true) && ($value === '' || $value === null)) {
+                $params[":{$field}"] = null;
+            } elseif ($field === 'cliente_id' || $field === 'conta_receber_id') {
                 $params[":{$field}"] = (int)$value;
             } else {
                 $params[":{$field}"] = $value;

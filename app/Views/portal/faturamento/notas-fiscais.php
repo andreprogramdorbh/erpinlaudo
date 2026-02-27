@@ -1,15 +1,41 @@
+<?php
+$statusMap = [
+    'emitida'       => ['label' => 'Emitida',            'class' => 'portal-badge-success',   'icon' => 'fa-check-circle'],
+    'emitida_asaas' => ['label' => 'Emitida',            'class' => 'portal-badge-success',   'icon' => 'fa-check-circle'],
+    'importada'     => ['label' => 'Emitida Manualmente','class' => 'portal-badge-info',      'icon' => 'fa-user-check'],
+    'cancelada'     => ['label' => 'Cancelada',          'class' => 'portal-badge-danger',    'icon' => 'fa-ban'],
+    'agendada'      => ['label' => 'Agendada',           'class' => 'portal-badge-warning',   'icon' => 'fa-clock'],
+];
+$origemMap = [
+    'asaas'  => ['label' => 'Asaas',  'class' => 'portal-badge-primary',   'icon' => 'fa-bolt'],
+    'manual' => ['label' => 'Manual', 'class' => 'portal-badge-secondary', 'icon' => 'fa-user'],
+    ''       => ['label' => 'Manual', 'class' => 'portal-badge-secondary', 'icon' => 'fa-user'],
+];
+?>
 <div class="portal-page-header">
     <div>
-        <h1 class="portal-page-title"><i class="fa fa-file-alt me-2"></i>Minhas Notas Fiscais</h1>
-        <p class="portal-page-subtitle">Visualize e baixe suas notas fiscais e anexos</p>
+        <h1 class="portal-page-title"><i class="fa fa-file-invoice me-2"></i>Minhas Notas Fiscais</h1>
+        <p class="portal-page-subtitle">Visualize, filtre e baixe suas notas fiscais de servi&ccedil;o</p>
     </div>
 </div>
 
+<?php if (!empty($_GET['success'])): ?>
+    <?php $msgs = [
+        'nf_emitida'    => 'NF-s emitida com sucesso via Asaas! Ela aparecera na lista abaixo.',
+        'nf_ja_emitida' => 'Ja existe uma NF-s emitida para esta conta.',
+    ]; ?>
+    <div class="portal-alert portal-alert-success mb-3">
+        <i class="fa fa-check-circle me-2"></i>
+        <?php echo htmlspecialchars($msgs[$_GET['success']] ?? 'Operacao realizada com sucesso.'); ?>
+    </div>
+<?php endif; ?>
+
 <?php if (!empty($_GET['error'])): ?>
     <?php $erros = [
-        'xml_indisponivel'       => 'O arquivo XML desta nota não está disponível.',
-        'arquivo_nao_encontrado' => 'Arquivo não encontrado no servidor.',
-        'acesso_negado'          => 'Você não tem permissão para acessar este arquivo.',
+        'xml_indisponivel'       => 'O arquivo XML desta nota nao esta disponivel.',
+        'pdf_indisponivel'       => 'O PDF desta nota nao esta disponivel no momento.',
+        'arquivo_nao_encontrado' => 'Arquivo nao encontrado no servidor.',
+        'acesso_negado'          => 'Voce nao tem permissao para acessar este arquivo.',
     ]; ?>
     <div class="portal-alert portal-alert-danger mb-3">
         <i class="fa fa-exclamation-circle me-2"></i>
@@ -17,88 +43,155 @@
     </div>
 <?php endif; ?>
 
+<!-- FILTROS -->
+<div class="portal-filter-card mb-4">
+    <form method="GET" action="/portal/faturamento/notas-fiscais" class="portal-filter-form">
+        <div class="portal-filter-row">
+            <div class="portal-filter-field">
+                <label class="portal-filter-label"><i class="fa fa-search me-1"></i>Pesquisar</label>
+                <input type="text" name="pesquisa" class="portal-filter-input"
+                       placeholder="Numero da NF, serie..."
+                       value="<?php echo htmlspecialchars($filtros['pesquisa'] ?? ''); ?>">
+            </div>
+            <div class="portal-filter-field">
+                <label class="portal-filter-label"><i class="fa fa-calendar me-1"></i>Data Inicio</label>
+                <input type="date" name="data_inicio" class="portal-filter-input"
+                       value="<?php echo htmlspecialchars($filtros['data_inicio'] ?? ''); ?>">
+            </div>
+            <div class="portal-filter-field">
+                <label class="portal-filter-label"><i class="fa fa-calendar me-1"></i>Data Fim</label>
+                <input type="date" name="data_fim" class="portal-filter-input"
+                       value="<?php echo htmlspecialchars($filtros['data_fim'] ?? ''); ?>">
+            </div>
+            <div class="portal-filter-field">
+                <label class="portal-filter-label"><i class="fa fa-tag me-1"></i>Status</label>
+                <select name="status" class="portal-filter-input">
+                    <option value="">Todos</option>
+                    <option value="emitida"       <?php echo ($filtros['status'] ?? '') === 'emitida'       ? 'selected' : ''; ?>>Emitida</option>
+                    <option value="emitida_asaas" <?php echo ($filtros['status'] ?? '') === 'emitida_asaas' ? 'selected' : ''; ?>>Emitida (Asaas)</option>
+                    <option value="importada"     <?php echo ($filtros['status'] ?? '') === 'importada'     ? 'selected' : ''; ?>>Emitida Manualmente</option>
+                    <option value="agendada"      <?php echo ($filtros['status'] ?? '') === 'agendada'      ? 'selected' : ''; ?>>Agendada</option>
+                    <option value="cancelada"     <?php echo ($filtros['status'] ?? '') === 'cancelada'     ? 'selected' : ''; ?>>Cancelada</option>
+                </select>
+            </div>
+            <div class="portal-filter-actions">
+                <button type="submit" class="portal-btn portal-btn-primary portal-btn-sm">
+                    <i class="fa fa-search me-1"></i> Filtrar
+                </button>
+                <a href="/portal/faturamento/notas-fiscais" class="portal-btn portal-btn-outline portal-btn-sm">
+                    <i class="fa fa-times me-1"></i> Limpar
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+
 <?php if (empty($notas)): ?>
     <div class="portal-empty-state">
-        <i class="fa fa-file-alt portal-empty-icon"></i>
-        <h3>Nenhuma nota fiscal encontrada</h3>
-        <p>Não há notas fiscais emitidas para sua conta ainda.</p>
+        <i class="fa fa-file-invoice fa-3x text-muted mb-3 d-block"></i>
+        <h3 class="h5 text-muted">Nenhuma nota fiscal encontrada</h3>
+        <p class="text-muted small">
+            <?php if (!empty(array_filter($filtros ?? []))): ?>
+                Nenhuma NF corresponde aos filtros aplicados.
+                <a href="/portal/faturamento/notas-fiscais">Limpar filtros</a>
+            <?php else: ?>
+                Nao ha notas fiscais emitidas para sua conta ainda.
+            <?php endif; ?>
+        </p>
     </div>
 <?php else: ?>
 
-    <!-- ============================================================
-         TABELA — Desktop (md+)
-         ============================================================ -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <span class="text-muted small">
+            <i class="fa fa-list me-1"></i>
+            <?php echo count($notas); ?> nota<?php echo count($notas) !== 1 ? 's' : ''; ?> encontrada<?php echo count($notas) !== 1 ? 's' : ''; ?>
+        </span>
+        <?php if (!empty(array_filter($filtros ?? []))): ?>
+            <a href="/portal/faturamento/notas-fiscais" class="portal-btn portal-btn-outline portal-btn-sm">
+                <i class="fa fa-times me-1"></i> Limpar filtros
+            </a>
+        <?php endif; ?>
+    </div>
+
+    <!-- TABELA Desktop -->
     <div class="portal-table-wrapper d-none d-md-block">
         <table class="portal-table">
             <thead>
                 <tr>
-                    <th>Nº NF</th>
-                    <th>Série</th>
-                    <th>Data Emissão</th>
+                    <th>N&ordm; NF</th>
+                    <th>S&eacute;rie</th>
+                    <th>Data Emiss&atilde;o</th>
                     <th>Valor Total</th>
+                    <th>Origem</th>
                     <th>Status</th>
-                    <th>Ações / Downloads</th>
+                    <th>Downloads</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($notas as $nota): ?>
-                <?php
-                    $temXml    = !empty($nota->xml_path);
-                    $temAnexos = !empty($nota->anexos);
-                    $temAlgo   = $temXml || $temAnexos;
+                <?php foreach ($notas as $nota):
+                    $statusInfo  = $statusMap[$nota->status] ?? ['label' => ucfirst($nota->status), 'class' => 'portal-badge-secondary', 'icon' => 'fa-file'];
+                    $origem      = strtolower(trim($nota->origem_emissao ?? ''));
+                    if ($nota->status === 'importada') { $origem = 'manual'; }
+                    $origemInfo  = $origemMap[$origem] ?? $origemMap['manual'];
+                    $temXml      = !empty($nota->xml_path);
+                    $temPdfAsaas = !empty($nota->asaas_pdf_url);
+                    $temAnexos   = !empty($nota->anexos);
                 ?>
                 <tr>
-                    <td><strong><?php echo htmlspecialchars($nota->numero_nf); ?></strong></td>
-                    <td><?php echo htmlspecialchars($nota->serie); ?></td>
-                    <td><?php echo date('d/m/Y', strtotime($nota->data_emissao)); ?></td>
-                    <td>R$ <?php echo number_format((float) $nota->valor_total, 2, ',', '.'); ?></td>
+                    <td><strong><?php echo htmlspecialchars($nota->numero_nf ?: '&mdash;'); ?></strong></td>
+                    <td><?php echo htmlspecialchars($nota->serie ?: '&mdash;'); ?></td>
+                    <td><?php echo !empty($nota->data_emissao) ? date('d/m/Y', strtotime($nota->data_emissao)) : '&mdash;'; ?></td>
+                    <td class="fw-semibold">R$ <?php echo number_format((float) $nota->valor_total, 2, ',', '.'); ?></td>
                     <td>
-                        <?php
-                        $statusClass = match($nota->status) {
-                            'emitida'   => 'portal-badge-success',
-                            'importada' => 'portal-badge-info',
-                            default     => 'portal-badge-secondary',
-                        };
-                        ?>
-                        <span class="portal-badge <?php echo $statusClass; ?>">
-                            <?php echo ucfirst($nota->status); ?>
+                        <span class="portal-badge <?php echo $origemInfo['class']; ?>">
+                            <i class="fa <?php echo $origemInfo['icon']; ?> me-1"></i>
+                            <?php echo $origemInfo['label']; ?>
                         </span>
                     </td>
                     <td>
-                        <?php if ($temAlgo): ?>
-                            <div class="d-flex flex-wrap gap-1 align-items-center">
-
-                                <?php if ($temXml): ?>
-                                    <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
+                        <span class="portal-badge <?php echo $statusInfo['class']; ?>">
+                            <i class="fa <?php echo $statusInfo['icon']; ?> me-1"></i>
+                            <?php echo $statusInfo['label']; ?>
+                        </span>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-wrap gap-1 align-items-center">
+                            <?php if ($temPdfAsaas): ?>
+                                <a href="/portal/faturamento/nota-fiscal/pdf/<?php echo (int) $nota->id; ?>"
+                                   class="portal-btn portal-btn-danger portal-btn-sm"
+                                   title="Baixar PDF da NF-s" target="_blank">
+                                    <i class="fa fa-file-pdf me-1"></i> PDF
+                                </a>
+                            <?php endif; ?>
+                            <?php if ($temXml): ?>
+                                <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
+                                   class="portal-btn portal-btn-info portal-btn-sm"
+                                   title="Baixar XML da NF-e">
+                                    <i class="fa fa-file-code me-1"></i> XML
+                                </a>
+                            <?php endif; ?>
+                            <?php if ($temAnexos): ?>
+                                <?php foreach ($nota->anexos as $anexo):
+                                    $ext = strtolower(pathinfo($anexo->original_name ?? '', PATHINFO_EXTENSION));
+                                    $iconAnexo = match($ext) {
+                                        'pdf' => 'fa-file-pdf text-danger',
+                                        'xml' => 'fa-file-code text-info',
+                                        'jpg','jpeg','png' => 'fa-file-image text-warning',
+                                        default => 'fa-file text-secondary'
+                                    };
+                                ?>
+                                    <a href="/portal/faturamento/nota-fiscal/anexo/<?php echo (int) $anexo->id; ?>"
                                        class="portal-btn portal-btn-outline portal-btn-sm"
-                                       title="Baixar XML da NF-e">
-                                        <i class="fa fa-file-code me-1"></i> XML
+                                       title="Baixar <?php echo htmlspecialchars($anexo->original_name ?? 'Anexo'); ?>">
+                                        <i class="fa <?php echo $iconAnexo; ?> me-1"></i>
+                                        <?php echo htmlspecialchars(mb_strimwidth($anexo->original_name ?? 'Anexo', 0, 18, '...')); ?>
                                     </a>
-                                <?php endif; ?>
-
-                                <?php if ($temAnexos): ?>
-                                    <?php foreach ($nota->anexos as $anexo): ?>
-                                        <?php
-                                        $mime = $anexo->mime_type ?? '';
-                                        if (str_contains($mime, 'pdf'))        $iconClass = 'fa-file-pdf';
-                                        elseif (str_contains($mime, 'xml'))    $iconClass = 'fa-file-code';
-                                        elseif (str_contains($mime, 'image'))  $iconClass = 'fa-file-image';
-                                        else                                   $iconClass = 'fa-file-download';
-                                        $nomeExibicao = htmlspecialchars($anexo->original_name ?? 'Anexo');
-                                        ?>
-                                        <a href="/portal/faturamento/nota-fiscal/anexo/<?php echo (int) $anexo->id; ?>"
-                                           class="portal-btn portal-btn-outline portal-btn-sm"
-                                           title="Baixar: <?php echo $nomeExibicao; ?>">
-                                            <i class="fa <?php echo $iconClass; ?> me-1"></i>
-                                            <?php echo $nomeExibicao; ?>
-                                        </a>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-
-                            </div>
-                        <?php else: ?>
-                            <span class="text-muted small"><i class="fa fa-minus me-1"></i>Nenhum arquivo</span>
-                        <?php endif; ?>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                            <?php if (!$temPdfAsaas && !$temXml && !$temAnexos): ?>
+                                <span class="text-muted small"><i class="fa fa-clock me-1"></i>Processando</span>
+                            <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -106,90 +199,94 @@
         </table>
     </div>
 
-    <!-- ============================================================
-         CARDS — Mobile (< md)
-         ============================================================ -->
-    <div class="portal-contas-list d-md-none">
-        <?php foreach ($notas as $nota): ?>
-        <?php
-            $temXml    = !empty($nota->xml_path);
-            $temAnexos = !empty($nota->anexos);
-            $temAlgo   = $temXml || $temAnexos;
-            $statusClass = match($nota->status) {
-                'emitida'   => 'portal-badge-success',
-                'importada' => 'portal-badge-info',
-                default     => 'portal-badge-secondary',
-            };
+    <!-- CARDS Mobile -->
+    <div class="d-md-none">
+        <?php foreach ($notas as $nota):
+            $statusInfo  = $statusMap[$nota->status] ?? ['label' => ucfirst($nota->status), 'class' => 'portal-badge-secondary', 'icon' => 'fa-file'];
+            $origem      = strtolower(trim($nota->origem_emissao ?? ''));
+            if ($nota->status === 'importada') { $origem = 'manual'; }
+            $origemInfo  = $origemMap[$origem] ?? $origemMap['manual'];
+            $temXml      = !empty($nota->xml_path);
+            $temPdfAsaas = !empty($nota->asaas_pdf_url);
+            $temAnexos   = !empty($nota->anexos);
         ?>
-        <div class="portal-conta-card">
-
-            <!-- Cabeçalho do card -->
+        <div class="portal-conta-card mb-3">
             <div class="portal-conta-header">
-                <div class="portal-conta-desc">
-                    <strong>NF <?php echo htmlspecialchars($nota->numero_nf); ?></strong>
-                    <span class="text-muted ms-2">Série <?php echo htmlspecialchars($nota->serie); ?></span>
+                <div class="d-flex gap-1 flex-wrap">
+                    <span class="portal-badge <?php echo $statusInfo['class']; ?>">
+                        <i class="fa <?php echo $statusInfo['icon']; ?> me-1"></i><?php echo $statusInfo['label']; ?>
+                    </span>
+                    <span class="portal-badge <?php echo $origemInfo['class']; ?>">
+                        <i class="fa <?php echo $origemInfo['icon']; ?> me-1"></i><?php echo $origemInfo['label']; ?>
+                    </span>
                 </div>
-                <span class="portal-badge <?php echo $statusClass; ?>">
-                    <?php echo ucfirst($nota->status); ?>
+                <span class="text-muted small">
+                    <?php echo !empty($nota->data_emissao) ? date('d/m/Y', strtotime($nota->data_emissao)) : '&mdash;'; ?>
                 </span>
             </div>
-
-            <!-- Detalhes -->
-            <div class="portal-conta-details">
-                <div class="portal-conta-detail">
-                    <span class="portal-detail-label"><i class="fa fa-calendar me-1"></i>Emissão</span>
-                    <span class="portal-detail-value"><?php echo date('d/m/Y', strtotime($nota->data_emissao)); ?></span>
-                </div>
-                <div class="portal-conta-detail">
-                    <span class="portal-detail-label"><i class="fa fa-dollar-sign me-1"></i>Valor</span>
-                    <span class="portal-detail-value fw-semibold">R$ <?php echo number_format((float) $nota->valor_total, 2, ',', '.'); ?></span>
+            <div class="portal-conta-body">
+                <div class="portal-conta-details">
+                    <div class="portal-conta-detail">
+                        <span class="portal-detail-label">N&ordm; NF</span>
+                        <span class="portal-detail-value fw-semibold"><?php echo htmlspecialchars($nota->numero_nf ?: '&mdash;'); ?></span>
+                    </div>
+                    <div class="portal-conta-detail">
+                        <span class="portal-detail-label">S&eacute;rie</span>
+                        <span class="portal-detail-value"><?php echo htmlspecialchars($nota->serie ?: '&mdash;'); ?></span>
+                    </div>
+                    <div class="portal-conta-detail">
+                        <span class="portal-detail-label">Valor</span>
+                        <span class="portal-detail-value fw-bold text-success">R$ <?php echo number_format((float) $nota->valor_total, 2, ',', '.'); ?></span>
+                    </div>
                 </div>
             </div>
-
-            <!-- Arquivos / Ações -->
-            <?php if ($temAlgo): ?>
-            <div class="portal-conta-attachments mt-3 p-2 rounded bg-light border">
-                <span class="d-block small fw-bold text-muted mb-2">
-                    <i class="fa fa-paperclip me-1"></i>Arquivos disponíveis:
-                </span>
-                <div class="d-flex flex-wrap gap-2">
-
-                    <?php if ($temXml): ?>
-                        <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
-                           class="portal-btn portal-btn-outline portal-btn-sm"
-                           title="Baixar XML da NF-e">
-                            <i class="fa fa-file-code me-1"></i> XML
+            <div class="portal-conta-actions mt-2">
+                <?php if ($temPdfAsaas): ?>
+                    <a href="/portal/faturamento/nota-fiscal/pdf/<?php echo (int) $nota->id; ?>"
+                       class="portal-btn portal-btn-danger portal-btn-sm" target="_blank">
+                        <i class="fa fa-file-pdf me-1"></i> PDF
+                    </a>
+                <?php endif; ?>
+                <?php if ($temXml): ?>
+                    <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
+                       class="portal-btn portal-btn-info portal-btn-sm">
+                        <i class="fa fa-file-code me-1"></i> XML
+                    </a>
+                <?php endif; ?>
+                <?php if ($temAnexos): ?>
+                    <?php foreach ($nota->anexos as $anexo): ?>
+                        <a href="/portal/faturamento/nota-fiscal/anexo/<?php echo (int) $anexo->id; ?>"
+                           class="portal-btn portal-btn-outline portal-btn-sm">
+                            <i class="fa fa-paperclip me-1"></i>
+                            <?php echo htmlspecialchars(mb_strimwidth($anexo->original_name ?? 'Anexo', 0, 16, '...')); ?>
                         </a>
-                    <?php endif; ?>
-
-                    <?php if ($temAnexos): ?>
-                        <?php foreach ($nota->anexos as $anexo): ?>
-                            <?php
-                            $mime = $anexo->mime_type ?? '';
-                            if (str_contains($mime, 'pdf'))        $iconClass = 'fa-file-pdf';
-                            elseif (str_contains($mime, 'xml'))    $iconClass = 'fa-file-code';
-                            elseif (str_contains($mime, 'image'))  $iconClass = 'fa-file-image';
-                            else                                   $iconClass = 'fa-file-download';
-                            ?>
-                            <a href="/portal/faturamento/nota-fiscal/anexo/<?php echo (int) $anexo->id; ?>"
-                               class="portal-btn portal-btn-outline portal-btn-sm"
-                               title="Baixar: <?php echo htmlspecialchars($anexo->original_name ?? 'Anexo'); ?>">
-                                <i class="fa <?php echo $iconClass; ?> me-1"></i>
-                                <?php echo htmlspecialchars($anexo->original_name ?? 'Anexo'); ?>
-                            </a>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-
-                </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                <?php if (!$temPdfAsaas && !$temXml && !$temAnexos): ?>
+                    <span class="text-muted small"><i class="fa fa-clock me-1"></i>Processando</span>
+                <?php endif; ?>
             </div>
-            <?php else: ?>
-            <div class="portal-conta-actions mt-3">
-                <span class="text-muted small"><i class="fa fa-minus me-1"></i>Nenhum arquivo disponível</span>
-            </div>
-            <?php endif; ?>
-
         </div>
         <?php endforeach; ?>
     </div>
 
 <?php endif; ?>
+
+<style>
+.portal-filter-card{background:var(--portal-surface);border-radius:var(--portal-radius);border:1px solid var(--portal-border);padding:1rem 1.25rem;box-shadow:var(--portal-shadow)}
+.portal-filter-row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end}
+.portal-filter-field{display:flex;flex-direction:column;gap:.25rem;flex:1;min-width:140px}
+.portal-filter-label{font-size:.75rem;font-weight:600;color:var(--portal-muted);text-transform:uppercase;letter-spacing:.03em}
+.portal-filter-input{padding:.4rem .65rem;border:1px solid var(--portal-border);border-radius:6px;font-size:.875rem;color:var(--portal-text);background:var(--portal-bg);transition:border-color .2s}
+.portal-filter-input:focus{outline:none;border-color:var(--portal-primary);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.portal-filter-actions{display:flex;gap:.5rem;align-items:flex-end;padding-bottom:1px}
+.portal-table-wrapper{overflow-x:auto;border-radius:var(--portal-radius);border:1px solid var(--portal-border);background:var(--portal-surface)}
+.portal-table{width:100%;border-collapse:collapse;font-size:.875rem}
+.portal-table thead th{background:#f8fafc;padding:.75rem 1rem;font-weight:600;color:var(--portal-muted);text-transform:uppercase;font-size:.7rem;letter-spacing:.05em;border-bottom:2px solid var(--portal-border);white-space:nowrap}
+.portal-table tbody td{padding:.75rem 1rem;border-bottom:1px solid var(--portal-border);vertical-align:middle}
+.portal-table tbody tr:last-child td{border-bottom:none}
+.portal-table tbody tr:hover{background:#f8fafc}
+.portal-badge-info{background:#dbeafe;color:#1e40af}
+.portal-badge-primary{background:#ede9fe;color:#5b21b6}
+.portal-badge-secondary{background:#f1f5f9;color:#475569}
+</style>
