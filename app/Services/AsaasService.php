@@ -458,6 +458,171 @@ class AsaasService
         return $this->makeRequest($method, $endpoint, $data);
     }
 
+    // ================================================================
+    // NOTAS FISCAIS DE SERVIÇO (NF-s)
+    // ================================================================
+
+    /**
+     * Agenda (cria) uma Nota Fiscal de Serviço no Asaas.
+     * Documentação: https://docs.asaas.com/reference/agendar-nota-fiscal
+     *
+     * @param  array $dados  Campos: serviceDescription, observations, value, effectiveDate,
+     *                       municipalServiceName, taxes, payment (asaas_payment_id), customer
+     * @return array  Resposta da API (inclui 'id', 'status', 'invoiceUrl', 'pdfUrl')
+     * @throws \RuntimeException
+     */
+    public function agendarNotaFiscal(array $dados): array
+    {
+        $this->logAsaas('info', 'NF-s: Agendando nota fiscal', [
+            'payment'       => $dados['payment'] ?? null,
+            'customer'      => $dados['customer'] ?? null,
+            'value'         => $dados['value'] ?? null,
+            'effectiveDate' => $dados['effectiveDate'] ?? null,
+        ]);
+
+        $payload = [
+            'serviceDescription'   => $dados['serviceDescription'],
+            'observations'         => $dados['observations'] ?? '',
+            'value'                => (float) $dados['value'],
+            'deductions'           => (float) ($dados['deductions'] ?? 0),
+            'effectiveDate'        => $dados['effectiveDate'],
+            'municipalServiceName' => $dados['municipalServiceName'],
+            'taxes'                => $dados['taxes'] ?? ['retainIss' => false],
+        ];
+
+        // Vínculo: cobrança, parcelamento ou cliente avulso
+        if (!empty($dados['payment'])) {
+            $payload['payment'] = $dados['payment'];
+        } elseif (!empty($dados['installment'])) {
+            $payload['installment'] = $dados['installment'];
+        } elseif (!empty($dados['customer'])) {
+            $payload['customer'] = $dados['customer'];
+        }
+
+        // Código de serviço municipal (um dos dois, não ambos)
+        if (!empty($dados['municipalServiceId'])) {
+            $payload['municipalServiceId']   = $dados['municipalServiceId'];
+        } elseif (!empty($dados['municipalServiceCode'])) {
+            $payload['municipalServiceCode'] = $dados['municipalServiceCode'];
+        }
+
+        if (!empty($dados['externalReference'])) {
+            $payload['externalReference'] = $dados['externalReference'];
+        }
+
+        $response = $this->makeRequest('POST', '/invoices', $payload);
+
+        $this->logAsaas('info', 'NF-s: Nota fiscal agendada com sucesso', [
+            'asaas_invoice_id' => $response['id'] ?? null,
+            'status'           => $response['status'] ?? null,
+            'invoiceUrl'       => $response['invoiceUrl'] ?? null,
+        ]);
+
+        return $response;
+    }
+
+    /**
+     * Consulta o status e dados de uma NF no Asaas.
+     * Retorna: id, status, invoiceUrl, pdfUrl, xmlUrl, number, etc.
+     *
+     * @param  string $invoiceId  ID da NF no Asaas (ex: inv_000000000)
+     * @return array
+     * @throws \RuntimeException
+     */
+    public function consultarNotaFiscal(string $invoiceId): array
+    {
+        return $this->makeRequest('GET', "/invoices/{$invoiceId}");
+    }
+
+    /**
+     * Retorna a URL do PDF da NF gerada pelo Asaas.
+     * O campo 'pdfUrl' é retornado quando status = AUTHORIZED.
+     *
+     * @param  string $invoiceId
+     * @return string|null
+     */
+    public function getPdfUrlNotaFiscal(string $invoiceId): ?string
+    {
+        try {
+            $data = $this->consultarNotaFiscal($invoiceId);
+            return $data['pdfUrl'] ?? $data['invoiceUrl'] ?? null;
+        } catch (\RuntimeException $e) {
+            $this->logAsaas('warning', 'NF-s: Falha ao obter PDF URL', [
+                'asaas_invoice_id' => $invoiceId,
+                'error'            => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Cancela uma NF no Asaas.
+     *
+     * @param  string $invoiceId
+     * @return bool
+     */
+    public function cancelarNotaFiscal(string $invoiceId): bool
+    {
+        try {
+            $this->makeRequest('POST', "/invoices/{$invoiceId}/cancel", []);
+            $this->logAsaas('info', 'NF-s: Nota fiscal cancelada', [
+                'asaas_invoice_id' => $invoiceId,
+            ]);
+            return true;
+        } catch (\RuntimeException $e) {
+            $this->logAsaas('error', 'NF-s: Falha ao cancelar nota fiscal', [
+                'asaas_invoice_id' => $invoiceId,
+                'error'            => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Lista os serviços municipais disponíveis para emissão de NF-s.
+     *
+     * @param  string|null $descricao  Filtro parcial por descrição
+     * @return array
+     */
+    public function listarServicosMunicipais(?string $descricao = null): array
+    {
+        $endpoint = '/invoices/municipalServices';
+        if ($descricao) {
+            $endpoint .= '?description=' . urlencode($descricao);
+        }
+        try {
+            $response = $this->makeRequest('GET', $endpoint);
+            return $response['data'] ?? $response ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logAsaas('warning', 'NF-s: Falha ao listar serviços municipais', [
+                'error' => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Mapeia o status da NF do Asaas para texto legível em português.
+     *
+     * @param  string $asaasStatus
+     * @return string
+     */
+    public static function mapearStatusNfs(string $asaasStatus): string
+    {
+        return match (strtoupper($asaasStatus)) {
+            'SCHEDULED'               => 'Agendada',
+            'SYNCHRONIZED'            => 'Enviada à Prefeitura',
+            'AUTHORIZED'              => 'Emitida',
+            'PROCESSING_CANCELLATION' => 'Cancelando',
+            'CANCELED'                => 'Cancelada',
+            'CANCELLATION_DENIED'     => 'Cancelamento Negado',
+            'ERROR'                   => 'Erro na Emissão',
+            default                   => ucfirst(strtolower($asaasStatus)),
+        };
+    }
+
+    // ================================================================
+
     private function makeRequest(string $method, string $endpoint, array $data = []): array
     {
         $url = $this->baseUrl . $endpoint;

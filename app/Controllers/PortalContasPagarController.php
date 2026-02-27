@@ -306,6 +306,21 @@ class PortalContasPagarController extends Controller
         } catch (\Throwable $e) {
             $asaasEnabled = false;
         }
+        // Monta mapa de NFs emitidas por conta_receber_id (para botão Emitir NF-s)
+        $nfsPorConta = [];
+        if ($abaAtiva === 'pagas' && !empty($contasRecebidas)) {
+            try {
+                $notaFiscalModel = new \App\Models\NotaFiscal();
+                foreach ($contasRecebidas as $cr) {
+                    $nf = $notaFiscalModel->findByContaReceberId((int)$cr->id, $tenantId);
+                    if ($nf) {
+                        $nfsPorConta[(int)$cr->id] = $nf;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('[Portal] Erro ao carregar NFs por conta: ' . $e->getMessage());
+            }
+        }
         View::render('portal/contas-a-pagar/index', [
             'title'              => 'Minhas Contas',
             '_layout'            => 'portal',
@@ -323,6 +338,7 @@ class PortalContasPagarController extends Controller
             'totalValorTotal'    => $totalValorTotal,
             'abaAtiva'           => $abaAtiva,
             'asaasEnabled'       => $asaasEnabled,
+            'nfsPorConta'        => $nfsPorConta,
         ]);
     }
 

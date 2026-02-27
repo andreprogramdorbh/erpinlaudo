@@ -227,6 +227,22 @@ $meioPagIcon = [
                     <span class="portal-btn portal-btn-success portal-btn-sm" style="cursor:default;">
                         <i class="fa fa-check-circle me-1"></i> Pago
                     </span>
+                    <?php
+                    $nfJaEmitida = isset($nfsPorConta[(int)$conta->id]) ? $nfsPorConta[(int)$conta->id] : null;
+                    ?>
+                    <?php if ($nfJaEmitida): ?>
+                        <a href="/portal/faturamento/notas-fiscais" class="portal-btn portal-btn-outline portal-btn-sm">
+                            <i class="fa fa-file-invoice me-1"></i> Ver NF-s
+                        </a>
+                    <?php elseif ($asaasEnabled): ?>
+                        <button type="button"
+                                class="portal-btn portal-btn-info portal-btn-sm btn-emitir-nfs"
+                                data-conta-id="<?php echo (int)$conta->id; ?>"
+                                data-descricao="<?php echo htmlspecialchars($conta->descricao ?? 'Serviços Prestados'); ?>"
+                                data-valor="R$ <?php echo number_format((float)$conta->valor, 2, ',', '.'); ?>">
+                            <i class="fa fa-file-invoice me-1"></i> Emitir NF-s
+                        </button>
+                    <?php endif; ?>
                 <?php elseif ($conta->status === 'cancelada'): ?>
                     <span class="portal-btn portal-btn-outline portal-btn-sm text-muted" style="cursor:default;">
                         <i class="fa fa-ban me-1"></i> Cancelada
@@ -237,6 +253,49 @@ $meioPagIcon = [
         <?php endforeach; ?>
     </div>
 <?php endif; ?>
+<!-- Modal Emitir NF-s -->
+<div id="modalEmitirNfs" class="portal-modal-overlay" style="display:none;">
+    <div class="portal-modal-box" style="max-width:440px;">
+        <div class="p-4">
+            <div class="d-flex align-items-center mb-3">
+                <div style="background:#eff6ff;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;margin-right:12px;flex-shrink:0;">
+                    <i class="fa fa-file-invoice fa-lg text-primary"></i>
+                </div>
+                <div>
+                    <h5 class="mb-0 fw-bold">Emitir Nota Fiscal de Serviço</h5>
+                    <p class="text-muted small mb-0">Confirme os dados antes de emitir</p>
+                </div>
+            </div>
+            <div class="rounded p-3 mb-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted small">Descrição:</span>
+                    <span class="fw-semibold small" id="nfsDescricao" style="max-width:220px;text-align:right;"></span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted small">Valor:</span>
+                    <span class="fw-bold text-success" id="nfsValor"></span>
+                </div>
+            </div>
+            <div class="portal-alert portal-alert-info mb-3" style="font-size:.8125rem;">
+                <i class="fa fa-info-circle me-1"></i>
+                A NF-s será emitida via Asaas e ficará disponível em <strong>Minhas Notas Fiscais</strong>. Esta ação não pode ser desfeita.
+            </div>
+            <div id="nfsLoadingMsg" style="display:none;" class="text-center py-2">
+                <i class="fa fa-circle-notch fa-spin text-primary me-2"></i>
+                <span>Emitindo NF-s, aguarde...</span>
+            </div>
+            <div id="nfsErroMsg" class="portal-alert portal-alert-danger mb-3" style="display:none;"></div>
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="portal-btn portal-btn-outline portal-btn-sm" id="btnCancelarNfs">
+                    <i class="fa fa-times me-1"></i> Cancelar
+                </button>
+                <button type="button" class="portal-btn portal-btn-primary portal-btn-sm" id="btnConfirmarNfs">
+                    <i class="fa fa-check me-1"></i> Confirmar Emissão
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- Modal loading -->
 <div id="modalPagando" class="portal-modal-overlay" style="display:none;">
     <div class="portal-modal-box">
@@ -367,6 +426,68 @@ document.addEventListener('visibilitychange',function(){
             else{sessionStorage.removeItem('portalPagandoContaId');}
         }
     }
+});
+// --- Emissão de NF-s ---
+var nfsContaIdAtual = null;
+document.querySelectorAll('.btn-emitir-nfs').forEach(function(btn){
+    btn.addEventListener('click',function(){
+        nfsContaIdAtual = btn.dataset.contaId;
+        document.getElementById('nfsDescricao').textContent = btn.dataset.descricao || 'Serviços Prestados';
+        document.getElementById('nfsValor').textContent = btn.dataset.valor || '';
+        document.getElementById('nfsErroMsg').style.display = 'none';
+        document.getElementById('nfsLoadingMsg').style.display = 'none';
+        document.getElementById('btnConfirmarNfs').disabled = false;
+        document.getElementById('modalEmitirNfs').style.display = 'flex';
+    });
+});
+document.getElementById('btnCancelarNfs').addEventListener('click',function(){
+    document.getElementById('modalEmitirNfs').style.display = 'none';
+    nfsContaIdAtual = null;
+});
+document.getElementById('btnConfirmarNfs').addEventListener('click',function(){
+    if(!nfsContaIdAtual)return;
+    var btn = document.getElementById('btnConfirmarNfs');
+    var loading = document.getElementById('nfsLoadingMsg');
+    var erroEl = document.getElementById('nfsErroMsg');
+    btn.disabled = true;
+    loading.style.display = 'block';
+    erroEl.style.display = 'none';
+    fetch('/portal/faturamento/emitir-nfs/'+nfsContaIdAtual,{
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+        loading.style.display = 'none';
+        if(d.success){
+            document.getElementById('modalEmitirNfs').style.display = 'none';
+            // Atualiza o botão no card para "Ver NF-s"
+            var acoes = document.getElementById('acoes-'+nfsContaIdAtual);
+            if(acoes){
+                var btnEmitir = acoes.querySelector('.btn-emitir-nfs');
+                if(btnEmitir){
+                    var link = document.createElement('a');
+                    link.href = '/portal/faturamento/notas-fiscais';
+                    link.className = 'portal-btn portal-btn-outline portal-btn-sm';
+                    link.innerHTML = '<i class="fa fa-file-invoice me-1"></i> Ver NF-s';
+                    btnEmitir.replaceWith(link);
+                }
+            }
+            mostrarAlerta(d.message || 'NF-s emitida com sucesso!','success');
+            setTimeout(function(){window.location.href = d.redirect || '/portal/faturamento/notas-fiscais';},2500);
+        } else {
+            btn.disabled = false;
+            erroEl.textContent = d.error || 'Erro ao emitir NF-s. Tente novamente.';
+            erroEl.style.display = 'block';
+        }
+    })
+    .catch(function(){
+        loading.style.display = 'none';
+        btn.disabled = false;
+        erroEl.textContent = 'Erro de conexão. Tente novamente.';
+        erroEl.style.display = 'block';
+    });
 });
 })();
 </script>
