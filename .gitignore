@@ -26,3 +26,4 @@ composer.lock
 # Cache
 *.cache
 tmp_add_dashboard.py
+tmp_perfil.py
