@@ -243,6 +243,28 @@ class PortalContasPagarController extends Controller
         ]);
         // Busca TODAS as contas do cliente neste tenant
         $todasContas = $this->contaModel->findByClienteIdAndTenantId($clienteId, $tenantId);
+
+        // Correcao de consistencia: se data_recebimento esta preenchida mas status ainda e 'aberta',
+        // corrigir no banco. Isso ocorre quando o webhook falhou (ex.: retornava 403) mas o
+        // pagamento foi confirmado por outro caminho (polling manual, Asaas sandbox, etc.).
+        foreach ($todasContas as $conta) {
+            if ($conta->status === 'aberta' && !empty($conta->data_recebimento)) {
+                try {
+                    $this->contaModel->update((int)$conta->id, ['status' => 'recebida']);
+                    $conta->status = 'recebida';
+                    $this->logger->info('[Portal] Correcao de consistencia: status corrigido para recebida', [
+                        'conta_id'         => (int)$conta->id,
+                        'data_recebimento' => $conta->data_recebimento,
+                    ]);
+                } catch (\Throwable $e) {
+                    $this->logger->error('[Portal] Falha ao corrigir status de consistencia', [
+                        'conta_id' => (int)$conta->id,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         // Separa em grupos
         $contasAbertas    = array_values(array_filter($todasContas, fn($c) => $c->status === 'aberta'));
         $contasRecebidas  = array_values(array_filter($todasContas, fn($c) => $c->status === 'recebida'));
