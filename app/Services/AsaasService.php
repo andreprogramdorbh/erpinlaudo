@@ -12,11 +12,26 @@ use App\Core\Audit\AuditLogger;
  *  - PIX       → criarPix()      → getPixQrCode()
  *  - Boleto    → criarBoleto()   → getBoletoUrl()
  *  - Checkout  → criarCheckout() → getLinkPagamento()  (cliente escolhe o meio no Asaas)
+ *
+ * Log dedicado: storage/logs/asaas.log
+ *  - Toda requisição enviada e resposta recebida é registrada
+ *  - Erros da API são registrados com detalhes completos
+ *  - Facilita diagnóstico sem precisar vasculhar logs gerais
  */
 class AsaasService
 {
+    /** Valor mínimo aceito pelo Asaas para cobranças UNDEFINED (Checkout) */
+    public const VALOR_MINIMO_CHECKOUT = 5.00;
+
+    /** Valor mínimo aceito pelo Asaas para cobranças PIX */
+    public const VALOR_MINIMO_PIX = 0.01;
+
+    /** Valor mínimo aceito pelo Asaas para cobranças Boleto */
+    public const VALOR_MINIMO_BOLETO = 5.00;
+
     private string $apiKey;
     private string $baseUrl;
+    private string $environment;
     private Logger $logger;
 
     public function __construct(?string $apiKey = null, ?string $environment = null)
@@ -28,13 +43,13 @@ class AsaasService
             ?? (string) getenv('ASAAS_API_KEY')
             ?? '';
 
-        $env = $environment
+        $this->environment = $environment
             ?? $_ENV['ASAAS_ENVIRONMENT']
             ?? $_SERVER['ASAAS_ENVIRONMENT']
             ?? (string) getenv('ASAAS_ENVIRONMENT')
             ?? 'sandbox';
 
-        $this->baseUrl = ($env === 'production')
+        $this->baseUrl = ($this->environment === 'production')
             ? 'https://api.asaas.com/v3'
             : 'https://sandbox.asaas.com/api/v3';
 
@@ -57,6 +72,11 @@ class AsaasService
      */
     public function criarCobranca(array $dados): array
     {
+        // Validação de valor mínimo por tipo de cobrança
+        $billingType = $dados['billingType'] ?? 'UNDEFINED';
+        $valor       = (float) ($dados['value'] ?? 0);
+        $this->validarValorMinimo($valor, $billingType);
+
         try {
             $response = $this->makeRequest('POST', '/payments', $dados);
 
@@ -123,8 +143,9 @@ class AsaasService
                 ?? $response['bankSlipUrl']
                 ?? null;
         } catch (\Exception $e) {
-            $this->logger->error('Erro ao obter link de pagamento: ' . $e->getMessage(), [
+            $this->logAsaas('error', 'Erro ao obter link de pagamento', [
                 'payment_id' => $paymentId,
+                'error'      => $e->getMessage(),
             ]);
             return null;
         }
@@ -143,8 +164,9 @@ class AsaasService
                 'expirationDate' => $response['expirationDate'] ?? null,
             ];
         } catch (\Exception $e) {
-            $this->logger->error('Erro ao obter QR Code PIX: ' . $e->getMessage(), [
+            $this->logAsaas('error', 'Erro ao obter QR Code PIX', [
                 'payment_id' => $paymentId,
+                'error'      => $e->getMessage(),
             ]);
             return null;
         }
@@ -159,8 +181,9 @@ class AsaasService
             $response = $this->makeRequest('GET', "/payments/{$paymentId}");
             return $response['bankSlipUrl'] ?? null;
         } catch (\Exception $e) {
-            $this->logger->error('Erro ao obter URL do boleto: ' . $e->getMessage(), [
+            $this->logAsaas('error', 'Erro ao obter URL do boleto', [
                 'payment_id' => $paymentId,
+                'error'      => $e->getMessage(),
             ]);
             return null;
         }
@@ -213,7 +236,11 @@ class AsaasService
             $response = $this->makeRequest('GET', '/customers?' . http_build_query($params));
             return $response['data'][0] ?? null;
         } catch (\Exception $e) {
-            $this->logger->error('Erro ao buscar cliente Asaas: ' . $e->getMessage());
+            $this->logAsaas('error', 'Erro ao buscar cliente Asaas', [
+                'cpfCnpj' => $cpfCnpj,
+                'email'   => $email,
+                'error'   => $e->getMessage(),
+            ]);
             return null;
         }
     }
@@ -261,7 +288,10 @@ class AsaasService
             $response = $this->makeRequest('GET', "/payments/{$paymentId}");
             return $response['status'] ?? null;
         } catch (\Exception $e) {
-            $this->logger->error('Erro ao obter status pagamento: ' . $e->getMessage());
+            $this->logAsaas('error', 'Erro ao obter status pagamento', [
+                'payment_id' => $paymentId,
+                'error'      => $e->getMessage(),
+            ]);
             return null;
         }
     }
@@ -339,6 +369,83 @@ class AsaasService
     }
 
     // ---------------------------------------------------------------
+    // LOG DEDICADO ASAAS
+    // ---------------------------------------------------------------
+
+    /**
+     * Grava uma entrada no log dedicado do Asaas: storage/logs/asaas.log
+     *
+     * Formato:
+     * [2026-02-27 00:00:00] [ENV: production] [LEVEL: error] Mensagem | Context: {...}
+     */
+    public function logAsaas(string $level, string $message, array $context = []): void
+    {
+        $logDir  = __DIR__ . '/../../storage/logs';
+        $logFile = $logDir . '/asaas.log';
+
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0755, true);
+        }
+
+        $timestamp = date('Y-m-d H:i:s');
+        $env       = strtoupper($this->environment);
+        $ip        = $_SERVER['REMOTE_ADDR'] ?? '-';
+        $uri       = $_SERVER['REQUEST_URI'] ?? '-';
+        $level     = strtoupper($level);
+
+        $line = "[{$timestamp}] [ENV: {$env}] [IP: {$ip}] [URI: {$uri}] [{$level}] {$message}";
+
+        if (!empty($context)) {
+            $line .= ' | ' . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        $line .= "\n";
+
+        file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+    }
+
+    // ---------------------------------------------------------------
+    // VALIDAÇÃO DE VALOR MÍNIMO
+    // ---------------------------------------------------------------
+
+    /**
+     * Valida se o valor da cobrança atende ao mínimo exigido pelo Asaas.
+     * Lança exceção com mensagem amigável se o valor for insuficiente.
+     */
+    private function validarValorMinimo(float $valor, string $billingType): void
+    {
+        $minimos = [
+            'UNDEFINED' => self::VALOR_MINIMO_CHECKOUT,  // R$ 5,00
+            'BOLETO'    => self::VALOR_MINIMO_BOLETO,    // R$ 5,00
+            'PIX'       => self::VALOR_MINIMO_PIX,       // R$ 0,01
+        ];
+
+        $minimo = $minimos[$billingType] ?? self::VALOR_MINIMO_CHECKOUT;
+
+        if ($valor < $minimo) {
+            $minimoFormatado = number_format($minimo, 2, ',', '.');
+            $valorFormatado  = number_format($valor, 2, ',', '.');
+            $tipo            = match ($billingType) {
+                'UNDEFINED' => 'Checkout (Pergunte ao Cliente)',
+                'BOLETO'    => 'Boleto',
+                'PIX'       => 'PIX',
+                default     => $billingType,
+            };
+
+            $this->logAsaas('warning', 'Valor abaixo do mínimo exigido pelo Asaas', [
+                'billingType'      => $billingType,
+                'valor'            => $valor,
+                'valor_minimo'     => $minimo,
+            ]);
+
+            throw new \InvalidArgumentException(
+                "O valor R$ {$valorFormatado} é inferior ao mínimo de R$ {$minimoFormatado} " .
+                "exigido pelo Asaas para cobranças do tipo {$tipo}."
+            );
+        }
+    }
+
+    // ---------------------------------------------------------------
     // HTTP INTERNO
     // ---------------------------------------------------------------
 
@@ -351,6 +458,12 @@ class AsaasService
             'access_token: ' . $this->apiKey,
             'User-Agent: ERP-InLaudo/1.0',
         ];
+
+        // Log da requisição enviada
+        $this->logAsaas('debug', "→ {$method} {$endpoint}", [
+            'url'  => $url,
+            'body' => !empty($data) ? $data : null,
+        ]);
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -366,22 +479,42 @@ class AsaasService
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
         }
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $response  = curl_exec($ch);
+        $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
         curl_close($ch);
 
         if ($response === false) {
+            $this->logAsaas('error', "Falha cURL: {$method} {$endpoint}", [
+                'curl_error' => $curlError,
+            ]);
             throw new \RuntimeException('Falha na comunicação com API Asaas: ' . $curlError);
         }
 
         $responseData = json_decode($response, true);
 
+        // Log da resposta recebida
         if ($httpCode >= 400) {
             $errorMessage = $responseData['errors'][0]['description']
                 ?? $responseData['message']
                 ?? "HTTP {$httpCode}";
+
+            $this->logAsaas('error', "← {$httpCode} {$method} {$endpoint} | {$errorMessage}", [
+                'http_code'    => $httpCode,
+                'response'     => $responseData,
+                'request_body' => !empty($data) ? $data : null,
+            ]);
+
             throw new \RuntimeException("Asaas API Error ({$httpCode}): {$errorMessage}");
+        }
+
+        // Log de sucesso (apenas para POST/DELETE — GET é muito verboso)
+        if ($method !== 'GET') {
+            $this->logAsaas('info', "← {$httpCode} {$method} {$endpoint}", [
+                'http_code' => $httpCode,
+                'id'        => $responseData['id'] ?? null,
+                'status'    => $responseData['status'] ?? null,
+            ]);
         }
 
         return $responseData ?? [];

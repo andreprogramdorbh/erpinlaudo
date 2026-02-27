@@ -224,10 +224,28 @@ class PortalContasPagarController extends Controller
         if (empty($conta->asaas_payment_id)) {
             try {
                 $conta = $this->gerarPagamentoAsaas($conta, $portal, $asaas);
+            } catch (\InvalidArgumentException $e) {
+                // Erro de validação local (ex: valor abaixo do mínimo R$ 5,00)
+                $this->logger->error('[Portal] Validação Asaas: ' . $e->getMessage(), [
+                    'conta_id' => $id,
+                    'valor'    => $conta->valor ?? null,
+                ]);
+                $asaas->logAsaas('error', '[Portal] Valor abaixo do mínimo Asaas', [
+                    'conta_id' => $id,
+                    'valor'    => $conta->valor ?? null,
+                    'error'    => $e->getMessage(),
+                ]);
+                $errorMsg = urlencode($e->getMessage());
+                header("Location: /portal/contas-a-pagar?error=valor_minimo&msg={$errorMsg}");
+                exit();
             } catch (\Exception $e) {
                 $this->logger->error('[Portal] Falha ao gerar pagamento Asaas on-the-fly', [
                     'conta_id' => $id,
                     'error'    => $e->getMessage()
+                ]);
+                $asaas->logAsaas('error', '[Portal] Falha ao gerar pagamento on-the-fly', [
+                    'conta_id' => $id,
+                    'error'    => $e->getMessage(),
                 ]);
                 header('Location: /portal/contas-a-pagar?error=link_indisponivel');
                 exit();

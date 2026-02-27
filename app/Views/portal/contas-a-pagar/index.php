@@ -37,10 +37,19 @@ $meioPagIcon = [
         'boleto_indisponivel'    => 'O boleto não está disponível no momento. Tente novamente.',
         'erro_pagamento'         => 'Ocorreu um erro ao processar o pagamento. Tente novamente.',
         'cancelada'              => 'Esta conta está cancelada e não pode ser paga.',
+        'valor_minimo'           => null, // mensagem dinâmica via ?msg=
     ]; ?>
     <div class="portal-alert portal-alert-danger mb-3">
         <i class="fa fa-exclamation-circle me-2"></i>
-        <?php echo htmlspecialchars($erros[$_GET['error']] ?? 'Ocorreu um erro.'); ?>
+        <?php
+            $errorKey = $_GET['error'] ?? '';
+            if ($errorKey === 'valor_minimo' && !empty($_GET['msg'])) {
+                // Mensagem dinâmica do Asaas (ex: valor abaixo do mínimo)
+                echo '<strong>Pagamento não gerado:</strong> ' . htmlspecialchars(urldecode($_GET['msg']));
+            } else {
+                echo htmlspecialchars($erros[$errorKey] ?? 'Ocorreu um erro. Tente novamente ou entre em contato.');
+            }
+        ?>
     </div>
 <?php endif; ?>
 
