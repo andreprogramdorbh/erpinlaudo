@@ -19,6 +19,7 @@ class Logger
             if (!file_exists($path)) {
                 file_put_contents($path, "");
             }
+            @chmod($path, 0664);
         }
     }
 
@@ -80,6 +81,13 @@ class Logger
         $logMessage .= " | User-Agent: {$userAgent}";
         $logMessage .= "\n";
 
-        file_put_contents($logFile, $logMessage, FILE_APPEND | LOCK_EX);
+        $written = @file_put_contents($logFile, $logMessage, FILE_APPEND | LOCK_EX);
+        if ($written === false && $type !== 'error') {
+            $fallback = $this->logDir . "/error.log";
+            @file_put_contents($fallback, $logMessage, FILE_APPEND | LOCK_EX);
+        }
+        if ($written === false && $type === 'error') {
+            error_log($logMessage);
+        }
     }
 }

@@ -90,7 +90,7 @@ class DashboardController extends Controller
                 'label' => $label,
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
+            return $default;
         }
     }
 
@@ -119,7 +119,7 @@ class DashboardController extends Controller
                 'label' => $label,
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
+            return [];
         }
     }
 
@@ -327,17 +327,46 @@ class DashboardController extends Controller
         ", [':uid'=>$uid,':hoje'=>$hoje,':hoje2'=>$hoje]);
 
         // --- Ultimas interacoes CRM ---
-        $ultimasInteracoes = $this->fetchAllSafe('crm_ultimas_interacoes', "
-            SELECT i.tipo_interacao, i.descricao, i.created_at,
-                   COALESCE(l.nome_contato, o.titulo) AS nome_referencia,
-                   IF(i.lead_id IS NOT NULL,'lead','oportunidade') AS origem,
-                   COALESCE(i.lead_id, i.oportunidade_id) AS ref_id
-            FROM crm_interacoes i
-            LEFT JOIN crm_leads l ON l.id=i.lead_id
-            LEFT JOIN crm_oportunidades o ON o.id=i.oportunidade_id
-            WHERE i.usuario_id=:uid
-            ORDER BY i.created_at DESC LIMIT 6
-        ", [':uid'=>$uid]);
+        $interacaoDataCol = $this->firstExistingColumn('crm_interacoes', ['data_interacao', 'created_at']);
+        $interacaoOrderExpr = $interacaoDataCol ? "i.{$interacaoDataCol}" : "i.id";
+        $interacaoCreatedExpr = $interacaoDataCol ? "i.{$interacaoDataCol}" : "NULL";
+        $interacaoResumoCol = $this->firstExistingColumn('crm_interacoes', ['resumo', 'descricao']);
+        $interacaoResumoExpr = $interacaoResumoCol ? "i.{$interacaoResumoCol}" : "NULL";
+
+        $leadNomeCol = $this->firstExistingColumn('crm_leads', ['nome_lead', 'nome_contato', 'nome']);
+        $leadNomeExpr = $leadNomeCol ? "l.{$leadNomeCol}" : "NULL";
+        $oppTituloCol = $this->firstExistingColumn('crm_oportunidades', ['titulo_oportunidade', 'titulo']);
+        $oppTituloExpr = $oppTituloCol ? "o.{$oppTituloCol}" : "NULL";
+
+        if ($this->hasColumn('crm_interacoes', 'related_id') && $this->hasColumn('crm_interacoes', 'related_type')) {
+            $ultimasInteracoes = $this->fetchAllSafe('crm_ultimas_interacoes', "
+                SELECT i.tipo_interacao,
+                       {$interacaoResumoExpr} AS descricao,
+                       {$interacaoCreatedExpr} AS created_at,
+                       COALESCE({$leadNomeExpr}, {$oppTituloExpr}) AS nome_referencia,
+                       i.related_type AS origem,
+                       i.related_id AS ref_id
+                FROM crm_interacoes i
+                LEFT JOIN crm_leads l ON l.id=i.related_id AND i.related_type='lead'
+                LEFT JOIN crm_oportunidades o ON o.id=i.related_id AND i.related_type='oportunidade'
+                WHERE i.usuario_id=:uid
+                ORDER BY {$interacaoOrderExpr} DESC, i.id DESC LIMIT 6
+            ", [':uid'=>$uid]);
+        } else {
+            $ultimasInteracoes = $this->fetchAllSafe('crm_ultimas_interacoes', "
+                SELECT i.tipo_interacao,
+                       {$interacaoResumoExpr} AS descricao,
+                       {$interacaoCreatedExpr} AS created_at,
+                       COALESCE({$leadNomeExpr}, {$oppTituloExpr}) AS nome_referencia,
+                       IF(i.lead_id IS NOT NULL,'lead','oportunidade') AS origem,
+                       COALESCE(i.lead_id, i.oportunidade_id) AS ref_id
+                FROM crm_interacoes i
+                LEFT JOIN crm_leads l ON l.id=i.lead_id
+                LEFT JOIN crm_oportunidades o ON o.id=i.oportunidade_id
+                WHERE i.usuario_id=:uid
+                ORDER BY {$interacaoOrderExpr} DESC, i.id DESC LIMIT 6
+            ", [':uid'=>$uid]);
+        }
 
         // --- Faturamento mensal 6 meses ---
         $faturamentoMensal = $this->fetchAllSafe('notas_fiscais_faturamento_mensal', "
