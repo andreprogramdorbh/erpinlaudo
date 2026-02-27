@@ -48,6 +48,7 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     // Faturamento
     Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");
     Router::get("/portal/faturamento/nota-fiscal/xml/{id}", "PortalFaturamentoController@downloadXml");
+    Router::get("/portal/faturamento/nota-fiscal/anexo/{id}", "PortalFaturamentoController@downloadAnexo");
 });
 
 // Rotas protegidas (requerem autenticação)
@@ -196,6 +197,9 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::group(["middleware" => ["Permission:edit_notas_fiscais"]], function () {
         Router::get("/faturamento/notas-fiscais/edit/{id}", "NotasFiscaisController@edit");
         Router::post("/faturamento/notas-fiscais/update/{id}", "NotasFiscaisController@update");
+        Router::get("/faturamento/notas-fiscais/anexos/download/{id}", "NotasFiscaisController@downloadAnexo");
+        Router::post("/faturamento/notas-fiscais/anexos/upload", "NotasFiscaisController@uploadAnexo");
+        Router::post("/faturamento/notas-fiscais/anexos/delete/{id}", "NotasFiscaisController@deleteAnexo");
     });
 
     Router::group(["middleware" => ["Permission:delete_notas_fiscais"]], function () {

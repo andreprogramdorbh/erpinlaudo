@@ -8,22 +8,25 @@ use App\Core\Logger;
 use App\Core\Auth;
 use App\Core\Audit\AuditLogger;
 use App\Models\NotaFiscal;
+use App\Models\NotaFiscalAnexo;
 use App\Models\NotaFiscalImportacao;
 use App\Models\Cliente;
 
 class NotasFiscaisController extends Controller
 {
     private NotaFiscal $model;
+    private NotaFiscalAnexo $anexoModel;
     private NotaFiscalImportacao $importModel;
     private Cliente $clienteModel;
     private Logger $logger;
 
     public function __construct()
     {
-        $this->model = new NotaFiscal();
+        $this->model       = new NotaFiscal();
+        $this->anexoModel  = new NotaFiscalAnexo();
         $this->importModel = new NotaFiscalImportacao();
         $this->clienteModel = new Cliente();
-        $this->logger = new Logger();
+        $this->logger      = new Logger();
     }
 
     public function index(): void
@@ -65,6 +68,7 @@ class NotasFiscaisController extends Controller
             'title' => 'Nova Nota Fiscal',
             'nota' => null,
             'clientes' => $clientes,
+            'anexos' => [],
             'tab' => 'geral',
         ]);
     }
@@ -74,10 +78,10 @@ class NotasFiscaisController extends Controller
         try {
             $usuarioId = Auth::user()->id;
 
-            $clienteId = (int)($_POST['cliente_id'] ?? 0);
-            $numeroNf = trim($_POST['numero_nf'] ?? '');
-            $serie = trim($_POST['serie'] ?? '');
-            $valorTotal = trim($_POST['valor_total'] ?? '');
+            $clienteId   = (int)($_POST['cliente_id'] ?? 0);
+            $numeroNf    = trim($_POST['numero_nf'] ?? '');
+            $serie       = trim($_POST['serie'] ?? '');
+            $valorTotal  = trim($_POST['valor_total'] ?? '');
             $dataEmissao = $_POST['data_emissao'] ?? '';
 
             if ($clienteId <= 0 || $numeroNf === '' || $serie === '' || $valorTotal === '' || $dataEmissao === '') {
@@ -94,13 +98,13 @@ class NotasFiscaisController extends Controller
             $status = $_POST['status'] ?? 'rascunho';
 
             $dados = [
-                'usuario_id' => $usuarioId,
-                'cliente_id' => $clienteId,
-                'numero_nf' => $numeroNf,
-                'serie' => $serie,
+                'usuario_id'  => $usuarioId,
+                'cliente_id'  => $clienteId,
+                'numero_nf'   => $numeroNf,
+                'serie'       => $serie,
                 'valor_total' => $valorTotal,
-                'data_emissao' => $dataEmissao,
-                'status' => $status,
+                'data_emissao'=> $dataEmissao,
+                'status'      => $status,
             ];
 
             $id = $this->model->create($dados);
@@ -128,13 +132,15 @@ class NotasFiscaisController extends Controller
         }
 
         $clientes = $this->clienteModel->findByUsuarioId($usuarioId, ['status' => 'ativo', 'pesquisa' => '', 'uf' => '']);
+        $anexos   = $this->anexoModel->findByNotaId((int)$id, $usuarioId);
 
         View::render('notas_fiscais/form-enterprise', [
             '_layout' => 'erp',
-            'title' => 'Editar Nota Fiscal',
-            'nota' => $nota,
-            'clientes' => $clientes,
-            'tab' => $_GET['tab'] ?? 'geral',
+            'title'   => 'Editar Nota Fiscal',
+            'nota'    => $nota,
+            'clientes'=> $clientes,
+            'anexos'  => $anexos,
+            'tab'     => $_GET['tab'] ?? 'geral',
         ]);
     }
 
@@ -149,10 +155,10 @@ class NotasFiscaisController extends Controller
                 exit();
             }
 
-            $clienteId = (int)($_POST['cliente_id'] ?? 0);
-            $numeroNf = trim($_POST['numero_nf'] ?? '');
-            $serie = trim($_POST['serie'] ?? '');
-            $valorTotal = trim($_POST['valor_total'] ?? '');
+            $clienteId   = (int)($_POST['cliente_id'] ?? 0);
+            $numeroNf    = trim($_POST['numero_nf'] ?? '');
+            $serie       = trim($_POST['serie'] ?? '');
+            $valorTotal  = trim($_POST['valor_total'] ?? '');
             $dataEmissao = $_POST['data_emissao'] ?? '';
 
             if ($clienteId <= 0 || $numeroNf === '' || $serie === '' || $valorTotal === '' || $dataEmissao === '') {
@@ -167,12 +173,12 @@ class NotasFiscaisController extends Controller
             }
 
             $dados = [
-                'cliente_id' => $clienteId,
-                'numero_nf' => $numeroNf,
-                'serie' => $serie,
+                'cliente_id'  => $clienteId,
+                'numero_nf'   => $numeroNf,
+                'serie'       => $serie,
                 'valor_total' => $valorTotal,
-                'data_emissao' => $dataEmissao,
-                'status' => $_POST['status'] ?? ($nota->status ?? 'rascunho'),
+                'data_emissao'=> $dataEmissao,
+                'status'      => $_POST['status'] ?? ($nota->status ?? 'rascunho'),
             ];
 
             if ($this->model->update((int)$id, $dados)) {
@@ -212,6 +218,177 @@ class NotasFiscaisController extends Controller
         exit();
     }
 
+    // ---------------------------------------------------------------
+    // POST /faturamento/notas-fiscais/anexos/upload
+    // Upload de anexo (PDF, XML, JPG) — máximo 10 MB
+    // ---------------------------------------------------------------
+    public function uploadAnexo(): void
+    {
+        $notaId = 0;
+        try {
+            $usuarioId = Auth::user()->id;
+            $notaId    = (int)($_POST['nota_fiscal_id'] ?? 0);
+
+            if ($notaId <= 0) {
+                header('Location: /faturamento/notas-fiscais?error=invalid_nota');
+                exit();
+            }
+
+            // Verifica se a nota pertence ao tenant
+            $nota = $this->model->findById($notaId);
+            if (!$nota || (int)$nota->usuario_id !== (int)$usuarioId) {
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=unauthorized&tab=anexos");
+                exit();
+            }
+
+            if (!isset($_FILES['anexo']) || $_FILES['anexo']['error'] !== UPLOAD_ERR_OK) {
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=upload_failed&tab=anexos");
+                exit();
+            }
+
+            $file    = $_FILES['anexo'];
+            $maxSize = 10 * 1024 * 1024; // 10 MB
+
+            if (($file['size'] ?? 0) > $maxSize) {
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=file_too_large&tab=anexos");
+                exit();
+            }
+
+            $tmpPath = $file['tmp_name'];
+            $finfo   = new \finfo(FILEINFO_MIME_TYPE);
+            $mime    = $finfo->file($tmpPath) ?: '';
+
+            $allowed = [
+                'application/pdf' => 'pdf',
+                'image/jpeg'      => 'jpg',
+                'image/jpg'       => 'jpg',
+                'text/xml'        => 'xml',
+                'application/xml' => 'xml',
+            ];
+
+            if (!isset($allowed[$mime])) {
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=invalid_file_type&tab=anexos");
+                exit();
+            }
+
+            $baseDir = BASE_PATH . '/storage/uploads/notas_fiscais_anexos/' . $usuarioId . '/' . $notaId;
+            if (!is_dir($baseDir)) {
+                mkdir($baseDir, 0755, true);
+            }
+
+            $ext      = $allowed[$mime];
+            $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
+            $destPath = $baseDir . '/' . $safeName;
+
+            if (!move_uploaded_file($tmpPath, $destPath)) {
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=upload_failed&tab=anexos");
+                exit();
+            }
+
+            $relativePath = 'storage/uploads/notas_fiscais_anexos/' . $usuarioId . '/' . $notaId . '/' . $safeName;
+
+            $anexoId = $this->anexoModel->create([
+                'usuario_id'     => $usuarioId,
+                'nota_fiscal_id' => $notaId,
+                'file_path'      => $relativePath,
+                'original_name'  => $file['name'] ?? 'anexo',
+                'mime_type'      => $mime,
+                'file_size'      => $file['size'] ?? null,
+            ]);
+
+            if ($anexoId) {
+                AuditLogger::log('upload_nota_fiscal_anexo', ['id' => $anexoId, 'nota_fiscal_id' => $notaId]);
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?success=upload&tab=anexos");
+            } else {
+                @unlink($destPath);
+                $this->logger->error('Falha ao salvar anexo no banco (nota_fiscal_id=' . $notaId . ')');
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=db_failure&tab=anexos");
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao enviar anexo (notas fiscais): ' . $e->getMessage());
+            if ($notaId > 0) {
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=fatal&tab=anexos");
+            } else {
+                header('Location: /faturamento/notas-fiscais?error=fatal');
+            }
+        }
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /faturamento/notas-fiscais/anexos/delete/{id}
+    // ---------------------------------------------------------------
+    public function deleteAnexo($id): void
+    {
+        try {
+            $usuarioId = Auth::user()->id;
+            $anexo     = $this->anexoModel->findById((int)$id);
+
+            if (!$anexo || (int)$anexo->usuario_id !== (int)$usuarioId) {
+                header('Location: /faturamento/notas-fiscais?error=unauthorized');
+                exit();
+            }
+
+            $notaId  = (int)($anexo->nota_fiscal_id ?? 0);
+            $filePath = BASE_PATH . '/' . ltrim((string)($anexo->file_path ?? ''), '/');
+
+            if ($this->anexoModel->delete((int)$id)) {
+                if (is_file($filePath)) {
+                    @unlink($filePath);
+                }
+                AuditLogger::log('delete_nota_fiscal_anexo', ['id' => (int)$id, 'nota_fiscal_id' => $notaId]);
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?success=deleted_anexo&tab=anexos");
+            } else {
+                $this->logger->error('Falha ao excluir anexo do banco (id=' . $id . ')');
+                header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=db_failure&tab=anexos");
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao remover anexo (notas fiscais): ' . $e->getMessage());
+            header('Location: /faturamento/notas-fiscais?error=fatal');
+        }
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // GET /faturamento/notas-fiscais/anexos/download/{id}
+    // ---------------------------------------------------------------
+    public function downloadAnexo($id): void
+    {
+        try {
+            $usuarioId = Auth::user()->id;
+            $anexo     = $this->anexoModel->findById((int)$id);
+
+            if (!$anexo || (int)$anexo->usuario_id !== (int)$usuarioId) {
+                http_response_code(403);
+                echo '403 - Acesso Negado';
+                exit();
+            }
+
+            $fileRel = (string)($anexo->file_path ?? '');
+            $fileAbs = BASE_PATH . '/' . ltrim($fileRel, '/');
+
+            if (!is_file($fileAbs)) {
+                http_response_code(404);
+                echo '404 - Arquivo não encontrado';
+                exit();
+            }
+
+            $mime = $anexo->mime_type ?? 'application/octet-stream';
+            $name = $anexo->original_name ?? basename($fileAbs);
+
+            header('Content-Type: ' . $mime);
+            header('Content-Length: ' . filesize($fileAbs));
+            header('Content-Disposition: attachment; filename="' . addslashes($name) . '"');
+            readfile($fileAbs);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao baixar anexo (notas fiscais): ' . $e->getMessage());
+            http_response_code(500);
+            echo 'Erro ao baixar arquivo';
+            exit();
+        }
+    }
+
     public function importForm(): void
     {
         View::render('notas_fiscais/importar', [
@@ -230,8 +407,8 @@ class NotasFiscaisController extends Controller
         $usuarioId = Auth::user()->id;
 
         $importId = null;
-        $destRel = null;
-        $notaId = null;
+        $destRel  = null;
+        $notaId   = null;
 
         try {
             if (!isset($_FILES['xml']) || $_FILES['xml']['error'] !== UPLOAD_ERR_OK) {
@@ -239,7 +416,7 @@ class NotasFiscaisController extends Controller
                 exit();
             }
 
-            $file = $_FILES['xml'];
+            $file    = $_FILES['xml'];
             $maxSize = 5 * 1024 * 1024;
             if (($file['size'] ?? 0) > $maxSize) {
                 header('Location: /faturamento/notas-fiscais/importar?error=file_too_large');
@@ -247,8 +424,8 @@ class NotasFiscaisController extends Controller
             }
 
             $tmpPath = $file['tmp_name'];
-            $finfo = new \finfo(FILEINFO_MIME_TYPE);
-            $mime = $finfo->file($tmpPath) ?: '';
+            $finfo   = new \finfo(FILEINFO_MIME_TYPE);
+            $mime    = $finfo->file($tmpPath) ?: '';
 
             $allowedMimes = [
                 'text/xml',
@@ -267,7 +444,7 @@ class NotasFiscaisController extends Controller
             }
 
             $safeName = bin2hex(random_bytes(16)) . '.xml';
-            $destAbs = $baseDir . '/' . $safeName;
+            $destAbs  = $baseDir . '/' . $safeName;
 
             if (!move_uploaded_file($tmpPath, $destAbs)) {
                 header('Location: /faturamento/notas-fiscais/importar?error=upload_failed');
@@ -277,10 +454,10 @@ class NotasFiscaisController extends Controller
             $destRel = 'storage/uploads/notas_fiscais_importacoes/' . $usuarioId . '/' . $safeName;
 
             $importId = $this->importModel->create([
-                'usuario_id' => $usuarioId,
+                'usuario_id'       => $usuarioId,
                 'arquivo_xml_path' => $destRel,
-                'status' => 'falha',
-                'mensagem' => 'Processando',
+                'status'           => 'falha',
+                'mensagem'         => 'Processando',
             ]);
 
             $parsed = $this->parseNfeXml($destAbs);
@@ -296,14 +473,14 @@ class NotasFiscaisController extends Controller
             }
 
             $dados = [
-                'usuario_id' => $usuarioId,
-                'cliente_id' => (int)$cliente->id,
-                'numero_nf' => $parsed['numero_nf'] ?? '',
-                'serie' => $parsed['serie'] ?? '',
-                'valor_total' => $parsed['valor_total'] ?? '0.00',
+                'usuario_id'   => $usuarioId,
+                'cliente_id'   => (int)$cliente->id,
+                'numero_nf'    => $parsed['numero_nf'] ?? '',
+                'serie'        => $parsed['serie'] ?? '',
+                'valor_total'  => $parsed['valor_total'] ?? '0.00',
                 'data_emissao' => $parsed['data_emissao'] ?? '',
-                'status' => 'importada',
-                'xml_path' => $destRel,
+                'status'       => 'importada',
+                'xml_path'     => $destRel,
             ];
 
             if (trim($dados['numero_nf']) === '' || trim($dados['serie']) === '' || trim($dados['data_emissao']) === '') {
@@ -320,9 +497,9 @@ class NotasFiscaisController extends Controller
             }
 
             AuditLogger::log('import_nota_fiscal', [
-                'import_id' => $importId,
+                'import_id'      => $importId,
                 'nota_fiscal_id' => $notaId,
-                'cliente_id' => (int)$cliente->id,
+                'cliente_id'     => (int)$cliente->id,
             ]);
 
             header("Location: /faturamento/notas-fiscais/edit/{$notaId}?success=imported");
@@ -360,14 +537,12 @@ class NotasFiscaisController extends Controller
         $xpath = new \DOMXPath($doc);
         $xpath->registerNamespace('nfe', 'http://www.portalfiscal.inf.br/nfe');
 
-        $numero = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:nNF)'));
-        $serie = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:serie)'));
-        $dhEmi = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:dhEmi)'));
-        $dEmi = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:dEmi)'));
-
-        $data = $dhEmi !== '' ? substr($dhEmi, 0, 10) : ($dEmi !== '' ? $dEmi : '');
-
-        $valor = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:total/nfe:ICMSTot/nfe:vNF)'));
+        $numero  = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:nNF)'));
+        $serie   = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:serie)'));
+        $dhEmi   = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:dhEmi)'));
+        $dEmi    = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:ide/nfe:dEmi)'));
+        $data    = $dhEmi !== '' ? substr($dhEmi, 0, 10) : ($dEmi !== '' ? $dEmi : '');
+        $valor   = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:total/nfe:ICMSTot/nfe:vNF)'));
         $docDest = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:dest/nfe:CNPJ)'));
         if ($docDest === '') {
             $docDest = trim((string)$xpath->evaluate('string(//nfe:infNFe/nfe:dest/nfe:CPF)'));
@@ -403,11 +578,11 @@ class NotasFiscaisController extends Controller
         }
 
         return [
-            'numero_nf' => $numero,
-            'serie' => $serie,
+            'numero_nf'    => $numero,
+            'serie'        => $serie,
             'data_emissao' => $data,
-            'valor_total' => $valor,
-            'documento' => $docDest,
+            'valor_total'  => $valor,
+            'documento'    => $docDest,
         ];
     }
 }

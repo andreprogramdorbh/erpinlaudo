@@ -1,14 +1,14 @@
 <div class="portal-page-header">
     <div>
         <h1 class="portal-page-title"><i class="fa fa-file-alt me-2"></i>Minhas Notas Fiscais</h1>
-        <p class="portal-page-subtitle">Visualize e baixe suas notas fiscais</p>
+        <p class="portal-page-subtitle">Visualize e baixe suas notas fiscais e anexos</p>
     </div>
 </div>
 
 <?php if (!empty($_GET['error'])): ?>
     <?php $erros = [
         'xml_indisponivel'      => 'O arquivo XML desta nota não está disponível.',
-        'arquivo_nao_encontrado'=> 'Arquivo XML não encontrado no servidor.',
+        'arquivo_nao_encontrado' => 'Arquivo não encontrado no servidor.',
     ]; ?>
     <div class="portal-alert portal-alert-danger mb-3">
         <i class="fa fa-exclamation-circle me-2"></i>
@@ -50,15 +50,38 @@
                         </span>
                     </td>
                     <td>
-                        <?php if (!empty($nota->xml_path)): ?>
-                            <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
-                               class="portal-btn portal-btn-outline portal-btn-sm"
-                               title="Baixar XML">
-                                <i class="fa fa-download me-1"></i> XML
-                            </a>
-                        <?php else: ?>
-                            <span class="text-muted small">Sem XML</span>
-                        <?php endif; ?>
+                        <div class="d-flex flex-wrap gap-1 align-items-center">
+                            <?php if (!empty($nota->xml_path)): ?>
+                                <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
+                                   class="portal-btn portal-btn-outline portal-btn-sm"
+                                   title="Baixar XML da NF-e">
+                                    <i class="fa fa-file-code me-1"></i> XML
+                                </a>
+                            <?php endif; ?>
+
+                            <?php if (!empty($nota->anexos)): ?>
+                                <?php foreach ($nota->anexos as $anexo): ?>
+                                    <?php
+                                    $mime = $anexo->mime_type ?? '';
+                                    $iconClass = 'fa-file';
+                                    if (str_contains($mime, 'pdf'))     $iconClass = 'fa-file-pdf';
+                                    elseif (str_contains($mime, 'xml')) $iconClass = 'fa-file-code';
+                                    elseif (str_contains($mime, 'image')) $iconClass = 'fa-file-image';
+                                    $nomeExibicao = htmlspecialchars($anexo->original_name ?? 'Anexo');
+                                    ?>
+                                    <a href="/portal/faturamento/nota-fiscal/anexo/<?php echo (int) $anexo->id; ?>"
+                                       class="portal-btn portal-btn-outline portal-btn-sm"
+                                       title="Baixar: <?php echo $nomeExibicao; ?>">
+                                        <i class="fa <?php echo $iconClass; ?> me-1"></i>
+                                        <?php echo $nomeExibicao; ?>
+                                    </a>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+
+                            <?php if (empty($nota->xml_path) && empty($nota->anexos)): ?>
+                                <span class="text-muted small">Sem arquivos</span>
+                            <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -89,16 +112,46 @@
                     <span class="portal-detail-value fw-semibold">R$ <?php echo number_format((float) $nota->valor_total, 2, ',', '.'); ?></span>
                 </div>
             </div>
-            <div class="portal-conta-actions">
-                <?php if (!empty($nota->xml_path)): ?>
-                    <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
-                       class="portal-btn portal-btn-outline portal-btn-sm">
-                        <i class="fa fa-download me-1"></i> Baixar XML
-                    </a>
-                <?php else: ?>
-                    <span class="text-muted small">XML não disponível</span>
-                <?php endif; ?>
+            <?php $temArquivos = !empty($nota->xml_path) || !empty($nota->anexos); ?>
+            <?php if ($temArquivos): ?>
+            <div class="portal-conta-attachments mt-3 p-2 rounded bg-light border">
+                <span class="d-block small fw-bold text-muted mb-2">
+                    <i class="fa fa-paperclip me-1"></i>Arquivos disponíveis:
+                </span>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php if (!empty($nota->xml_path)): ?>
+                        <a href="/portal/faturamento/nota-fiscal/xml/<?php echo (int) $nota->id; ?>"
+                           class="btn btn-sm btn-outline-secondary py-0 px-2"
+                           style="font-size: 0.75rem;"
+                           title="Baixar XML da NF-e">
+                            <i class="fa fa-file-code me-1"></i> XML
+                        </a>
+                    <?php endif; ?>
+                    <?php if (!empty($nota->anexos)): ?>
+                        <?php foreach ($nota->anexos as $anexo): ?>
+                            <?php
+                            $mime = $anexo->mime_type ?? '';
+                            $iconClass = 'fa-file';
+                            if (str_contains($mime, 'pdf'))     $iconClass = 'fa-file-pdf';
+                            elseif (str_contains($mime, 'xml')) $iconClass = 'fa-file-code';
+                            elseif (str_contains($mime, 'image')) $iconClass = 'fa-file-image';
+                            ?>
+                            <a href="/portal/faturamento/nota-fiscal/anexo/<?php echo (int) $anexo->id; ?>"
+                               class="btn btn-sm btn-outline-secondary py-0 px-2"
+                               style="font-size: 0.75rem;"
+                               title="Baixar: <?php echo htmlspecialchars($anexo->original_name ?? 'Anexo'); ?>">
+                                <i class="fa <?php echo $iconClass; ?> me-1"></i>
+                                <?php echo htmlspecialchars($anexo->original_name ?? 'Anexo'); ?>
+                            </a>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
             </div>
+            <?php else: ?>
+            <div class="portal-conta-actions">
+                <span class="text-muted small">Sem arquivos disponíveis</span>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endforeach; ?>
     </div>
