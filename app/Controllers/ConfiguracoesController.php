@@ -7,20 +7,20 @@ use App\Core\View;
 use App\Core\Auth;
 use App\Core\Audit\AuditLogger;
 use App\Models\User;
+use App\Models\PasswordResetToken;
 use App\Services\MailService;
-use App\Models\PasswordReset;
 
 class ConfiguracoesController extends Controller
 {
     private User $userModel;
     private MailService $mailService;
-    private PasswordReset $passwordResetModel;
+    private PasswordResetToken $passwordResetModel;
 
     public function __construct()
     {
         $this->userModel          = new User();
         $this->mailService        = new MailService();
-        $this->passwordResetModel = new PasswordReset();
+        $this->passwordResetModel = new PasswordResetToken();
     }
 
     public function index(): void
