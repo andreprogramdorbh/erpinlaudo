@@ -11,6 +11,7 @@ class DashboardController extends Controller
 {
     private \PDO $pdo;
     private Logger $logger;
+    private array $columnCache = [];
 
     public function __construct()
     {
@@ -26,6 +27,42 @@ class DashboardController extends Controller
         }
         $msg = $e->getMessage();
         return (strpos($msg, 'Base table or view not found') !== false) || (strpos($msg, "doesn't exist") !== false);
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        $key = strtolower($table . '.' . $column);
+        if (array_key_exists($key, $this->columnCache)) {
+            return (bool) $this->columnCache[$key];
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 1
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = :t
+                  AND COLUMN_NAME = :c
+                LIMIT 1
+            ");
+            $stmt->execute([':t' => $table, ':c' => $column]);
+            $exists = (bool) $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $exists = false;
+        }
+
+        $this->columnCache[$key] = $exists;
+        return $exists;
+    }
+
+    private function firstExistingColumn(string $table, array $candidates): ?string
+    {
+        foreach ($candidates as $col) {
+            if ($this->hasColumn($table, (string) $col)) {
+                return (string) $col;
+            }
+        }
+        return null;
     }
 
     private function fetchObjSafe(string $label, string $sql, array $params, object $default): object
@@ -46,6 +83,10 @@ class DashboardController extends Controller
                 return $default;
             }
             $this->logger->error('Dashboard: erro SQL', [
+                'label' => $label,
+                'error' => $e->getMessage(),
+            ]);
+            $this->logger->auth('Dashboard: erro SQL', [
                 'label' => $label,
                 'error' => $e->getMessage(),
             ]);
@@ -71,6 +112,10 @@ class DashboardController extends Controller
                 return [];
             }
             $this->logger->error('Dashboard: erro SQL', [
+                'label' => $label,
+                'error' => $e->getMessage(),
+            ]);
+            $this->logger->auth('Dashboard: erro SQL', [
                 'label' => $label,
                 'error' => $e->getMessage(),
             ]);
@@ -169,16 +214,38 @@ class DashboardController extends Controller
         ]);
 
         // --- Clientes ---
-        $clientes = $this->fetchObjSafe('clientes_resumo', "
-            SELECT COUNT(*) AS total,
-                   COUNT(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=:mes        THEN 1 END) AS novos_mes,
-                   COUNT(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=:mes_passado THEN 1 END) AS novos_mes_passado
-            FROM clientes WHERE usuario_id=:uid
-        ", [':uid'=>$uid,':mes'=>$mesAtual,':mes_passado'=>$mesPassado], (object)[
-            'total' => 0,
-            'novos_mes' => 0,
-            'novos_mes_passado' => 0,
-        ]);
+        // Alguns bancos antigos não possuem created_at em clientes.
+        // Se não houver uma coluna de data, calcula apenas o total e zera os "novos".
+        $clienteDateCol = $this->firstExistingColumn('clientes', ['created_at', 'data_cadastro', 'data_criacao', 'dt_cadastro', 'cadastrado_em', 'created']);
+        if ($clienteDateCol) {
+            $clientes = $this->fetchObjSafe('clientes_resumo', "
+                SELECT COUNT(*) AS total,
+                       COUNT(CASE WHEN DATE_FORMAT({$clienteDateCol},'%Y-%m')=:mes         THEN 1 END) AS novos_mes,
+                       COUNT(CASE WHEN DATE_FORMAT({$clienteDateCol},'%Y-%m')=:mes_passado THEN 1 END) AS novos_mes_passado
+                FROM clientes WHERE usuario_id=:uid
+            ", [':uid'=>$uid,':mes'=>$mesAtual,':mes_passado'=>$mesPassado], (object)[
+                'total' => 0,
+                'novos_mes' => 0,
+                'novos_mes_passado' => 0,
+            ]);
+        } else {
+            $this->logger->warning('Dashboard: clientes sem coluna de data (novos_mes indisponível)', [
+                'label' => 'clientes_resumo',
+            ]);
+            $this->logger->auth('Dashboard: clientes sem coluna de data', [
+                'label' => 'clientes_resumo',
+            ]);
+            $clientes = $this->fetchObjSafe('clientes_total_only', "
+                SELECT COUNT(*) AS total,
+                       0 AS novos_mes,
+                       0 AS novos_mes_passado
+                FROM clientes WHERE usuario_id=:uid
+            ", [':uid'=>$uid], (object)[
+                'total' => 0,
+                'novos_mes' => 0,
+                'novos_mes_passado' => 0,
+            ]);
+        }
 
         // --- CRM Leads ---
         $leads = $this->fetchObjSafe('crm_leads_resumo', "
