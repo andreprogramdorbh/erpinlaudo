@@ -262,14 +262,18 @@ Router::group(["middleware" => ["Auth"]], function () {
     // Perfil do usuário
     Router::group(["middleware" => ["Permission:view_profile"]], function () {
         Router::get("/perfil", "PerfilController@index");
+        Router::post("/perfil/update", "PerfilController@update");
+        Router::post("/perfil/change-password", "PerfilController@changePassword");
     });
 
-    // Gestão de usuários (superadmin/admin)
-    Router::group(["middleware" => ["Permission:manage_users"]], function () {
-        Router::get("/usuarios", "UsuariosController@index");
-    });
-
+    // Configurações (inclui gestão de usuários)
     Router::group(["middleware" => ["Permission:manage_settings"]], function () {
         Router::get("/configuracoes", "ConfiguracoesController@index");
+        Router::get("/configuracoes/usuarios/create", "ConfiguracoesController@usuariosCreate");
+        Router::post("/configuracoes/usuarios", "ConfiguracoesController@usuariosStore");
+        Router::get("/configuracoes/usuarios/edit/{id}", "ConfiguracoesController@usuariosEdit");
+        Router::post("/configuracoes/usuarios/update/{id}", "ConfiguracoesController@usuariosUpdate");
+        Router::post("/configuracoes/usuarios/reset-password/{id}", "ConfiguracoesController@usuariosResetPassword");
+        Router::post("/configuracoes/usuarios/toggle-status/{id}", "ConfiguracoesController@usuariosToggleStatus");
     });
 });
