@@ -262,4 +262,65 @@ class ContaReceber extends Model
         $stmt = $this->pdo->prepare("UPDATE {$this->table} SET status = 'cancelada' WHERE id = ?");
         return $stmt->execute([$id]);
     }
+
+    /**
+     * Retorna dados agregados para o dashboard de pagamentos do portal do cliente.
+     */
+    public function getDashboardDataByClienteId(int $clienteId, int $tenantId): array
+    {
+        $hoje   = date('Y-m-d');
+        $params = [':cliente_id' => $clienteId, ':tenant_id' => $tenantId];
+
+        // Totais por status
+        $stmtStatus = $this->pdo->prepare(
+            "SELECT status, COUNT(*) AS total, COALESCE(SUM(valor), 0) AS valor_total
+             FROM {$this->table}
+             WHERE cliente_id = :cliente_id AND usuario_id = :tenant_id
+             GROUP BY status"
+        );
+        $stmtStatus->execute($params);
+        $porStatus = $stmtStatus->fetchAll(PDO::FETCH_OBJ);
+
+        // Totais por meio de pagamento (apenas pagas)
+        $stmtMeio = $this->pdo->prepare(
+            "SELECT COALESCE(NULLIF(meio_pagamento,''),'outro') AS meio,
+                    COUNT(*) AS total, COALESCE(SUM(valor), 0) AS valor_total
+             FROM {$this->table}
+             WHERE cliente_id = :cliente_id AND usuario_id = :tenant_id AND status = 'recebida'
+             GROUP BY meio"
+        );
+        $stmtMeio->execute($params);
+        $porMeio = $stmtMeio->fetchAll(PDO::FETCH_OBJ);
+
+        // Evolucao mensal - ultimos 12 meses
+        $stmtMensal = $this->pdo->prepare(
+            "SELECT DATE_FORMAT(data_vencimento, '%Y-%m') AS mes,
+                    status,
+                    COALESCE(SUM(valor), 0) AS valor_total
+             FROM {$this->table}
+             WHERE cliente_id = :cliente_id AND usuario_id = :tenant_id
+               AND data_vencimento >= DATE_SUB(:hoje, INTERVAL 11 MONTH)
+             GROUP BY mes, status
+             ORDER BY mes ASC"
+        );
+        $stmtMensal->execute(array_merge($params, [':hoje' => $hoje]));
+        $mensal = $stmtMensal->fetchAll(PDO::FETCH_OBJ);
+
+        // Contas vencidas
+        $stmtVencidas = $this->pdo->prepare(
+            "SELECT COUNT(*) AS total, COALESCE(SUM(valor), 0) AS valor_total
+             FROM {$this->table}
+             WHERE cliente_id = :cliente_id AND usuario_id = :tenant_id
+               AND status = 'aberta' AND data_vencimento < :hoje"
+        );
+        $stmtVencidas->execute(array_merge($params, [':hoje' => $hoje]));
+        $vencidas = $stmtVencidas->fetch(PDO::FETCH_OBJ);
+
+        return [
+            'por_status' => $porStatus,
+            'por_meio'   => $porMeio,
+            'mensal'     => $mensal,
+            'vencidas'   => $vencidas,
+        ];
+    }
 }

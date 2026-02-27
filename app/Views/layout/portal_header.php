@@ -84,6 +84,10 @@ $currentUri  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
                 <i class="fa fa-file-invoice-dollar"></i>
                 <span>Minhas Contas</span>
             </a>
+            <a href="/portal/pagamentos/dashboard" class="portal-nav-item <?php echo str_starts_with($currentUri, '/portal/pagamentos') ? 'active' : ''; ?>">
+                <i class="fa fa-chart-pie"></i>
+                <span>Meu Financeiro</span>
+            </a>
             <div class="portal-nav-group">
                 <div class="portal-nav-group-label">
                     <i class="fa fa-receipt"></i>

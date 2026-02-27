@@ -14,6 +14,10 @@
         <i class="fa fa-file-invoice-dollar"></i>
         <span>Contas</span>
     </a>
+    <a href="/portal/pagamentos/dashboard" class="portal-bottom-item <?php echo str_starts_with($currentUri, '/portal/pagamentos') ? 'active' : ''; ?>">
+        <i class="fa fa-chart-pie"></i>
+        <span>Financeiro</span>
+    </a>
     <a href="/portal/faturamento/notas-fiscais" class="portal-bottom-item <?php echo str_starts_with($currentUri, '/portal/faturamento') ? 'active' : ''; ?>">
         <i class="fa fa-file-alt"></i>
         <span>Notas</span>

@@ -449,6 +449,15 @@ class AsaasService
     // HTTP INTERNO
     // ---------------------------------------------------------------
 
+    /**
+     * Versão pública do makeRequest para uso em polling do portal.
+     * Permite chamadas externas sem expor o método privado original.
+     */
+    public function makeRequestPublic(string $method, string $endpoint, array $data = []): array
+    {
+        return $this->makeRequest($method, $endpoint, $data);
+    }
+
     private function makeRequest(string $method, string $endpoint, array $data = []): array
     {
         $url = $this->baseUrl . $endpoint;

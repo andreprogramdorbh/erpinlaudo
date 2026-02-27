@@ -25,3 +25,4 @@ composer.lock
 
 # Cache
 *.cache
+tmp_add_dashboard.py

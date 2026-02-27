@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Controllers;
 
 use App\Core\Controller;
@@ -16,11 +15,16 @@ use App\Services\AsaasService;
 /**
  * Controller de Contas a Pagar do Portal do Cliente.
  *
- * Fluxo de pagamento por meio:
+ * Fluxo de pagamento:
  *  - PIX      → exibe QR Code + código copia-e-cola na tela
  *  - Boleto   → redireciona para URL do boleto no Asaas
- *  - Checkout → redireciona para invoiceUrl (cliente escolhe o meio no Asaas)
+ *  - Checkout → JSON com link para o JS abrir em nova aba (target=_blank)
  *  - Manual   → exibe mensagem de contato
+ *
+ * Polling de status:
+ *  - GET /portal/contas-a-pagar/status/{id}  → JSON leve (só lê BD)
+ *  - GET /portal/contas-a-pagar/sync/{id}    → JSON completo (consulta Asaas + atualiza BD)
+ *  - GET /portal/contas-a-pagar/link/{id}    → JSON com URL de pagamento para abrir em nova aba
  */
 class PortalContasPagarController extends Controller
 {
@@ -42,7 +46,6 @@ class PortalContasPagarController extends Controller
     // ---------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------
-
     private function getPortalCliente(): object
     {
         $id     = (int) ($_SESSION['portal_cliente_id'] ?? 0);
@@ -55,43 +58,175 @@ class PortalContasPagarController extends Controller
         return $portal;
     }
 
-    /**
-     * Retorna a instância do AsaasService configurada para o tenant (vendedor).
-     */
     private function getAsaasService(int $tenantId): ?AsaasService
     {
         $integracaoModel = new Integracao();
         $config = $integracaoModel->findByProvider('asaas', $tenantId);
-
         if (!$config || $config->status !== 'active' || empty($config->api_key)) {
             return null;
         }
-
         return new AsaasService($config->api_key, $config->environment ?? 'sandbox');
     }
 
     // ---------------------------------------------------------------
-    // GET /portal/contas-a-pagar/status/{id}  — polling para PIX
+    // GET /portal/contas-a-pagar/status/{id}
+    // Polling leve: apenas lê o banco (sem chamar Asaas)
     // ---------------------------------------------------------------
     public function statusCheck(int $id): void
     {
-        header('Content-Type: application/json');
-
+        header('Content-Type: application/json; charset=utf-8');
         $portal    = $this->getPortalCliente();
         $clienteId = (int) $portal->cliente_id;
-
         $conta = $this->contaModel->findById($id);
-
         if (!$conta || (int) $conta->cliente_id !== $clienteId) {
             echo json_encode(['status' => 'error', 'message' => 'nao_autorizado']);
             exit();
         }
-
+        $pago = ($conta->status === 'recebida');
         echo json_encode([
-            'status'  => $conta->status,
-            'conta_id'=> $id,
+            'status'           => $conta->status,
+            'conta_id'         => $id,
+            'pago'             => $pago,
+            'data_recebimento' => $conta->data_recebimento ?? null,
         ]);
         exit();
+    }
+
+    // ---------------------------------------------------------------
+    // GET /portal/contas-a-pagar/sync/{id}
+    // Polling completo: consulta Asaas e atualiza BD antes de responder
+    // ---------------------------------------------------------------
+    public function syncStatus(int $id): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        $portal    = $this->getPortalCliente();
+        $clienteId = (int) $portal->cliente_id;
+        $tenantId  = (int) $portal->tenant_id;
+        $conta = $this->contaModel->findById($id);
+        if (!$conta || (int) $conta->cliente_id !== $clienteId) {
+            echo json_encode(['status' => 'error', 'message' => 'nao_autorizado']);
+            exit();
+        }
+        // Só sincroniza se tiver payment_id e ainda não estiver pago
+        if (!empty($conta->asaas_payment_id) && $conta->status === 'aberta') {
+            try {
+                $asaas = $this->getAsaasService($tenantId);
+                if ($asaas) {
+                    $response = $asaas->makeRequestPublic('GET', "/payments/{$conta->asaas_payment_id}");
+                    if (!empty($response['status'])) {
+                        $novoStatus = AsaasService::mapearStatus($response['status']);
+                        if ($novoStatus !== $conta->status) {
+                            $dataRec = null;
+                            foreach (['paymentDate', 'confirmedDate', 'clientPaymentDate'] as $field) {
+                                if (!empty($response[$field])) {
+                                    $dataRec = substr((string)$response[$field], 0, 10);
+                                    break;
+                                }
+                            }
+                            $this->contaModel->update((int) $conta->id, [
+                                'status'           => $novoStatus,
+                                'data_recebimento' => $dataRec ?: ($novoStatus === 'recebida' ? date('Y-m-d') : null),
+                                'meio_pagamento'   => AsaasService::mapearMeioPagamento($response['billingType'] ?? 'UNDEFINED'),
+                            ]);
+                            AuditLogger::log('portal_sync_status_atualizado', [
+                                'conta_id'         => $id,
+                                'status_anterior'  => $conta->status,
+                                'status_novo'      => $novoStatus,
+                                'asaas_payment_id' => $conta->asaas_payment_id,
+                            ]);
+                            $this->logger->info('[Portal] Sync: status atualizado via polling', [
+                                'conta_id'   => $id,
+                                'status_old' => $conta->status,
+                                'status_new' => $novoStatus,
+                            ]);
+                            $conta = $this->contaModel->findById($id);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('[Portal] Sync: erro ao consultar Asaas', [
+                    'conta_id' => $id,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
+        }
+        $pago = ($conta->status === 'recebida');
+        echo json_encode([
+            'status'           => $conta->status,
+            'conta_id'         => $id,
+            'pago'             => $pago,
+            'data_recebimento' => $conta->data_recebimento ?? null,
+        ]);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // GET /portal/contas-a-pagar/link/{id}
+    // Retorna JSON com URL de pagamento para abrir em nova aba via JS
+    // ---------------------------------------------------------------
+    public function getLink(int $id): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        $portal    = $this->getPortalCliente();
+        $clienteId = (int) $portal->cliente_id;
+        $tenantId  = (int) $portal->tenant_id;
+        $conta = $this->contaModel->findById($id);
+        if (!$conta || (int) $conta->cliente_id !== $clienteId) {
+            echo json_encode(['success' => false, 'error' => 'nao_autorizado']);
+            exit();
+        }
+        if ($conta->status === 'recebida') {
+            echo json_encode(['success' => false, 'error' => 'ja_pago', 'status' => $conta->status]);
+            exit();
+        }
+        if ($conta->status === 'cancelada') {
+            echo json_encode(['success' => false, 'error' => 'cancelada']);
+            exit();
+        }
+        $asaas = $this->getAsaasService($tenantId);
+        if (!$asaas) {
+            echo json_encode(['success' => false, 'error' => 'pagamento_indisponivel']);
+            exit();
+        }
+        try {
+            if (empty($conta->asaas_payment_id)) {
+                $conta = $this->gerarPagamentoAsaas($conta, $portal, $asaas);
+            }
+            $meio = strtolower((string)($conta->meio_pagamento ?? 'checkout'));
+            if ($meio === 'pix') {
+                echo json_encode([
+                    'success'  => true,
+                    'tipo'     => 'redirect',
+                    'url'      => "/portal/contas-a-pagar/pagar/{$id}",
+                    'conta_id' => $id,
+                ]);
+                exit();
+            }
+            if ($meio === 'boleto') {
+                $url = $asaas->getBoletoUrl((string) $conta->asaas_payment_id);
+                if (empty($url)) {
+                    echo json_encode(['success' => false, 'error' => 'boleto_indisponivel']);
+                    exit();
+                }
+                echo json_encode(['success' => true, 'tipo' => 'nova_aba', 'url' => $url, 'conta_id' => $id]);
+                exit();
+            }
+            // Checkout (padrão)
+            $link = $asaas->getLinkPagamento((string) $conta->asaas_payment_id);
+            if (empty($link)) {
+                echo json_encode(['success' => false, 'error' => 'link_indisponivel']);
+                exit();
+            }
+            echo json_encode(['success' => true, 'tipo' => 'nova_aba', 'url' => $link, 'conta_id' => $id]);
+            exit();
+        } catch (\InvalidArgumentException $e) {
+            echo json_encode(['success' => false, 'error' => 'valor_minimo', 'mensagem' => $e->getMessage()]);
+            exit();
+        } catch (\Throwable $e) {
+            $this->logger->error('[Portal] getLink: erro', ['conta_id' => $id, 'error' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'error' => 'erro_pagamento']);
+            exit();
+        }
     }
 
     // ---------------------------------------------------------------
@@ -102,46 +237,45 @@ class PortalContasPagarController extends Controller
         $portal    = $this->getPortalCliente();
         $clienteId = (int) $portal->cliente_id;
         $tenantId  = (int) $portal->tenant_id;
-
         $this->logger->info('[Portal] Minhas Contas acessado', [
             'portal_id'  => $portal->id,
             'cliente_id' => $clienteId,
         ]);
-
-        // Filtro de status via GET
-        $statusFiltro  = $_GET['status'] ?? '';
-        $statusValidos = ['', 'aberta', 'recebida', 'cancelada'];
-        if (!in_array($statusFiltro, $statusValidos, true)) {
-            $statusFiltro = '';
-        }
-
-        // Busca todas as contas do cliente neste tenant
+        // Busca TODAS as contas do cliente neste tenant
         $todasContas = $this->contaModel->findByClienteIdAndTenantId($clienteId, $tenantId);
-
-        // Contadores para o resumo
-        $totalAbertas   = count(array_filter($todasContas, fn($c) => $c->status === 'aberta'));
-        $totalRecebidas = count(array_filter($todasContas, fn($c) => $c->status === 'recebida'));
-        $totalValorAberto = array_sum(array_map(
-            fn($c) => $c->status === 'aberta' ? (float)$c->valor : 0,
-            $todasContas
-        ));
-
-        // Aplica filtro de status se solicitado
-        if ($statusFiltro !== '') {
-            $contas = array_values(array_filter($todasContas, fn($c) => $c->status === $statusFiltro));
-        } else {
-            $contas = array_values($todasContas);
+        // Separa em grupos
+        $contasAbertas    = array_values(array_filter($todasContas, fn($c) => $c->status === 'aberta'));
+        $contasRecebidas  = array_values(array_filter($todasContas, fn($c) => $c->status === 'recebida'));
+        $contasCanceladas = array_values(array_filter($todasContas, fn($c) => $c->status === 'cancelada'));
+        $hoje             = date('Y-m-d');
+        $contasVencidas   = array_values(array_filter($contasAbertas, fn($c) => $c->data_vencimento < $hoje));
+        // Totalizadores
+        $totalAbertas       = count($contasAbertas);
+        $totalRecebidas     = count($contasRecebidas);
+        $totalCanceladas    = count($contasCanceladas);
+        $totalVencidas      = count($contasVencidas);
+        $totalValorAberto   = array_sum(array_map(fn($c) => (float)$c->valor, $contasAbertas));
+        $totalValorRecebido = array_sum(array_map(fn($c) => (float)$c->valor, $contasRecebidas));
+        $totalValorTotal    = $totalValorAberto + $totalValorRecebido;
+        // Aba ativa via GET
+        $abaAtiva = $_GET['aba'] ?? 'abertas';
+        if (!in_array($abaAtiva, ['abertas', 'pagas', 'canceladas'], true)) {
+            $abaAtiva = 'abertas';
         }
-
-        // Carrega anexos de cada conta
-        foreach ($contas as $conta) {
+        // Seleciona contas a exibir conforme aba
+        $contasExibir = match ($abaAtiva) {
+            'pagas'     => $contasRecebidas,
+            'canceladas'=> $contasCanceladas,
+            default     => $contasAbertas,
+        };
+        // Carrega anexos de cada conta exibida
+        foreach ($contasExibir as $conta) {
             try {
                 $conta->anexos = $this->anexoModel->findByContaId((int)$conta->id, $tenantId);
             } catch (\Throwable $e) {
                 $conta->anexos = [];
             }
         }
-
         // Verifica se o Asaas está configurado para este tenant
         $asaasEnabled = false;
         try {
@@ -150,57 +284,50 @@ class PortalContasPagarController extends Controller
         } catch (\Throwable $e) {
             $asaasEnabled = false;
         }
-
         View::render('portal/contas-a-pagar/index', [
-            'title'           => 'Minhas Contas',
-            '_layout'         => 'portal',
-            'portal'          => $portal,
-            'contas'          => $contas,
-            'totalAbertas'    => $totalAbertas,
-            'totalRecebidas'  => $totalRecebidas,
-            'totalValorAberto'=> $totalValorAberto,
-            'statusFiltro'    => $statusFiltro,
-            'asaasEnabled'    => $asaasEnabled,
+            'title'              => 'Minhas Contas',
+            '_layout'            => 'portal',
+            'portal'             => $portal,
+            'contas'             => $contasExibir,
+            'contasAbertas'      => $contasAbertas,
+            'contasRecebidas'    => $contasRecebidas,
+            'contasCanceladas'   => $contasCanceladas,
+            'totalAbertas'       => $totalAbertas,
+            'totalRecebidas'     => $totalRecebidas,
+            'totalCanceladas'    => $totalCanceladas,
+            'totalVencidas'      => $totalVencidas,
+            'totalValorAberto'   => $totalValorAberto,
+            'totalValorRecebido' => $totalValorRecebido,
+            'totalValorTotal'    => $totalValorTotal,
+            'abaAtiva'           => $abaAtiva,
+            'asaasEnabled'       => $asaasEnabled,
         ]);
     }
 
     // ---------------------------------------------------------------
     // GET /portal/contas-a-pagar/pagar/{id}
-    // Redireciona ou exibe QR Code conforme o meio de pagamento
+    // Mantido para compatibilidade (PIX usa redirect direto)
     // ---------------------------------------------------------------
     public function pagar(int $id): void
     {
         $portal    = $this->getPortalCliente();
         $clienteId = (int) $portal->cliente_id;
         $tenantId  = (int) $portal->tenant_id;
-
         $conta = $this->contaModel->findById($id);
-
-        // Segurança: a conta deve pertencer ao cliente logado
         if (!$conta || (int) $conta->cliente_id !== $clienteId) {
-            $this->logger->warning('[Portal] Tentativa de acesso a conta de outro cliente', [
-                'portal_id'  => $portal->id,
-                'conta_id'   => $id,
-                'cliente_id' => $clienteId,
-            ]);
             header('Location: /portal/contas-a-pagar?error=nao_autorizado');
             exit();
         }
-
         if ($conta->status === 'recebida') {
-            header('Location: /portal/contas-a-pagar?info=ja_pago');
+            header('Location: /portal/contas-a-pagar?aba=pagas&info=ja_pago');
             exit();
         }
-
         if ($conta->status === 'cancelada') {
             header('Location: /portal/contas-a-pagar?error=cancelada');
             exit();
         }
-
-        $meio = $conta->meio_pagamento ?? '';
-
-        // Meios manuais — sem integração Asaas
-        $meiosManuais = ['dinheiro', 'transferencia', 'cartao', 'outro', ''];
+        $meio = strtolower((string)($conta->meio_pagamento ?? ''));
+        $meiosManuais = ['dinheiro', 'transferencia', 'outro', ''];
         if (in_array($meio, $meiosManuais, true)) {
             View::render('portal/contas-a-pagar/pagamento-manual', [
                 'title'   => 'Pagamento',
@@ -210,76 +337,42 @@ class PortalContasPagarController extends Controller
             ]);
             return;
         }
-
-        // Meios Asaas — requer payment_id
         $asaas = $this->getAsaasService($tenantId);
-
         if (!$asaas) {
-            $this->logger->error('[Portal] AsaasService não configurado ou inativo', ['tenant_id' => $tenantId]);
             header('Location: /portal/contas-a-pagar?error=pagamento_indisponivel');
             exit();
         }
-
-        // Se não tem payment_id, tenta gerar um agora (Checkout UNDEFINED)
         if (empty($conta->asaas_payment_id)) {
             try {
                 $conta = $this->gerarPagamentoAsaas($conta, $portal, $asaas);
             } catch (\InvalidArgumentException $e) {
-                // Erro de validação local (ex: valor abaixo do mínimo R$ 5,00)
-                $this->logger->error('[Portal] Validação Asaas: ' . $e->getMessage(), [
-                    'conta_id' => $id,
-                    'valor'    => $conta->valor ?? null,
-                ]);
                 $asaas->logAsaas('error', '[Portal] Valor abaixo do mínimo Asaas', [
-                    'conta_id' => $id,
-                    'valor'    => $conta->valor ?? null,
-                    'error'    => $e->getMessage(),
+                    'conta_id' => $id, 'valor' => $conta->valor, 'error' => $e->getMessage(),
                 ]);
                 $errorMsg = urlencode($e->getMessage());
                 header("Location: /portal/contas-a-pagar?error=valor_minimo&msg={$errorMsg}");
                 exit();
             } catch (\Exception $e) {
-                $this->logger->error('[Portal] Falha ao gerar pagamento Asaas on-the-fly', [
-                    'conta_id' => $id,
-                    'error'    => $e->getMessage()
-                ]);
-                $asaas->logAsaas('error', '[Portal] Falha ao gerar pagamento on-the-fly', [
-                    'conta_id' => $id,
-                    'error'    => $e->getMessage(),
+                $this->logger->error('[Portal] Falha ao gerar pagamento on-the-fly', [
+                    'conta_id' => $id, 'error' => $e->getMessage(),
                 ]);
                 header('Location: /portal/contas-a-pagar?error=link_indisponivel');
                 exit();
             }
         }
-
         try {
-            // $asaas já foi instanciado acima via getAsaasService
-
             AuditLogger::log('portal_pagamento_iniciado', [
-                'portal_id'        => $portal->id,
-                'cliente_id'       => $clienteId,
-                'conta_id'         => $id,
-                'asaas_payment_id' => $conta->asaas_payment_id,
-                'meio_pagamento'   => $meio,
+                'portal_id' => $portal->id, 'cliente_id' => $clienteId,
+                'conta_id'  => $id, 'asaas_payment_id' => $conta->asaas_payment_id,
+                'meio'      => $meio,
             ]);
-
             switch ($meio) {
-
-                // PIX — exibe QR Code na tela
                 case 'pix':
                     $pixData = $asaas->getPixQrCode((string) $conta->asaas_payment_id);
-
                     if (empty($pixData['encodedImage'])) {
-                        $this->logger->error('[Portal] QR Code PIX não disponível', [
-                            'conta_id'         => $id,
-                            'asaas_payment_id' => $conta->asaas_payment_id,
-                        ]);
                         header('Location: /portal/contas-a-pagar?error=pix_indisponivel');
                         exit();
                     }
-
-                    $this->logger->info('[Portal] QR Code PIX gerado', ['conta_id' => $id]);
-
                     View::render('portal/contas-a-pagar/pagar-pix', [
                         'title'          => 'Pagar com PIX',
                         '_layout'        => 'portal',
@@ -290,94 +383,57 @@ class PortalContasPagarController extends Controller
                         'pixExpiracao'   => $pixData['expirationDate'] ?? '',
                     ]);
                     return;
-
-                // Boleto — redireciona para URL do boleto
                 case 'boleto':
                     $boletoUrl = $asaas->getBoletoUrl((string) $conta->asaas_payment_id);
-
                     if (empty($boletoUrl)) {
-                        $this->logger->error('[Portal] URL do boleto não disponível', [
-                            'conta_id'         => $id,
-                            'asaas_payment_id' => $conta->asaas_payment_id,
-                        ]);
                         header('Location: /portal/contas-a-pagar?error=boleto_indisponivel');
                         exit();
                     }
-
-                    $this->logger->info('[Portal] Redirecionando para boleto', [
-                        'conta_id' => $id,
-                        'url'      => $boletoUrl,
-                    ]);
-
                     header("Location: {$boletoUrl}");
                     exit();
-
-                // Checkout — redireciona para invoiceUrl (cliente escolhe o meio no Asaas)
                 case 'checkout':
                 default:
                     $link = $asaas->getLinkPagamento((string) $conta->asaas_payment_id);
-
                     if (empty($link)) {
-                        $this->logger->error('[Portal] Link de checkout não disponível', [
-                            'conta_id'         => $id,
-                            'asaas_payment_id' => $conta->asaas_payment_id,
-                        ]);
                         header('Location: /portal/contas-a-pagar?error=link_indisponivel');
                         exit();
                     }
-
-                    $this->logger->info('[Portal] Redirecionando para checkout Asaas', [
-                        'conta_id' => $id,
-                        'link'     => $link,
-                    ]);
-
                     header("Location: {$link}");
                     exit();
             }
-
         } catch (\Throwable $e) {
             $this->logger->error('[Portal] Erro ao processar pagamento: ' . $e->getMessage(), [
-                'conta_id' => $id,
-                'trace'    => $e->getTraceAsString(),
+                'conta_id' => $id, 'trace' => $e->getTraceAsString(),
             ]);
             header('Location: /portal/contas-a-pagar?error=erro_pagamento');
             exit();
         }
     }
 
+    // ---------------------------------------------------------------
+    // Download de anexo
+    // ---------------------------------------------------------------
     public function downloadAnexo(int $id): void
     {
         try {
             $portal    = $this->getPortalCliente();
             $clienteId = (int) $portal->cliente_id;
             $tenantId  = (int) $portal->tenant_id;
-
             $anexo = $this->anexoModel->findById($id);
             if (!$anexo || (int) $anexo->usuario_id !== $tenantId) {
-                http_response_code(403);
-                echo '403 - Acesso Negado';
-                exit();
+                http_response_code(403); echo '403 - Acesso Negado'; exit();
             }
-
-            // Verifica se a conta vinculada a este anexo realmente pertence ao cliente
             $conta = $this->contaModel->findById((int) $anexo->conta_receber_id);
             if (!$conta || (int) $conta->cliente_id !== $clienteId) {
-                http_response_code(403);
-                echo '403 - Acesso Negado (Conta Inválida)';
-                exit();
+                http_response_code(403); echo '403 - Acesso Negado (Conta Inválida)'; exit();
             }
-
             $fileRel = (string)($anexo->file_path ?? '');
             $fileAbs = BASE_PATH . '/' . ltrim($fileRel, '/');
             if (!is_file($fileAbs)) {
-                http_response_code(404);
-                echo '404 - Arquivo não encontrado';
-                exit();
+                http_response_code(404); echo '404 - Arquivo não encontrado'; exit();
             }
-
             $mime = $anexo->mime_type ?? 'application/octet-stream';
             $name = $anexo->original_name ?? basename($fileAbs);
-
             header('Content-Type: ' . $mime);
             header('Content-Length: ' . filesize($fileAbs));
             header('Content-Disposition: attachment; filename="' . addslashes($name) . '"');
@@ -385,9 +441,7 @@ class PortalContasPagarController extends Controller
             exit();
         } catch (\Exception $e) {
             $this->logger->error('[Portal] Erro ao baixar anexo: ' . $e->getMessage());
-            http_response_code(500);
-            echo 'Erro ao baixar arquivo';
-            exit();
+            http_response_code(500); echo 'Erro ao baixar arquivo'; exit();
         }
     }
 
@@ -396,10 +450,8 @@ class PortalContasPagarController extends Controller
      */
     private function gerarPagamentoAsaas(object $conta, object $portal, AsaasService $asaas): object
     {
-        // 1. Buscar ou Criar Cliente no Asaas
-        $documento = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
+        $documento    = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
         $asaasCliente = $asaas->buscarCliente($documento, $portal->email_principal ?? null);
-
         if (!$asaasCliente) {
             $asaasCliente = $asaas->criarCliente([
                 'name'    => $portal->razao_social ?? '',
@@ -408,8 +460,6 @@ class PortalContasPagarController extends Controller
                 'cpfCnpj' => $documento,
             ]);
         }
-
-        // 2. Criar Checkout (UNDEFINED)
         $dadosBase = [
             'customer'          => $asaasCliente['id'],
             'value'             => (float) $conta->valor,
@@ -418,18 +468,13 @@ class PortalContasPagarController extends Controller
             'externalReference' => "u:{$portal->tenant_id}|cr:{$conta->id}",
             'postalService'     => false,
         ];
-
         $cobranca = $asaas->criarCheckout($dadosBase);
-
-        // 3. Atualizar no Banco
         $this->contaModel->update((int) $conta->id, [
             'asaas_payment_id'   => $cobranca['id'],
             'external_reference' => $dadosBase['externalReference'],
-            'meio_pagamento'     => 'checkout', // Força checkout para permitir escolha
+            'meio_pagamento'     => 'checkout',
             'status'             => AsaasService::mapearStatus($cobranca['status'] ?? 'PENDING'),
         ]);
-
-        // Retorna a conta atualizada
         return $this->contaModel->findById((int) $conta->id);
     }
 }

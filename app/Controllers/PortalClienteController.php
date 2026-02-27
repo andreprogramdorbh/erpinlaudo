@@ -121,4 +121,77 @@ class PortalClienteController extends Controller
         header('Location: /portal/perfil?success=senha_alterada');
         exit();
     }
+
+    // ---------------------------------------------------------------
+    // GET /portal/pagamentos/dashboard
+    // ---------------------------------------------------------------
+    public function dashboardPagamentos(): void
+    {
+        $portal    = $this->getPortalCliente();
+        $tenantId  = (int) $portal->tenant_id;
+        $clienteId = (int) $portal->cliente_id;
+
+        $this->logger->info('[Portal] Dashboard Pagamentos acessado', [
+            'portal_id'  => $portal->id,
+            'cliente_id' => $clienteId,
+        ]);
+
+        $dashData = $this->contaReceberModel->getDashboardDataByClienteId($clienteId, $tenantId);
+
+        $statusTotais  = ['aberta' => 0, 'recebida' => 0, 'cancelada' => 0];
+        $statusValores = ['aberta' => 0.0, 'recebida' => 0.0, 'cancelada' => 0.0];
+        foreach ($dashData['por_status'] as $row) {
+            $statusTotais[$row->status]  = (int)   $row->total;
+            $statusValores[$row->status] = (float) $row->valor_total;
+        }
+
+        $meioPagLabels = [
+            'pix' => 'PIX', 'boleto' => 'Boleto', 'cartao' => 'Cartao',
+            'checkout' => 'Checkout', 'dinheiro' => 'Dinheiro',
+            'transferencia' => 'Transferencia', 'outro' => 'Outro',
+        ];
+        $meioLabels  = [];
+        $meioCounts  = [];
+        $meioValores = [];
+        foreach ($dashData['por_meio'] as $row) {
+            $meioLabels[]  = $meioPagLabels[$row->meio] ?? ucfirst($row->meio);
+            $meioCounts[]  = (int)   $row->total;
+            $meioValores[] = (float) $row->valor_total;
+        }
+
+        $meses = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $meses[] = date('Y-m', strtotime("-{$i} months"));
+        }
+        $mensalAberta   = array_fill(0, 12, 0.0);
+        $mensalRecebida = array_fill(0, 12, 0.0);
+        foreach ($dashData['mensal'] as $row) {
+            $idx = array_search($row->mes, $meses, true);
+            if ($idx !== false) {
+                if ($row->status === 'aberta')   $mensalAberta[$idx]   = (float) $row->valor_total;
+                if ($row->status === 'recebida') $mensalRecebida[$idx] = (float) $row->valor_total;
+            }
+        }
+        $mesesLabels = array_map(function($m) {
+            [$y, $mo] = explode('-', $m);
+            $nomes = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            return $nomes[(int)$mo] . '/' . substr($y, 2);
+        }, $meses);
+
+        View::render('portal/pagamentos/dashboard', [
+            'title'          => 'Meu Financeiro',
+            '_layout'        => 'portal',
+            'portal'         => $portal,
+            'statusTotais'   => $statusTotais,
+            'statusValores'  => $statusValores,
+            'meioLabels'     => $meioLabels,
+            'meioCounts'     => $meioCounts,
+            'meioValores'    => $meioValores,
+            'mesesLabels'    => $mesesLabels,
+            'mensalAberta'   => $mensalAberta,
+            'mensalRecebida' => $mensalRecebida,
+            'vencidas'       => $dashData['vencidas'],
+        ]);
+    }
+
 }

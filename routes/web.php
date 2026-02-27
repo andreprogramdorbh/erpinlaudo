@@ -34,6 +34,7 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     // Dashboard
     Router::get("/portal/dashboard", "PortalClienteController@dashboard");
     Router::get("/portal", "PortalClienteController@dashboard"); // alias
+    Router::get("/portal/pagamentos/dashboard", "PortalClienteController@dashboardPagamentos");
 
     // Perfil
     Router::get("/portal/perfil", "PortalClienteController@perfil");
@@ -43,6 +44,8 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     Router::get("/portal/contas-a-pagar", "PortalContasPagarController@index");
     Router::get("/portal/contas-a-pagar/pagar/{id}", "PortalContasPagarController@pagar");
     Router::get("/portal/contas-a-pagar/status/{id}", "PortalContasPagarController@statusCheck");
+    Router::get("/portal/contas-a-pagar/sync/{id}", "PortalContasPagarController@syncStatus");
+    Router::get("/portal/contas-a-pagar/link/{id}", "PortalContasPagarController@getLink");
     Router::get("/portal/contas-a-pagar/anexos/download/{id}", "PortalContasPagarController@downloadAnexo");
 
     // Faturamento
