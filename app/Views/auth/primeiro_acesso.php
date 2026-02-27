@@ -29,6 +29,7 @@ if (is_dir($uploadLogoDir)) {
             'token_invalido'       => 'Link inválido ou expirado. Solicite um novo primeiro acesso.',
             'senhas_diferentes'    => 'As senhas não coincidem. Tente novamente.',
             'senha_curta'          => 'A senha deve ter pelo menos 8 caracteres.',
+            'salvar_falhou'        => 'NÃ£o foi possÃ­vel salvar sua senha agora. Tente novamente em instantes.',
         ]; ?>
         <div class="alert alert-danger border-0 shadow-sm py-2 px-3 mb-3 rounded-3">
             <?php echo htmlspecialchars($erros[$_GET['error']] ?? 'Ocorreu um erro. Tente novamente.'); ?>

@@ -229,7 +229,7 @@ class AuthController extends Controller
             }
             $token = $tokenParam;
             // Busca nome do cliente para personalizar a tela
-            $portalDados = $portalModel->findByClienteId((int) $registro->cliente_id);
+            $portalDados = $portalModel->findById((int) $registro->portal_id);
             $nomeCliente = $portalDados->nome_fantasia ?? $portalDados->razao_social ?? 'Cliente';
         }
 
@@ -280,8 +280,8 @@ class AuthController extends Controller
         }
 
         // Gera token de primeiro acesso
-        $token = $portalModel->criarToken((int) $portalCliente->id, 'primeiro_acesso');
-        $logger->info('[PrimeiroAcesso] Token gerado', ['portal_id' => $portalCliente->id, 'email' => $email]);
+        $token = $portalModel->criarToken((int) $portalCliente->cliente_id, 'primeiro_acesso');
+        $logger->info('[PrimeiroAcesso] Token gerado', ['portal_id' => $portalCliente->id, 'cliente_id' => $portalCliente->cliente_id, 'email' => $email]);
         AuditLogger::log('portal_primeiro_acesso_solicitado', ['portal_id' => $portalCliente->id, 'email' => $email]);
 
         // Redireciona para etapa 2 com o token
@@ -325,21 +325,37 @@ class AuthController extends Controller
 
         // Salva a senha com ARGON2ID
         $hash = password_hash($senha, PASSWORD_ARGON2ID);
-        $portalModel->definirSenha((int) $registro->id, $hash);
+        $ok = $portalModel->definirSenha((int) $registro->portal_id, $hash);
+        if (!$ok) {
+            $logger->error('[PrimeiroAcesso] Falha ao salvar senha no banco', [
+                'portal_id'    => (int) $registro->portal_id,
+                'cliente_id'   => (int) ($registro->cliente_id ?? 0),
+                'token_prefix' => substr($token, 0, 8),
+            ]);
+            header('Location: /primeiro-acesso?token=' . urlencode($token) . '&error=salvar_falhou');
+            exit();
+        }
         $portalModel->consumirToken($token);
 
-        $logger->info('[PrimeiroAcesso] Senha criada com sucesso', ['portal_id' => $registro->id]);
-        AuditLogger::log('portal_senha_criada', ['portal_id' => $registro->id]);
+        $logger->info('[PrimeiroAcesso] Senha criada com sucesso', ['portal_id' => $registro->portal_id]);
+        AuditLogger::log('portal_senha_criada', ['portal_id' => $registro->portal_id]);
 
         // Inicia sessão do portal automaticamente
-        $portalDados = $portalModel->findById((int) $registro->id);
+        $portalDados = $portalModel->findById((int) $registro->portal_id);
+        if (!$portalDados) {
+            $logger->error('[PrimeiroAcesso] Senha salva, mas portal_clientes nao encontrado', [
+                'portal_id' => (int) $registro->portal_id,
+            ]);
+            header('Location: /login?error=sessao_expirada');
+            exit();
+        }
         session_regenerate_id(true);
-        $_SESSION['portal_cliente_id']   = (int) $registro->id;
+        $_SESSION['portal_cliente_id']   = (int) $registro->portal_id;
         $_SESSION['portal_cliente_nome']  = $portalDados->nome_fantasia ?? $portalDados->razao_social ?? 'Cliente';
         $_SESSION['portal_cliente_email'] = $portalDados->email ?? '';
         $_SESSION['portal_login_time']    = time();
 
-        $portalModel->registrarAcesso((int) $registro->id);
+        $portalModel->registrarAcesso((int) $registro->portal_id);
 
         // Redireciona direto para o portal
         header('Location: /portal/dashboard');
