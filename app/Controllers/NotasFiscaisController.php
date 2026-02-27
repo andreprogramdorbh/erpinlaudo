@@ -273,7 +273,11 @@ class NotasFiscaisController extends Controller
 
             $baseDir = BASE_PATH . '/storage/uploads/notas_fiscais_anexos/' . $usuarioId . '/' . $notaId;
             if (!is_dir($baseDir)) {
-                mkdir($baseDir, 0755, true);
+                if (!mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+                    $this->logger->error('Falha ao criar diretório de upload (notas_fiscais_anexos): ' . $baseDir . ' | BASE_PATH=' . BASE_PATH);
+                    header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=upload_failed&tab=anexos");
+                    exit();
+                }
             }
 
             $ext      = $allowed[$mime];

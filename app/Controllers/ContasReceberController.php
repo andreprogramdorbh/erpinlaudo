@@ -632,7 +632,11 @@ class ContasReceberController extends Controller
 
             $baseDir = BASE_PATH . '/storage/uploads/contas_receber/' . $usuarioId . '/' . $contaId;
             if (!is_dir($baseDir)) {
-                mkdir($baseDir, 0755, true);
+                if (!mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+                    $this->logger->error('Falha ao criar diretório de upload (contas_receber): ' . $baseDir . ' | BASE_PATH=' . BASE_PATH);
+                    header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
+                    exit();
+                }
             }
 
             $ext = $allowed[$mime];

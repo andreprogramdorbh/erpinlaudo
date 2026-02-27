@@ -13,8 +13,8 @@ class ContaReceber extends Model
     {
         $sql = "SELECT cr.*, c.razao_social AS cliente_nome, pc.codigo AS plano_codigo, pc.nome AS plano_nome
                 FROM {$this->table} cr
-                INNER JOIN clientes c ON c.id = cr.cliente_id
-                INNER JOIN plano_contas pc ON pc.id = cr.plano_conta_id
+                LEFT JOIN clientes c ON c.id = cr.cliente_id
+                LEFT JOIN plano_contas pc ON pc.id = cr.plano_conta_id
                 WHERE cr.id = ?";
 
         $stmt = $this->pdo->prepare($sql);
@@ -41,8 +41,8 @@ class ContaReceber extends Model
 
         $sql = "SELECT cr.*, c.razao_social AS cliente_nome, pc.codigo AS plano_codigo
                 FROM {$this->table} cr
-                INNER JOIN clientes c ON c.id = cr.cliente_id
-                INNER JOIN plano_contas pc ON pc.id = cr.plano_conta_id
+                LEFT JOIN clientes c ON c.id = cr.cliente_id
+                LEFT JOIN plano_contas pc ON pc.id = cr.plano_conta_id
                 WHERE " . implode(' AND ', $where) . "
                 ORDER BY cr.data_vencimento DESC, cr.id DESC";
 

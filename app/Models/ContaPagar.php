@@ -14,7 +14,7 @@ class ContaPagar extends Model
         $sql = "SELECT cp.*, f.nome AS fornecedor_nome, pc.codigo AS plano_codigo, pc.nome AS plano_nome
                 FROM {$this->table} cp
                 LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
-                INNER JOIN plano_contas pc ON pc.id = cp.plano_conta_id
+                LEFT JOIN plano_contas pc ON pc.id = cp.plano_conta_id
                 WHERE cp.id = ?";
 
         $stmt = $this->pdo->prepare($sql);
@@ -42,7 +42,7 @@ class ContaPagar extends Model
         $sql = "SELECT cp.*, f.nome AS fornecedor_nome, pc.codigo AS plano_codigo
                 FROM {$this->table} cp
                 LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
-                INNER JOIN plano_contas pc ON pc.id = cp.plano_conta_id
+                LEFT JOIN plano_contas pc ON pc.id = cp.plano_conta_id
                 WHERE " . implode(' AND ', $where) . "
                 ORDER BY cp.data_vencimento DESC, cp.id DESC";
 

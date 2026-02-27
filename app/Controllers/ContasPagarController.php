@@ -301,7 +301,11 @@ class ContasPagarController extends Controller
 
             $baseDir = BASE_PATH . '/storage/uploads/contas_pagar/' . $usuarioId . '/' . $contaId;
             if (!is_dir($baseDir)) {
-                mkdir($baseDir, 0755, true);
+                if (!mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+                    $this->logger->error('Falha ao criar diretório de upload (contas_pagar): ' . $baseDir . ' | BASE_PATH=' . BASE_PATH);
+                    header("Location: /financeiro/contas-a-pagar/edit/{$contaId}?error=upload_failed&tab=anexos");
+                    exit();
+                }
             }
 
             $ext = $allowed[$mime];
