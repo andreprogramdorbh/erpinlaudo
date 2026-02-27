@@ -459,10 +459,23 @@ class IntegracaoController extends Controller
         // 1. Le e valida o payload
         $payload = (string) file_get_contents('php://input');
 
+        // Captura todos os headers relevantes para diagnostico
+        $allHeaders = [];
+        foreach ($_SERVER as $k => $v) {
+            if (strpos($k, 'HTTP_') === 0) {
+                $allHeaders[str_replace('HTTP_', '', $k)] = $v;
+            }
+        }
         $this->logger->info('Webhook Asaas: payload recebido', [
-            'ip'             => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-            'content_length' => strlen($payload),
-            'user_agent'     => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            'ip'                       => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            'content_length'           => strlen($payload),
+            'user_agent'               => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            'has_asaas_access_token'   => isset($_SERVER['HTTP_ASAAS_ACCESS_TOKEN']),
+            'asaas_access_token_len'   => strlen($_SERVER['HTTP_ASAAS_ACCESS_TOKEN'] ?? ''),
+            'has_authorization'        => isset($_SERVER['HTTP_AUTHORIZATION']),
+            'content_type'             => $_SERVER['CONTENT_TYPE'] ?? '',
+            'request_method'           => $_SERVER['REQUEST_METHOD'] ?? '',
+            'all_http_headers'         => $allHeaders,
         ]);
 
         if (empty($payload)) {
@@ -526,8 +539,15 @@ class IntegracaoController extends Controller
                                     'content_type'           => $_SERVER['CONTENT_TYPE'] ?? '',
                                 ],
                             ]);
-                            http_response_code(403);
-                            echo json_encode(['error' => 'Missing authentication token']);
+                            // IMPORTANTE: Asaas penaliza qualquer resposta nao-200 com "Penalizacao aplicada".
+                            // Nunca retornar 4xx/5xx para o Asaas — logar e responder 200.
+                            http_response_code(200);
+                            echo json_encode([
+                                'received'  => true,
+                                'processed' => false,
+                                'reason'    => 'missing_token',
+                                'hint'      => 'Token ausente no header asaas-access-token. Verifique a configuracao do webhook no painel Asaas e o token salvo nas integracoes do ERP.',
+                            ]);
                             exit();
                         }
 
@@ -559,8 +579,15 @@ class IntegracaoController extends Controller
                                     'received_sha256_12' => substr(hash('sha256', $tokenHeaderRaw), 0, 12),
                                 ],
                             ]);
-                            http_response_code(403);
-                            echo json_encode(['error' => 'Invalid authentication token']);
+                            // IMPORTANTE: Asaas penaliza qualquer resposta nao-200 com "Penalizacao aplicada".
+                            // Nunca retornar 4xx/5xx para o Asaas — logar e responder 200.
+                            http_response_code(200);
+                            echo json_encode([
+                                'received'  => true,
+                                'processed' => false,
+                                'reason'    => 'invalid_token',
+                                'hint'      => 'Token invalido. Verifique se o token configurado no painel Asaas bate com o salvo nas integracoes do ERP.',
+                            ]);
                             exit();
                         }
                     }
@@ -571,8 +598,9 @@ class IntegracaoController extends Controller
                     'error'     => $e->getMessage(),
                     'trace'     => substr($e->getTraceAsString(), 0, 500),
                 ]);
-                http_response_code(500);
-                echo json_encode(['error' => 'Token validation error']);
+                // IMPORTANTE: Asaas penaliza qualquer resposta nao-200.
+                http_response_code(200);
+                echo json_encode(['received' => true, 'processed' => false, 'reason' => 'token_validation_error']);
                 exit();
             }
         } else {
