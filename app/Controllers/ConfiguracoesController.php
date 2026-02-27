@@ -8,6 +8,7 @@ use App\Core\Auth;
 use App\Core\Audit\AuditLogger;
 use App\Models\User;
 use App\Models\PasswordResetToken;
+use App\Models\ConfigNfs;
 use App\Services\MailService;
 
 class ConfiguracoesController extends Controller
@@ -15,12 +16,14 @@ class ConfiguracoesController extends Controller
     private User $userModel;
     private MailService $mailService;
     private PasswordResetToken $passwordResetModel;
+    private ConfigNfs $configNfsModel;
 
     public function __construct()
     {
         $this->userModel          = new User();
         $this->mailService        = new MailService();
         $this->passwordResetModel = new PasswordResetToken();
+        $this->configNfsModel     = new ConfigNfs();
     }
 
     public function index(): void
@@ -30,14 +33,16 @@ class ConfiguracoesController extends Controller
             exit();
         }
 
-        $activeTab = $_GET['tab'] ?? 'geral';
-        $usuarios  = Auth::can('manage_users') ? $this->userModel->findAll() : [];
+        $activeTab  = $_GET['tab'] ?? 'geral';
+        $usuarios   = Auth::can('manage_users') ? $this->userModel->findAll() : [];
+        $configNfs  = $this->configNfsModel->findByUsuarioId((int) Auth::user()->id);
 
         View::render('configuracoes/index', [
             'title'       => 'Configurações',
             'activeTab'   => $activeTab,
             'usuarios'    => $usuarios,
             'currentUser' => Auth::user(),
+            'configNfs'   => $configNfs,
         ]);
     }
 
@@ -215,5 +220,69 @@ class ConfiguracoesController extends Controller
         if ($currentUser->role === 'superadmin') return true;
         if ($currentUser->role === 'admin') return !in_array($targetUser->role, ['admin', 'superadmin']);
         return false;
+    }
+
+    // ================================================================
+    // CONFIGURAÇÕES DE NOTAS FISCAIS (NFS-e Nacional)
+    // ================================================================
+
+    /**
+     * POST /configuracoes/nfs/salvar
+     * Salva as configurações de emissão de NFS-e (Layout Padrão ou Personalizado).
+     */
+    public function nfsSalvar(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Location: /configuracoes?error=unauthorized');
+            exit();
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: /configuracoes?tab=notas-fiscais');
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+
+        $data = [
+            'layout_tipo'            => in_array($_POST['layout_tipo'] ?? '', ['padrao', 'personalizado'])
+                                        ? $_POST['layout_tipo']
+                                        : 'padrao',
+            'service_description'    => trim($_POST['service_description'] ?? 'SERVIÇOS DE LAUDO'),
+            'observations'           => trim($_POST['observations'] ?? ''),
+            'municipal_service_name' => trim($_POST['municipal_service_name'] ?? 'Serviços de Saúde / Radiologia'),
+            'municipal_service_code' => trim($_POST['municipal_service_code'] ?? ''),
+            'municipal_service_id'   => trim($_POST['municipal_service_id'] ?? ''),
+            'cnae'                   => preg_replace('/\D/', '', $_POST['cnae'] ?? '8640205'),
+            'deductions'             => (float) ($_POST['deductions'] ?? 0),
+            'retain_iss'             => isset($_POST['retain_iss']) ? 1 : 0,
+            'iss_aliquota'           => (float) ($_POST['iss_aliquota'] ?? 0),
+            'pis_aliquota'           => (float) ($_POST['pis_aliquota'] ?? 0),
+            'cofins_aliquota'        => (float) ($_POST['cofins_aliquota'] ?? 0),
+            'csll_aliquota'          => (float) ($_POST['csll_aliquota'] ?? 0),
+            'inss_aliquota'          => (float) ($_POST['inss_aliquota'] ?? 0),
+            'ir_aliquota'            => (float) ($_POST['ir_aliquota'] ?? 0),
+            'json_template'          => trim($_POST['json_template'] ?? ''),
+            'emite_portal_nacional'  => 1,
+            'serie_nf'               => trim($_POST['serie_nf'] ?? ''),
+        ];
+
+        // Validar JSON template se layout personalizado
+        if ($data['layout_tipo'] === 'personalizado' && !empty($data['json_template'])) {
+            $decoded = json_decode($data['json_template'], true);
+            if (!is_array($decoded)) {
+                header('Location: /configuracoes?tab=notas-fiscais&error=json_invalido');
+                exit();
+            }
+        }
+
+        $ok = $this->configNfsModel->upsert($usuarioId, $data);
+
+        if ($ok) {
+            header('Location: /configuracoes?tab=notas-fiscais&success=nfs_salvo');
+        } else {
+            header('Location: /configuracoes?tab=notas-fiscais&error=save_failed');
+        }
+        exit();
     }
 }

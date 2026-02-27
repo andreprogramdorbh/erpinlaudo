@@ -10,6 +10,7 @@ use App\Models\NotaFiscal;
 use App\Models\NotaFiscalAnexo;
 use App\Models\ContaReceber;
 use App\Models\Integracao;
+use App\Models\ConfigNfs;
 use App\Services\AsaasService;
 
 /**
@@ -22,6 +23,7 @@ class PortalFaturamentoController extends Controller
     private NotaFiscal      $notaFiscalModel;
     private NotaFiscalAnexo $anexoModel;
     private ContaReceber    $contaReceberModel;
+    private ConfigNfs       $configNfsModel;
     private Logger          $logger;
 
     public function __construct()
@@ -30,6 +32,7 @@ class PortalFaturamentoController extends Controller
         $this->notaFiscalModel   = new NotaFiscal();
         $this->anexoModel        = new NotaFiscalAnexo();
         $this->contaReceberModel = new ContaReceber();
+        $this->configNfsModel    = new ConfigNfs();
         $this->logger            = new Logger();
     }
 
@@ -146,25 +149,88 @@ class PortalFaturamentoController extends Controller
             $valor     = (float) $conta->valor;
             $dataHoje  = date('Y-m-d');
 
-            $payload = [
-                'serviceDescription'   => $descricao,
-                'observations'         => 'NF-s emitida automaticamente via portal do cliente. Referência: ' . ($conta->descricao ?? 'Conta #' . $contaId),
-                'value'                => $valor,
-                'deductions'           => 0,
-                'effectiveDate'        => $dataHoje,
-                'municipalServiceName' => 'Serviços de Saúde / Radiologia',
-                'taxes'                => [
-                    'retainIss' => false,
-                    'iss'       => 0,
-                    'cofins'    => 0,
-                    'csll'      => 0,
-                    'inss'      => 0,
-                    'ir'        => 0,
-                    'pis'       => 0,
-                ],
-                'externalReference'    => 'portal|cr:' . $contaId . '|u:' . $tenantId,
-            ];
+            // Carregar configurações de NFS-e do tenant
+            $configNfs  = $this->configNfsModel->findByUsuarioId($tenantId);
+            $layoutTipo = $configNfs->layout_tipo ?? 'padrao';
 
+            $this->logger->info('[Portal] NFS-e: Montando payload', [
+                'layout_tipo'      => $layoutTipo,
+                'conta_id'         => $contaId,
+                'valor'            => $valor,
+                'asaas_payment_id' => $conta->asaas_payment_id ?? null,
+            ]);
+
+            if ($layoutTipo === 'personalizado' && !empty($configNfs->json_template)) {
+                // ---- LAYOUT PERSONALIZADO: substituir variáveis no template JSON ----
+                $jsonRaw = $configNfs->json_template;
+                $jsonRaw = str_replace('{{value}}',       $valor,                             $jsonRaw);
+                $jsonRaw = str_replace('{{date}}',        $dataHoje,                          $jsonRaw);
+                $jsonRaw = str_replace('{{payment_id}}',  $conta->asaas_payment_id ?? '',     $jsonRaw);
+                $jsonRaw = str_replace('{{customer_id}}', $conta->asaas_customer_id ?? '',    $jsonRaw);
+                $jsonRaw = str_replace('{{description}}', $descricao,                         $jsonRaw);
+
+                $payload = json_decode($jsonRaw, true);
+                if (!is_array($payload)) {
+                    throw new \RuntimeException('Template JSON personalizado inválido. Verifique as configurações de NFS-e.');
+                }
+                // Garantir campos dinâmicos não sobrescritos pelo template
+                $payload['value']          = $valor;
+                $payload['effectiveDate']  = $payload['effectiveDate'] ?? $dataHoje;
+                $payload['_layout_tipo']   = 'personalizado';
+            } else {
+                // ---- LAYOUT PADRÃO: montar payload com configurações salvas ----
+                $taxes = ['retainIss' => (bool) ($configNfs->retain_iss ?? false)];
+                if (!empty($configNfs->iss_aliquota) && $configNfs->iss_aliquota > 0) {
+                    $taxes['iss'] = (float) $configNfs->iss_aliquota;
+                }
+                if (!empty($configNfs->pis_aliquota) && $configNfs->pis_aliquota > 0) {
+                    $taxes['pis'] = (float) $configNfs->pis_aliquota;
+                }
+                if (!empty($configNfs->cofins_aliquota) && $configNfs->cofins_aliquota > 0) {
+                    $taxes['cofins'] = (float) $configNfs->cofins_aliquota;
+                }
+                if (!empty($configNfs->csll_aliquota) && $configNfs->csll_aliquota > 0) {
+                    $taxes['csll'] = (float) $configNfs->csll_aliquota;
+                }
+                if (!empty($configNfs->inss_aliquota) && $configNfs->inss_aliquota > 0) {
+                    $taxes['inss'] = (float) $configNfs->inss_aliquota;
+                }
+                if (!empty($configNfs->ir_aliquota) && $configNfs->ir_aliquota > 0) {
+                    $taxes['ir'] = (float) $configNfs->ir_aliquota;
+                }
+
+                $payload = [
+                    'serviceDescription'   => $configNfs->service_description ?? $descricao,
+                    'observations'         => $configNfs->observations
+                                             ?? ('NF-s emitida via portal. Refêrencia: ' . $descricao),
+                    'value'                => $valor,
+                    'deductions'           => (float) ($configNfs->deductions ?? 0),
+                    'effectiveDate'        => $dataHoje,
+                    'municipalServiceName' => $configNfs->municipal_service_name ?? 'Serviços de Saúde / Radiologia',
+                    'taxes'                => $taxes,
+                    'externalReference'    => 'portal|cr:' . $contaId . '|u:' . $tenantId,
+                    '_layout_tipo'         => 'padrao',
+                ];
+
+                // Código de serviço municipal
+                if (!empty($configNfs->municipal_service_id)) {
+                    $payload['municipalServiceId'] = $configNfs->municipal_service_id;
+                } elseif (!empty($configNfs->municipal_service_code)) {
+                    $payload['municipalServiceCode'] = $configNfs->municipal_service_code;
+                }
+
+                // CNAE para NFS-e Nacional
+                if (!empty($configNfs->cnae)) {
+                    $payload['cnae'] = preg_replace('/\D/', '', (string) $configNfs->cnae);
+                }
+
+                // Série da NF
+                if (!empty($configNfs->serie_nf)) {
+                    $payload['serie'] = $configNfs->serie_nf;
+                }
+            }
+
+            // Vínculo com pagamento Asaas (sobrescreve o do template se existir)
             if (!empty($conta->asaas_payment_id)) {
                 $payload['payment'] = $conta->asaas_payment_id;
             }

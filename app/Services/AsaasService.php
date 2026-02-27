@@ -464,31 +464,47 @@ class AsaasService
 
     /**
      * Agenda (cria) uma Nota Fiscal de Serviço no Asaas.
+     * Suporta NFS-e Nacional (Portal Nacional) e NFS-e Municipal.
      * Documentação: https://docs.asaas.com/reference/agendar-nota-fiscal
      *
-     * @param  array $dados  Campos: serviceDescription, observations, value, effectiveDate,
-     *                       municipalServiceName, taxes, payment (asaas_payment_id), customer
-     * @return array  Resposta da API (inclui 'id', 'status', 'invoiceUrl', 'pdfUrl')
+     * @param  array $dados  Payload completo montado pelo ConfigNfs::montarPayload()
+     *                       Campos obrigatórios: serviceDescription, value, effectiveDate, taxes
+     *                       Campos opcionais: payment, installment, customer, observations,
+     *                       deductions, municipalServiceId, municipalServiceCode, serviceCode,
+     *                       cnae, externalReference, serie, municipalServiceName
+     * @return array  Resposta da API (inclui 'id', 'status', 'invoiceUrl', 'pdfUrl', 'number')
      * @throws \RuntimeException
      */
     public function agendarNotaFiscal(array $dados): array
     {
-        $this->logAsaas('info', 'NF-s: Agendando nota fiscal', [
+        // Remover campo interno de controle antes de enviar
+        $layoutTipo = $dados['_layout_tipo'] ?? 'padrao';
+        unset($dados['_layout_tipo']);
+
+        $this->logAsaas('info', 'NFS-e Nacional: Agendando nota fiscal', [
+            'layout_tipo'   => $layoutTipo,
             'payment'       => $dados['payment'] ?? null,
             'customer'      => $dados['customer'] ?? null,
             'value'         => $dados['value'] ?? null,
             'effectiveDate' => $dados['effectiveDate'] ?? null,
+            'serviceCode'   => $dados['serviceCode'] ?? ($dados['municipalServiceCode'] ?? null),
+            'cnae'          => $dados['cnae'] ?? null,
         ]);
 
+        // Montar payload base obrigatório
         $payload = [
-            'serviceDescription'   => $dados['serviceDescription'],
-            'observations'         => $dados['observations'] ?? '',
-            'value'                => (float) $dados['value'],
-            'deductions'           => (float) ($dados['deductions'] ?? 0),
-            'effectiveDate'        => $dados['effectiveDate'],
-            'municipalServiceName' => $dados['municipalServiceName'],
-            'taxes'                => $dados['taxes'] ?? ['retainIss' => false],
+            'serviceDescription' => $dados['serviceDescription'],
+            'observations'       => $dados['observations'] ?? '',
+            'value'              => (float) $dados['value'],
+            'deductions'         => (float) ($dados['deductions'] ?? 0),
+            'effectiveDate'      => $dados['effectiveDate'],
+            'taxes'              => $dados['taxes'] ?? ['retainIss' => false],
         ];
+
+        // municipalServiceName é obrigatório apenas quando não há municipalServiceId
+        if (!empty($dados['municipalServiceName'])) {
+            $payload['municipalServiceName'] = $dados['municipalServiceName'];
+        }
 
         // Vínculo: cobrança, parcelamento ou cliente avulso
         if (!empty($dados['payment'])) {
@@ -499,23 +515,43 @@ class AsaasService
             $payload['customer'] = $dados['customer'];
         }
 
-        // Código de serviço municipal (um dos dois, não ambos)
+        // Código de serviço municipal (ID tem prioridade sobre code)
         if (!empty($dados['municipalServiceId'])) {
-            $payload['municipalServiceId']   = $dados['municipalServiceId'];
+            $payload['municipalServiceId'] = $dados['municipalServiceId'];
         } elseif (!empty($dados['municipalServiceCode'])) {
             $payload['municipalServiceCode'] = $dados['municipalServiceCode'];
+        } elseif (!empty($dados['serviceCode'])) {
+            // Compatibilidade com campo 'serviceCode' (formato do Portal Nacional)
+            $payload['municipalServiceCode'] = $dados['serviceCode'];
         }
 
+        // CNAE — recomendado para NFS-e Nacional (Portal Nacional)
+        if (!empty($dados['cnae'])) {
+            $payload['cnae'] = preg_replace('/\D/', '', (string) $dados['cnae']);
+        }
+
+        // Referência externa
         if (!empty($dados['externalReference'])) {
             $payload['externalReference'] = $dados['externalReference'];
         }
 
+        // Série da NF (Portal Nacional: 80000-89999)
+        if (!empty($dados['serie'])) {
+            $payload['serie'] = $dados['serie'];
+        }
+
+        $this->logAsaas('debug', 'NFS-e Nacional: Payload enviado ao Asaas', [
+            'payload' => $payload,
+        ]);
+
         $response = $this->makeRequest('POST', '/invoices', $payload);
 
-        $this->logAsaas('info', 'NF-s: Nota fiscal agendada com sucesso', [
+        $this->logAsaas('info', 'NFS-e Nacional: Nota fiscal agendada com sucesso', [
             'asaas_invoice_id' => $response['id'] ?? null,
             'status'           => $response['status'] ?? null,
+            'number'           => $response['number'] ?? null,
             'invoiceUrl'       => $response['invoiceUrl'] ?? null,
+            'pdfUrl'           => $response['pdfUrl'] ?? null,
         ]);
 
         return $response;

@@ -277,5 +277,7 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/configuracoes/usuarios/update/{id}", "ConfiguracoesController@usuariosUpdate");
         Router::post("/configuracoes/usuarios/reset-password/{id}", "ConfiguracoesController@usuariosResetPassword");
         Router::post("/configuracoes/usuarios/toggle-status/{id}", "ConfiguracoesController@usuariosToggleStatus");
+        // Configurações NFS-e Nacional
+        Router::post("/configuracoes/nfs/salvar", "ConfiguracoesController@nfsSalvar");
     });
 });

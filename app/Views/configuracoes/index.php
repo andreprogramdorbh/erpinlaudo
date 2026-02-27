@@ -106,6 +106,11 @@ $roleLabels = [
       <span class="badge bg-secondary rounded-pill ms-1" style="font-size:.65rem"><?php echo count($usuarios); ?></span>
     </button>
     <?php endif; ?>
+    <?php if (Auth::can('manage_settings')): ?>
+    <button class="cfg-tab <?php echo $activeTab === 'notas-fiscais' ? 'active' : ''; ?>" onclick="switchTab('notas-fiscais', this)">
+      <i class="fas fa-file-invoice"></i> Notas Fiscais
+    </button>
+    <?php endif; ?>
   </div>
 
   <!-- ===== ABA: GERAL ===== -->
@@ -265,6 +270,258 @@ $roleLabels = [
 </div>
 </div>
 
+  <!-- ===== ABA: NOTAS FISCAIS ===== -->
+  <?php if (Auth::can('manage_settings')): ?>
+  <div id="tab-notas-fiscais" style="display:<?php echo $activeTab === 'notas-fiscais' ? 'block' : 'none'; ?>">
+    <div class="cfg-card">
+      <div class="cfg-card-header">
+        <h2 class="cfg-card-title"><i class="fas fa-file-invoice text-primary"></i> Configurações de Emissão de NFS-e</h2>
+        <span class="badge" style="background:#6f42c1;color:#fff;font-size:.75rem;padding:.35rem .75rem;border-radius:20px">
+          <i class="fas fa-globe me-1"></i> Portal Nacional NFS-e
+        </span>
+      </div>
+
+      <?php
+      $nfsConfig  = $configNfs ?? null;
+      $layoutTipo = $nfsConfig->layout_tipo ?? 'padrao';
+      ?>
+
+      <!-- Alerta informativo -->
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:1rem;margin-bottom:1.5rem;display:flex;gap:.75rem;align-items:flex-start">
+        <i class="fas fa-info-circle" style="color:#3b82f6;margin-top:2px"></i>
+        <div style="font-size:.875rem;color:#1e40af">
+          <strong>NFS-e Nacional (Portal Nacional)</strong> &mdash; A emissão é realizada via Asaas integrado ao Portal Nacional da SEFAZ.
+          As informações fiscais (CNPJ <strong>31.865.440/0001-35</strong>, inscrição municipal e código de serviço) já estão configuradas no painel Asaas.
+          Aqui você define apenas o <strong>padrão de emissão</strong> que o sistema usará automaticamente.
+        </div>
+      </div>
+
+      <form method="POST" action="/configuracoes/nfs/salvar" id="formNfs">
+        <?php echo View::csrfField(); ?>
+
+        <!-- Seleção do tipo de layout -->
+        <div style="margin-bottom:1.5rem">
+          <label style="font-weight:600;font-size:.9rem;color:#374151;display:block;margin-bottom:.75rem">
+            <i class="fas fa-layer-group me-1 text-primary"></i> Tipo de Layout de Emissão
+          </label>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap">
+
+            <!-- Layout Padrão -->
+            <label style="flex:1;min-width:240px;cursor:pointer">
+              <input type="radio" name="layout_tipo" value="padrao" id="layout_padrao"
+                     <?php echo $layoutTipo === 'padrao' ? 'checked' : ''; ?>
+                     onchange="toggleLayoutPanel()" style="display:none">
+              <div class="layout-card" id="card_padrao" style="border:2px solid <?php echo $layoutTipo === 'padrao' ? '#00529B' : '#e2e8f0'; ?>;border-radius:10px;padding:1.25rem;background:<?php echo $layoutTipo === 'padrao' ? '#eff6ff' : '#fff'; ?>;transition:all .2s">
+                <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                  <div style="width:36px;height:36px;border-radius:8px;background:#00529B;display:flex;align-items:center;justify-content:center">
+                    <i class="fas fa-bolt" style="color:#fff;font-size:.9rem"></i>
+                  </div>
+                  <div>
+                    <div style="font-weight:700;color:#1e293b">Layout Padrão</div>
+                    <div style="font-size:.75rem;color:#64748b">Simples e rápido</div>
+                  </div>
+                  <?php if ($layoutTipo === 'padrao'): ?>
+                  <span style="margin-left:auto;background:#00529B;color:#fff;font-size:.65rem;padding:.2rem .6rem;border-radius:20px">ATIVO</span>
+                  <?php endif; ?>
+                </div>
+                <p style="font-size:.8rem;color:#64748b;margin:0">
+                  O sistema envia automaticamente <strong>valor</strong>, <strong>data</strong> e a <strong>descrição padrão</strong> configurada abaixo.
+                  Ideal para serviços com padrão fixo (ex: Serviços de Laudo).
+                </p>
+              </div>
+            </label>
+
+            <!-- Layout Personalizado -->
+            <label style="flex:1;min-width:240px;cursor:pointer">
+              <input type="radio" name="layout_tipo" value="personalizado" id="layout_personalizado"
+                     <?php echo $layoutTipo === 'personalizado' ? 'checked' : ''; ?>
+                     onchange="toggleLayoutPanel()" style="display:none">
+              <div class="layout-card" id="card_personalizado" style="border:2px solid <?php echo $layoutTipo === 'personalizado' ? '#6f42c1' : '#e2e8f0'; ?>;border-radius:10px;padding:1.25rem;background:<?php echo $layoutTipo === 'personalizado' ? '#f5f3ff' : '#fff'; ?>;transition:all .2s">
+                <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                  <div style="width:36px;height:36px;border-radius:8px;background:#6f42c1;display:flex;align-items:center;justify-content:center">
+                    <i class="fas fa-code" style="color:#fff;font-size:.9rem"></i>
+                  </div>
+                  <div>
+                    <div style="font-weight:700;color:#1e293b">Layout Personalizado</div>
+                    <div style="font-size:.75rem;color:#64748b">Controle total do JSON</div>
+                  </div>
+                  <?php if ($layoutTipo === 'personalizado'): ?>
+                  <span style="margin-left:auto;background:#6f42c1;color:#fff;font-size:.65rem;padding:.2rem .6rem;border-radius:20px">ATIVO</span>
+                  <?php endif; ?>
+                </div>
+                <p style="font-size:.8rem;color:#64748b;margin:0">
+                  Você define um <strong>template JSON</strong> completo. O sistema substitui as variáveis dinâmicas
+                  (<code>{{value}}</code>, <code>{{date}}</code>, <code>{{payment_id}}</code>) automaticamente.
+                </p>
+              </div>
+            </label>
+
+          </div>
+        </div>
+
+        <!-- Painel: Layout Padrão -->
+        <div id="panel_padrao" style="display:<?php echo $layoutTipo === 'padrao' ? 'block' : 'none'; ?>">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1.25rem;margin-bottom:1rem">
+            <h3 style="font-size:.9rem;font-weight:700;color:#374151;margin-bottom:1rem">
+              <i class="fas fa-cog me-1 text-primary"></i> Campos Padrão da NFS-e
+            </h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+              <div style="grid-column:1/-1">
+                <label style="font-size:.8rem;font-weight:600;color:#374151">Descrição do Serviço *</label>
+                <input type="text" name="service_description" class="form-control form-control-sm mt-1"
+                       value="<?php echo htmlspecialchars($nfsConfig->service_description ?? 'SERVIÇOS DE LAUDO'); ?>"
+                       placeholder="Ex: SERVIÇOS DE LAUDO" required>
+              </div>
+              <div>
+                <label style="font-size:.8rem;font-weight:600;color:#374151">Nome do Serviço Municipal</label>
+                <input type="text" name="municipal_service_name" class="form-control form-control-sm mt-1"
+                       value="<?php echo htmlspecialchars($nfsConfig->municipal_service_name ?? 'Serviços de Saúde / Radiologia'); ?>"
+                       placeholder="Ex: Serviços de Saúde">
+              </div>
+              <div>
+                <label style="font-size:.8rem;font-weight:600;color:#374151">Código do Serviço Municipal (LC 116)</label>
+                <input type="text" name="municipal_service_code" class="form-control form-control-sm mt-1"
+                       value="<?php echo htmlspecialchars($nfsConfig->municipal_service_code ?? '4.03'); ?>"
+                       placeholder="Ex: 4.03">
+                <small style="font-size:.7rem;color:#94a3b8">Formato: X.XX (conforme lista da prefeitura)</small>
+              </div>
+              <div>
+                <label style="font-size:.8rem;font-weight:600;color:#374151">CNAE</label>
+                <input type="text" name="cnae" class="form-control form-control-sm mt-1"
+                       value="<?php echo htmlspecialchars($nfsConfig->cnae ?? '8640205'); ?>"
+                       placeholder="Ex: 8640205">
+                <small style="font-size:.7rem;color:#94a3b8">Atividade Econômica (sem pontos/traços)</small>
+              </div>
+              <div>
+                <label style="font-size:.8rem;font-weight:600;color:#374151">ID do Serviço Municipal (Asaas)</label>
+                <input type="text" name="municipal_service_id" class="form-control form-control-sm mt-1"
+                       value="<?php echo htmlspecialchars($nfsConfig->municipal_service_id ?? ''); ?>"
+                       placeholder="Deixe em branco para usar o código acima">
+                <small style="font-size:.7rem;color:#94a3b8">Obtido via API Asaas /invoices/municipalServices</small>
+              </div>
+              <div>
+                <label style="font-size:.8rem;font-weight:600;color:#374151">Série da NF</label>
+                <input type="text" name="serie_nf" class="form-control form-control-sm mt-1"
+                       value="<?php echo htmlspecialchars($nfsConfig->serie_nf ?? ''); ?>"
+                       placeholder="Ex: 80001 (Portal Nacional: 80000-89999)">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-size:.8rem;font-weight:600;color:#374151">Observações (aparecerão na NF)</label>
+                <textarea name="observations" class="form-control form-control-sm mt-1" rows="2"
+                          placeholder="Ex: Serviço de laudo radiologico remoto"><?php echo htmlspecialchars($nfsConfig->observations ?? ''); ?></textarea>
+              </div>
+            </div>
+
+            <!-- Tributos -->
+            <h3 style="font-size:.9rem;font-weight:700;color:#374151;margin:1rem 0 .75rem">
+              <i class="fas fa-percentage me-1 text-warning"></i> Tributos
+            </h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem">
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">ISS (%)</label>
+                <input type="number" name="iss_aliquota" class="form-control form-control-sm mt-1" step="0.01" min="0" max="100"
+                       value="<?php echo $nfsConfig->iss_aliquota ?? 0; ?>">
+              </div>
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">PIS (%)</label>
+                <input type="number" name="pis_aliquota" class="form-control form-control-sm mt-1" step="0.01" min="0" max="100"
+                       value="<?php echo $nfsConfig->pis_aliquota ?? 0; ?>">
+              </div>
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">COFINS (%)</label>
+                <input type="number" name="cofins_aliquota" class="form-control form-control-sm mt-1" step="0.01" min="0" max="100"
+                       value="<?php echo $nfsConfig->cofins_aliquota ?? 0; ?>">
+              </div>
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">CSLL (%)</label>
+                <input type="number" name="csll_aliquota" class="form-control form-control-sm mt-1" step="0.01" min="0" max="100"
+                       value="<?php echo $nfsConfig->csll_aliquota ?? 0; ?>">
+              </div>
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">INSS (%)</label>
+                <input type="number" name="inss_aliquota" class="form-control form-control-sm mt-1" step="0.01" min="0" max="100"
+                       value="<?php echo $nfsConfig->inss_aliquota ?? 0; ?>">
+              </div>
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">IR (%)</label>
+                <input type="number" name="ir_aliquota" class="form-control form-control-sm mt-1" step="0.01" min="0" max="100"
+                       value="<?php echo $nfsConfig->ir_aliquota ?? 0; ?>">
+              </div>
+              <div>
+                <label style="font-size:.75rem;font-weight:600;color:#374151">Deduções (R$)</label>
+                <input type="number" name="deductions" class="form-control form-control-sm mt-1" step="0.01" min="0"
+                       value="<?php echo $nfsConfig->deductions ?? 0; ?>">
+              </div>
+            </div>
+
+            <div style="margin-top:.75rem">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="retain_iss" id="retain_iss" value="1"
+                       <?php echo ($nfsConfig->retain_iss ?? 0) ? 'checked' : ''; ?>>
+                <label class="form-check-label" for="retain_iss" style="font-size:.85rem">
+                  Reter ISS na fonte
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Painel: Layout Personalizado -->
+        <div id="panel_personalizado" style="display:<?php echo $layoutTipo === 'personalizado' ? 'block' : 'none'; ?>">
+          <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:1.25rem;margin-bottom:1rem">
+            <h3 style="font-size:.9rem;font-weight:700;color:#374151;margin-bottom:.5rem">
+              <i class="fas fa-code me-1" style="color:#6f42c1"></i> Template JSON Personalizado
+            </h3>
+            <p style="font-size:.8rem;color:#64748b;margin-bottom:.75rem">
+              Defina o JSON completo que será enviado ao Asaas. Use as variáveis abaixo para inserção dinâmica:
+            </p>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+              <code style="background:#ede9fe;color:#6f42c1;padding:.15rem .5rem;border-radius:4px;font-size:.75rem">{{value}}</code>
+              <code style="background:#ede9fe;color:#6f42c1;padding:.15rem .5rem;border-radius:4px;font-size:.75rem">{{date}}</code>
+              <code style="background:#ede9fe;color:#6f42c1;padding:.15rem .5rem;border-radius:4px;font-size:.75rem">{{payment_id}}</code>
+              <code style="background:#ede9fe;color:#6f42c1;padding:.15rem .5rem;border-radius:4px;font-size:.75rem">{{customer_id}}</code>
+              <code style="background:#ede9fe;color:#6f42c1;padding:.15rem .5rem;border-radius:4px;font-size:.75rem">{{description}}</code>
+            </div>
+            <textarea name="json_template" id="json_template" class="form-control form-control-sm" rows="12"
+                      style="font-family:monospace;font-size:.8rem;background:#1e1e2e;color:#cdd6f4;border:1px solid #6f42c1"
+                      placeholder='{
+  "serviceDescription": "SERVIÇOS DE LAUDO",
+  "value": {{value}},
+  "effectiveDate": "{{date}}",
+  "serviceCode": "4.03",
+  "cnae": "8640205",
+  "taxes": {
+    "retainIss": false
+  },
+  "payment": "{{payment_id}}"
+}'><?php echo htmlspecialchars($nfsConfig->json_template ?? ''); ?></textarea>
+            <div style="display:flex;gap:.5rem;margin-top:.5rem">
+              <button type="button" onclick="preencherExemplo()" class="btn btn-sm" style="background:#6f42c1;color:#fff;font-size:.75rem">
+                <i class="fas fa-magic me-1"></i> Usar Exemplo
+              </button>
+              <button type="button" onclick="validarJson()" class="btn btn-sm btn-outline-secondary" style="font-size:.75rem">
+                <i class="fas fa-check me-1"></i> Validar JSON
+              </button>
+            </div>
+            <div id="json_validation_msg" style="margin-top:.5rem;font-size:.8rem"></div>
+          </div>
+        </div>
+
+        <!-- Botão Salvar -->
+        <div style="display:flex;justify-content:flex-end;gap:.75rem;padding-top:1rem;border-top:1px solid #f1f5f9">
+          <a href="/configuracoes?tab=notas-fiscais" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-undo me-1"></i> Cancelar
+          </a>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="fas fa-save me-1"></i> Salvar Configurações de NFS-e
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+  <?php endif; ?>
+
 <!-- Form oculto para reset de senha -->
 <form id="resetPasswordForm" method="POST" style="display:none">
   <?php echo View::csrfField(); ?>
@@ -287,6 +544,51 @@ function confirmResetPassword(userId, userName) {
   const form = document.getElementById('resetPasswordForm');
   form.action = '/configuracoes/usuarios/reset-password/' + userId;
   form.submit();
+}
+
+function toggleLayoutPanel() {
+  const isPadrao = document.getElementById('layout_padrao').checked;
+  document.getElementById('panel_padrao').style.display       = isPadrao ? 'block' : 'none';
+  document.getElementById('panel_personalizado').style.display = isPadrao ? 'none' : 'block';
+  // Atualiza visual dos cards
+  document.getElementById('card_padrao').style.border          = isPadrao ? '2px solid #00529B' : '2px solid #e2e8f0';
+  document.getElementById('card_padrao').style.background      = isPadrao ? '#eff6ff' : '#fff';
+  document.getElementById('card_personalizado').style.border   = !isPadrao ? '2px solid #6f42c1' : '2px solid #e2e8f0';
+  document.getElementById('card_personalizado').style.background = !isPadrao ? '#f5f3ff' : '#fff';
+}
+
+function preencherExemplo() {
+  const exemplo = `{
+  "serviceDescription": "SERVIÇOS DE LAUDO",
+  "value": {{value}},
+  "effectiveDate": "{{date}}",
+  "municipalServiceCode": "4.03",
+  "cnae": "8640205",
+  "taxes": {
+    "retainIss": false
+  },
+  "payment": "{{payment_id}}"
+}`;
+  document.getElementById('json_template').value = exemplo;
+  document.getElementById('json_validation_msg').innerHTML = '';
+}
+
+function validarJson() {
+  const raw = document.getElementById('json_template').value;
+  // Substitui variáveis por valores de teste para validar
+  const testJson = raw
+    .replace(/{{value}}/g, '100.00')
+    .replace(/{{date}}/g, '2026-01-01')
+    .replace(/{{payment_id}}/g, 'pay_test123')
+    .replace(/{{customer_id}}/g, 'cus_test123')
+    .replace(/{{description}}/g, 'TESTE');
+  const msg = document.getElementById('json_validation_msg');
+  try {
+    JSON.parse(testJson);
+    msg.innerHTML = '<span style="color:#16a34a"><i class="fas fa-check-circle me-1"></i>JSON válido!</span>';
+  } catch (e) {
+    msg.innerHTML = '<span style="color:#dc2626"><i class="fas fa-times-circle me-1"></i>JSON inválido: ' + e.message + '</span>';
+  }
 }
 
 function toggleStatus(userId, btn) {
