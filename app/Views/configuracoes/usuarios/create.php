@@ -4,7 +4,7 @@ require_once dirname(__DIR__, 2) . '/layout/erp_header.php';
 $currentUser = $currentUser ?? null;
 ?>
 <style>
-.usr-wrap{max-width:700px;margin:0 auto;padding:1.5rem}
+.usr-wrap{padding:1.5rem;width:100%}
 .usr-card{background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .usr-card-header{background:linear-gradient(135deg,#00529B,#0284c7);color:#fff;padding:1.5rem 2rem}
 .usr-card-header h1{font-size:1.25rem;font-weight:700;margin:0 0 .25rem}
@@ -25,7 +25,6 @@ $currentUser = $currentUser ?? null;
 .alert-feedback{padding:.875rem 1rem;border-radius:.5rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem}
 </style>
 
-<div class="main-content">
 <div class="usr-wrap">
   <div class="usr-card">
     <div class="usr-card-header">
@@ -127,7 +126,6 @@ $currentUser = $currentUser ?? null;
       </button>
     </div>
   </div>
-</div>
 </div>
 
 <script>

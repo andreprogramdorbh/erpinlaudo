@@ -35,7 +35,6 @@ $etapaColors = [
 .prob-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#f59e0b,#10b981)}
 </style>
 
-<div class="main-content">
 <div class="container-fluid">
 
   <!-- KPIs por etapa -->
@@ -176,7 +175,6 @@ $etapaColors = [
     <?php endif; ?>
   </div>
 
-</div>
 </div>
 
 <?php require_once dirname(__DIR__, 2) . '/layout/erp_footer.php'; ?>

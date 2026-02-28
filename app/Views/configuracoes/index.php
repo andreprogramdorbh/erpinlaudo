@@ -18,7 +18,7 @@ $roleLabels = [
 ?>
 <style>
 /* ===== Configurações — Layout ===== */
-.cfg-wrap{max-width:1100px;margin:0 auto;padding:1.5rem}
+.cfg-wrap{padding:1.5rem;width:100%}
 .cfg-header{margin-bottom:1.5rem}
 .cfg-header h1{font-size:1.5rem;font-weight:700;color:#1e293b;margin:0 0 .25rem}
 .cfg-header p{color:#64748b;margin:0;font-size:.9rem}
@@ -64,7 +64,6 @@ $roleLabels = [
 .cfg-info-value{font-size:.9375rem;font-weight:600;color:#1e293b}
 </style>
 
-<div class="main-content">
 <div class="cfg-wrap">
 
   <!-- Header -->
@@ -266,9 +265,6 @@ $roleLabels = [
     </div>
   </div>
   <?php endif; ?>
-
-</div>
-</div>
 
   <!-- ===== ABA: NOTAS FISCAIS ===== -->
   <?php if (Auth::can('manage_settings')): ?>
@@ -521,6 +517,8 @@ $roleLabels = [
     </div>
   </div>
   <?php endif; ?>
+
+</div>
 
 <!-- Form oculto para reset de senha -->
 <form id="resetPasswordForm" method="POST" style="display:none">

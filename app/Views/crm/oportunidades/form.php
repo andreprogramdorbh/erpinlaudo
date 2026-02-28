@@ -19,7 +19,7 @@ $tiposIcones = [
 ?>
 <link rel="stylesheet" href="/assets/css/form-layout.css">
 <style>
-.crm-form-wrap{max-width:1100px;margin:0 auto}
+.crm-form-wrap{width:100%}
 .crm-header{background:linear-gradient(135deg,#059669 0%,#047857 100%);color:#fff;padding:1.75rem 2rem;border-radius:.75rem .75rem 0 0}
 .crm-header h1{font-size:1.5rem;font-weight:700;margin:0 0 .25rem}
 .crm-header p{margin:0;opacity:.85;font-size:.9rem}
@@ -56,8 +56,6 @@ $tiposIcones = [
 .lead-origin-badge{background:#e0f2fe;color:#0284c7;font-size:.65rem;padding:.2em .6em;border-radius:10px;font-weight:600}
 </style>
 
-<div class="main-content">
-<div class="container-fluid">
 <div class="crm-form-wrap">
 
   <!-- Header -->
@@ -314,8 +312,6 @@ $tiposIcones = [
     </div>
   </div>
 
-</div>
-</div>
 </div>
 
 <script>

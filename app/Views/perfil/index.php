@@ -65,7 +65,7 @@ $rInfo    = $roleInfo[$usuario->role ?? 'user'] ?? ['Usuario', 'secondary', 'fa-
 $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' ') !== false ? substr($usuario->name, strpos($usuario->name, ' ') + 1, 1) : ''));
 ?>
 <style>
-.prf-wrap{max-width:900px;margin:0 auto;padding:1.5rem}
+.prf-wrap{padding:1.5rem;width:100%}
 .prf-hero{background:linear-gradient(135deg,#00529B 0%,#0284c7 60%,#0ea5e9 100%);border-radius:.875rem;padding:2rem;color:#fff;display:flex;align-items:center;gap:1.5rem;margin-bottom:1.5rem;box-shadow:0 4px 20px rgba(0,82,155,.3)}
 .prf-avatar{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.2);border:3px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;flex-shrink:0}
 .prf-hero-name{font-size:1.5rem;font-weight:700;margin:0 0 .25rem}
@@ -102,7 +102,6 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
 .perm-summary-label{font-size:.75rem;color:#64748b}
 </style>
 
-<div class="main-content">
 <div class="prf-wrap">
 
   <div class="prf-hero">
@@ -285,7 +284,6 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
     </div>
   </div>
 
-</div>
 </div>
 
 <script>

@@ -5,7 +5,7 @@ $usuario     = $usuario ?? null;
 $currentUser = $currentUser ?? null;
 ?>
 <style>
-.usr-wrap{max-width:700px;margin:0 auto;padding:1.5rem}
+.usr-wrap{padding:1.5rem;width:100%}
 .usr-card{background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .usr-card-header{background:linear-gradient(135deg,#0f766e,#059669);color:#fff;padding:1.5rem 2rem}
 .usr-card-header h1{font-size:1.25rem;font-weight:700;margin:0 0 .25rem}
@@ -27,7 +27,6 @@ $currentUser = $currentUser ?? null;
 .user-info-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#059669,#10b981);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;flex-shrink:0}
 </style>
 
-<div class="main-content">
 <div class="usr-wrap">
   <div class="usr-card">
     <div class="usr-card-header">
@@ -129,7 +128,6 @@ $currentUser = $currentUser ?? null;
       </button>
     </div>
   </div>
-</div>
 </div>
 
 <script>

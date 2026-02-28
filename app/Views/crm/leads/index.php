@@ -44,7 +44,6 @@ $statusIcons = [
 .empty-state i{font-size:3rem;margin-bottom:.75rem;display:block}
 </style>
 
-<div class="main-content">
 <div class="container-fluid">
 
   <!-- KPIs -->
@@ -184,7 +183,6 @@ $statusIcons = [
     <?php endif; ?>
   </div>
 
-</div>
 </div>
 
 <?php require_once dirname(__DIR__, 2) . '/layout/erp_footer.php'; ?>

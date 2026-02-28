@@ -58,7 +58,6 @@ $etapaConfig = [
 .leads-badge{font-size:.75rem;padding:.3em .75em;border-radius:20px;font-weight:600}
 </style>
 
-<div class="main-content">
 <div class="funil-page">
 
   <!-- Top bar -->
@@ -206,7 +205,6 @@ $etapaConfig = [
     </a>
   </div>
 
-</div>
 </div>
 
 <script>

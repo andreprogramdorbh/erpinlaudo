@@ -59,7 +59,7 @@ $tipoIcon = [
 ?>
 <style>
 /* ===== Dashboard Profissional ===== */
-.dash-wrap{padding:1.5rem;max-width:1600px;margin:0 auto}
+.dash-wrap{padding:1.5rem;width:100%}
 
 /* Saudacao */
 .dash-greeting{background:linear-gradient(135deg,#00529B 0%,#0284c7 55%,#0ea5e9 100%);border-radius:.875rem;padding:1.5rem 2rem;color:#fff;display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;box-shadow:0 4px 20px rgba(0,82,155,.25)}
@@ -166,7 +166,6 @@ $tipoIcon = [
 .empty-state p{font-size:.8rem;margin:0}
 </style>
 
-<div class="main-content">
 <div class="dash-wrap">
 
   <!-- Saudacao -->
@@ -487,7 +486,6 @@ $tipoIcon = [
   </div>
 
 </div>
-</div>
 
 <?php
 function human_time_diff(int $ts): string {
@@ -567,5 +565,4 @@ new Chart(document.getElementById('chartLeads'), {
   }
 });
 </script>
-
 <?php require_once dirname(__DIR__) . '/layout/erp_footer.php'; ?>
