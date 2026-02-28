@@ -26,7 +26,6 @@ class IntegracaoWhatsappController extends Controller
 
     public function __construct()
     {
-        parent::__construct();
         $this->userId = (int) ($_SESSION['user_id'] ?? 0);
         $this->crypto = new CryptoService();
         $this->pdo    = Database::getInstance();
