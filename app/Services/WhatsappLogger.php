@@ -90,9 +90,14 @@ class WhatsappLogger
         } catch (\Exception $e) {
             // Falha no log do banco não deve interromper o fluxo principal
             $errLine = sprintf(
-                "[%s] [LOG_DB_ERROR] Falha ao salvar log no banco: %s\n",
+                "[%s] [LOG_DB_ERROR] Falha ao salvar log no banco: %s | tenant=%d | integracao=%d | endpoint=%s | intent=%s | status=%s\n",
                 $now,
-                $e->getMessage()
+                $e->getMessage(),
+                $tenantId,
+                $integracaoId,
+                $endpoint,
+                $intent,
+                $status
             );
             file_put_contents($this->logFile, $errLine, FILE_APPEND | LOCK_EX);
         }

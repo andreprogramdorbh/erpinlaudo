@@ -148,4 +148,16 @@ abstract class WhatsappBaseController
         $d = \DateTime::createFromFormat('Y-m-d', $date);
         return $d ? $d->format('d/m/Y') : $date;
     }
+
+    /**
+     * Normaliza mensagens para log (1 linha, sem excesso de tamanho).
+     */
+    protected function safeLogMessage(string $message, int $limit = 200): string
+    {
+        $oneLine = trim(preg_replace('/\s+/', ' ', $message));
+        if (strlen($oneLine) <= $limit) {
+            return $oneLine;
+        }
+        return substr($oneLine, 0, $limit - 3) . '...';
+    }
 }

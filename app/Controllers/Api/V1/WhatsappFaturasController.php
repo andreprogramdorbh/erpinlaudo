@@ -30,7 +30,13 @@ class WhatsappFaturasController extends WhatsappBaseController
         $endpoint = '/api/v1/whatsapp/faturas';
 
         // Identifica o cliente pelo telefone
-        $cliente = $this->findClienteByPhone($telefone);
+        try {
+            $cliente = $this->findClienteByPhone($telefone);
+        } catch (\Throwable $e) {
+            $summary = 'Exceção: ' . $this->safeLogMessage($e->getMessage());
+            $this->logger->log($telefone, $endpoint, 'get_faturas', 'error', $summary, $this->tenantId, $this->integracaoId);
+            $this->error('Erro interno ao buscar faturas.', 500);
+        }
         if (!$cliente) {
             $this->logger->log($telefone, $endpoint, 'get_faturas', 'error', 'Cliente não encontrado', $this->tenantId, $this->integracaoId);
             $this->error('Cliente não encontrado para o telefone informado.', 404);
@@ -139,12 +145,16 @@ class WhatsappFaturasController extends WhatsappBaseController
              WHERE c.usuario_id = :tenant_id
                AND pc.ativo = 1
                AND (
-                   {$telefoneExpr} LIKE :phone_like
-                   OR {$celularExpr} LIKE :phone_like
+                   {$telefoneExpr} LIKE :phone_like_1
+                   OR {$celularExpr} LIKE :phone_like_2
                )
              LIMIT 1"
         );
-        $stmt->execute([':tenant_id' => $this->tenantId, ':phone_like' => '%' . $phoneShort]);
+        $stmt->execute([
+            ':tenant_id' => $this->tenantId,
+            ':phone_like_1' => '%' . $phoneShort,
+            ':phone_like_2' => '%' . $phoneShort,
+        ]);
         return $stmt->fetch(PDO::FETCH_OBJ) ?: false;
     }
 
