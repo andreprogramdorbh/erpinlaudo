@@ -94,6 +94,29 @@ abstract class WhatsappBaseController
     }
 
     /**
+     * Retorna uma expressão SQL compatível com MySQL 5.7+/MariaDB para remover caracteres comuns
+     * de formatação de telefone (sem depender de REGEXP_REPLACE, que pode não existir no banco).
+     *
+     * Atenção: use apenas com colunas fixas/known-safe (ex: 'c.telefone', 'c.celular').
+     */
+    protected function sqlDigitsExpr(string $columnSql): string
+    {
+        $expr = $columnSql;
+
+        // Caracteres comuns em formatações brasileiras: +55 (31) 92746-6755, 31.9274-6755, etc.
+        foreach ([' ', '(', ')', '-', '+', '.', '/', "\t", "\n", "\r"] as $char) {
+            $expr = "REPLACE({$expr}, " . $this->quoteSqlLiteral($char) . ", '')";
+        }
+
+        return $expr;
+    }
+
+    private function quoteSqlLiteral(string $value): string
+    {
+        return "'" . str_replace("'", "''", $value) . "'";
+    }
+
+    /**
      * Gera todas as variaÃ§Ãµes possÃ­veis do nÃºmero para busca no banco.
      *
      * Exemplo de entrada: "5531927466755" (WhatsApp com DDI)
