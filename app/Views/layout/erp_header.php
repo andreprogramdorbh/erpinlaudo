@@ -508,6 +508,9 @@
               <li><a href="/integracao/email"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/email') !== false ? 'active' : ''; ?>">E-MAIL</a>
               </li>
+              <li><a href="/integracao/whatsapp"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/whatsapp') !== false ? 'active' : ''; ?>">WHATSAPP</a>
+              </li>
             </ul>
           </li>
         </ul>

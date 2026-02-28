@@ -225,6 +225,12 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/integracao/email", "IntegracaoController@email");
         Router::post("/integracao/email/save", "IntegracaoController@saveEmail");
         Router::post("/integracao/email/test", "IntegracaoController@testEmail");
+
+        // Integração Bot WhatsApp
+        Router::get("/integracao/whatsapp",               "IntegracaoWhatsappController@index");
+        Router::post("/integracao/whatsapp/gerar-token",  "IntegracaoWhatsappController@gerarToken");
+        Router::post("/integracao/whatsapp/revogar",      "IntegracaoWhatsappController@revogar");
+        Router::get("/integracao/whatsapp/logs/export",   "IntegracaoWhatsappController@exportLogs");
     });
 
     // ===== Módulo CRM =====
