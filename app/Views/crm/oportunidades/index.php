@@ -1,7 +1,5 @@
 <?php
 use App\Core\View;
-require_once dirname(__DIR__, 2) . '/layout/erp_header.php';
-
 $statusColors = [
     'aberta'  => 'primary',
     'ganha'   => 'success',

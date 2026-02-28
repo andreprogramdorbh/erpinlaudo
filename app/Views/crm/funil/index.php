@@ -1,6 +1,4 @@
 <?php
-require_once dirname(__DIR__, 2) . '/layout/erp_header.php';
-
 $etapaConfig = [
     'qualificacao' => ['label' => 'Qualificação', 'color' => '#64748b', 'bg' => '#f1f5f9', 'icon' => 'fa-star'],
     'proposta'     => ['label' => 'Proposta',     'color' => '#0284c7', 'bg' => '#e0f2fe', 'icon' => 'fa-file-alt'],

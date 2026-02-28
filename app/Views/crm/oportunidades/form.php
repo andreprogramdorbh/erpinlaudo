@@ -1,7 +1,5 @@
 <?php
 use App\Core\View;
-require_once dirname(__DIR__, 2) . '/layout/erp_header.php';
-
 $action    = $isEdit ? '/crm/oportunidades/update/' . $op->id : '/crm/oportunidades';
 $activeTab = $_GET['tab'] ?? 'dados';
 
