@@ -21,8 +21,10 @@ if (!window.ClientesForm) {
             this.formTabs = null;
             this.contatos = [];
             this.isSubmitting = false;
+            this.isAutofilling = false;
             this.lastSearchedCnpj = '';
             this.lastSearchedCep = '';
+            this.lastSearchedCepAt = 0;
 
             this.init();
         }
@@ -37,6 +39,7 @@ if (!window.ClientesForm) {
             this.setupMasks();
             this.setupCnpjSearch();
             this.setupCepSearch();
+            this.setupAutofillTracking();
             this.setupContactManagement();
             this.setupFormSubmission();
             this.setupValidation();
@@ -233,18 +236,37 @@ if (!window.ClientesForm) {
                 'descricao_cnae': data.descricao_cnae
             };
 
+            this.isAutofilling = true;
             Object.entries(fields).forEach(([field, value]) => {
                 const input = document.getElementById(field);
                 if (input && value) {
                     input.value = value;
+                    input.dataset.autofilled = '1';
                     // Dispara evento para validar se necessário
                     input.dispatchEvent(new Event('input', { bubbles: true }));
                     input.dispatchEvent(new Event('blur', { bubbles: true }));
                 }
             });
+            this.isAutofilling = false;
 
             // Feedback visual de sucesso
             this.showSuccessFeedback();
+        }
+
+        setupAutofillTracking() {
+            const ids = ['cep', 'endereco', 'complemento', 'bairro', 'cidade', 'estado', 'numero'];
+            ids.forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', () => {
+                    if (this.isAutofilling) return;
+                    if (el.dataset.autofilled) delete el.dataset.autofilled;
+                });
+                el.addEventListener('change', () => {
+                    if (this.isAutofilling) return;
+                    if (el.dataset.autofilled) delete el.dataset.autofilled;
+                });
+            });
         }
 
         showSuccessFeedback() {
@@ -301,9 +323,12 @@ if (!window.ClientesForm) {
             if (!cepInput) return;
 
             const cep = cepInput.value.replace(/\D/g, '');
-            if (cep.length !== 8 || cep === this.lastSearchedCep) return;
+            if (cep.length !== 8) return;
+            const now = Date.now();
+            if (cep === this.lastSearchedCep && (now - this.lastSearchedCepAt) < 1500) return;
 
             this.lastSearchedCep = cep;
+            this.lastSearchedCepAt = now;
 
             // Estado de carregamento
             const originalHtml = btnBuscarCep ? btnBuscarCep.innerHTML : '';
@@ -350,7 +375,7 @@ if (!window.ClientesForm) {
                 const input = document.getElementById(campo);
                 if (input) {
                     // Só preenche se o campo estiver vazio (não sobrescreve dados já digitados)
-                    if (!input.value.trim() && valor) {
+                    if (valor) {
                         input.value = valor;
                         input.dispatchEvent(new Event('input', { bubbles: true }));
                     }
@@ -360,7 +385,7 @@ if (!window.ClientesForm) {
             // Seleciona o estado no <select>
             if (data.estado) {
                 const estadoSelect = document.getElementById('estado');
-                if (estadoSelect && !estadoSelect.value) {
+                if (estadoSelect) {
                     estadoSelect.value = data.estado;
                     estadoSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 }

@@ -377,7 +377,7 @@ class ClientesController extends Controller
      */
     public function addContato(): void
     {
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         try {
             $clienteId = (int) ($_POST['cliente_id'] ?? 0);
             if (!$clienteId) {
@@ -426,7 +426,7 @@ class ClientesController extends Controller
      */
     public function getContato(): void
     {
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         try {
             $id = (int) ($_GET['id'] ?? 0);
             if (!$id) {
@@ -457,7 +457,7 @@ class ClientesController extends Controller
      */
     public function updateContato(): void
     {
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         try {
             $id = (int) ($_POST['contato_id'] ?? 0);
             if (!$id) {
@@ -596,7 +596,7 @@ class ClientesController extends Controller
     public function buscarCep(): void
     {
         $cep = preg_replace('/\D/', '', $_GET['cep'] ?? '');
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
 
         try {
             if (strlen($cep) !== 8) {
@@ -605,12 +605,21 @@ class ClientesController extends Controller
                 exit();
             }
 
+            $this->logger->debug('[Clientes] buscarCep iniciado', [
+                'cep' => $cep,
+                'user_id' => \App\Core\Auth::user()->id ?? null,
+            ]);
+
             $service   = new \App\Services\CepService();
             $resultado = $service->consultar($cep);
 
             if (isset($resultado['erro'])) {
                 AuditLogger::log('client_cep_search_failed', [
                     'cep'   => $cep,
+                    'error' => $resultado['erro'],
+                ]);
+                $this->logger->warning('[Clientes] buscarCep falhou', [
+                    'cep' => $cep,
                     'error' => $resultado['erro'],
                 ]);
                 http_response_code(404);
@@ -624,13 +633,23 @@ class ClientesController extends Controller
                 '_provedor' => $resultado['_provedor'] ?? 'N/A',
             ]);
 
-            unset($resultado['_provedor'], $resultado['ibge']);
+            $this->logger->info('[Clientes] buscarCep OK', [
+                'cep' => $cep,
+                'provedor' => $resultado['_provedor'] ?? 'N/A',
+            ]);
+
+            unset($resultado['ibge']);
             echo json_encode($resultado);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             AuditLogger::log('client_cep_search_exception', [
                 'cep'   => $cep,
                 'error' => $e->getMessage(),
+            ]);
+            $this->logger->error('[Clientes] buscarCep exception: ' . $e->getMessage(), [
+                'cep' => $cep,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
             http_response_code(500);
             echo json_encode(['erro' => 'Erro interno ao consultar o CEP. Tente novamente.']);
