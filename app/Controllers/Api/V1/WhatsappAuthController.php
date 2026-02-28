@@ -85,14 +85,15 @@ class WhatsappAuthController extends WhatsappBaseController
              WHERE c.usuario_id = :tenant_id
                AND pc.ativo = 1
                AND (
-                   {$telefoneExpr} LIKE :phone_like
-                   OR {$celularExpr} LIKE :phone_like
+                   {$telefoneExpr} LIKE :phone_like_1
+                   OR {$celularExpr} LIKE :phone_like_2
                )
              LIMIT 1"
         );
         $stmt->execute([
             ':tenant_id'   => $this->tenantId,
-            ':phone_like'  => '%' . $phoneShort,
+            ':phone_like_1' => '%' . $phoneShort,
+            ':phone_like_2' => '%' . $phoneShort,
         ]);
 
         return $stmt->fetch(PDO::FETCH_OBJ) ?: false;

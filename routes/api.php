@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 use App\Core\Router;
 
 /**
@@ -14,6 +14,7 @@ use App\Core\Router;
  *  POST /api/v1/whatsapp/resumo           → Resumo financeiro do cliente
  *  POST /api/v1/whatsapp/faturas          → Lista faturas do cliente
  *  POST /api/v1/whatsapp/notas-fiscais    → Lista notas fiscais do cliente
+ *  POST /api/v1/whatsapp/logs             → Lista logs do bot (auditoria)
  */
 
 Router::group(['middleware' => ['WhatsappApiAuth']], function () {
@@ -21,4 +22,5 @@ Router::group(['middleware' => ['WhatsappApiAuth']], function () {
     Router::post('/api/v1/whatsapp/resumo',        'Api\V1\WhatsappResumoController@index');
     Router::post('/api/v1/whatsapp/faturas',       'Api\V1\WhatsappFaturasController@index');
     Router::post('/api/v1/whatsapp/notas-fiscais', 'Api\V1\WhatsappNotasFiscaisController@index');
+    Router::post('/api/v1/whatsapp/logs',          'Api\V1\WhatsappLogsController@index');
 });
