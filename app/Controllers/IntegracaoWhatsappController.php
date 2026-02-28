@@ -50,6 +50,12 @@ class IntegracaoWhatsappController extends Controller
             'logs'    => $logs,
             'apiKey'  => $apiKey,
             'apiUrl'  => $apiUrl,
+            'breadcrumb' => [
+                'Configurações' => '/configuracoes',
+                'Integrações' => '#',
+                'WhatsApp' => '/integracao/whatsapp',
+            ],
+            '_layout' => 'erp',
         ]);
     }
 

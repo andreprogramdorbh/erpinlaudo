@@ -73,6 +73,9 @@ class WhatsappAuthController extends WhatsappBaseController
         // Compara os últimos 11 dígitos para cobrir variações de DDI
         $phoneShort = substr($telefoneNormalizado, -11); // Ex: 11999998888
 
+        $telefoneExpr = $this->sqlDigitsExpr('c.telefone');
+        $celularExpr  = $this->sqlDigitsExpr('c.celular');
+
         $stmt = $pdo->prepare(
             "SELECT pc.id, pc.cliente_id, pc.email,
                     c.razao_social, c.nome_fantasia, c.cpf_cnpj,
@@ -82,8 +85,8 @@ class WhatsappAuthController extends WhatsappBaseController
              WHERE c.usuario_id = :tenant_id
                AND pc.ativo = 1
                AND (
-                   REGEXP_REPLACE(c.telefone, '[^0-9]', '') LIKE :phone_like
-                   OR REGEXP_REPLACE(c.celular, '[^0-9]', '') LIKE :phone_like
+                   {$telefoneExpr} LIKE :phone_like
+                   OR {$celularExpr} LIKE :phone_like
                )
              LIMIT 1"
         );

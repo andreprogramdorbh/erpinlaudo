@@ -73,6 +73,33 @@ abstract class WhatsappBaseController
     }
 
     /**
+     * Retorna uma expressão SQL compatível com MySQL 5.7+ para remover caracteres comuns de formatação
+     * de telefones (sem depender de REGEXP_REPLACE, que só existe no MySQL 8+).
+     *
+     * Uso: $this->sqlDigitsExpr('c.telefone') => REPLACE(REPLACE(...c.telefone...),' ',''), ...
+     */
+    protected function sqlDigitsExpr(string $columnSql): string
+    {
+        // Não é um sanitizador genérico. Deve ser usado apenas com colunas fixas (ex: 'c.telefone').
+        $expr = $columnSql;
+
+        // Caracteres comuns em formatações brasileiras: +55 (11) 99999-8888, 11.9999-8888, etc.
+        foreach ([' ', '(', ')', '-', '+', '.', '/', "\t", "\n", "\r"] as $char) {
+            $expr = "REPLACE({$expr}, " . $this->pdoQuoteLiteral($char) . ", '')";
+        }
+
+        return $expr;
+    }
+
+    /**
+     * Quote simples para literais SQL (somente para caracteres controlados localmente).
+     */
+    private function pdoQuoteLiteral(string $value): string
+    {
+        return "'" . str_replace("'", "''", $value) . "'";
+    }
+
+    /**
      * Obtém o telefone do corpo da requisição (POST JSON ou form-data).
      */
     protected function getRequestPhone(): string

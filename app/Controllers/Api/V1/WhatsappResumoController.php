@@ -101,6 +101,9 @@ class WhatsappResumoController extends WhatsappBaseController
         $pdo        = Database::getInstance();
         $phoneShort = substr($telefoneNormalizado, -11);
 
+        $telefoneExpr = $this->sqlDigitsExpr('c.telefone');
+        $celularExpr  = $this->sqlDigitsExpr('c.celular');
+
         $stmt = $pdo->prepare(
             "SELECT pc.cliente_id, c.razao_social, c.nome_fantasia, c.cpf_cnpj
              FROM portal_clientes pc
@@ -108,8 +111,8 @@ class WhatsappResumoController extends WhatsappBaseController
              WHERE c.usuario_id = :tenant_id
                AND pc.ativo = 1
                AND (
-                   REGEXP_REPLACE(c.telefone, '[^0-9]', '') LIKE :phone_like
-                   OR REGEXP_REPLACE(c.celular, '[^0-9]', '') LIKE :phone_like
+                   {$telefoneExpr} LIKE :phone_like
+                   OR {$celularExpr} LIKE :phone_like
                )
              LIMIT 1"
         );
