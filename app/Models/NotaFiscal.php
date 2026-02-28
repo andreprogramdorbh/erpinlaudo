@@ -59,7 +59,7 @@ class NotaFiscal extends Model
         $where  = [
             "nf.cliente_id = :cliente_id",
             "nf.usuario_id = :tenant_id",
-            "nf.status IN ('emitida', 'importada', 'emitida_asaas')",
+            "nf.status IN ('emitida', 'importada', 'emitida_asaas', 'cancelada', 'erro_emissao', 'agendada')",
         ];
         $params = [':cliente_id' => $clienteId, ':tenant_id' => $tenantId];
 

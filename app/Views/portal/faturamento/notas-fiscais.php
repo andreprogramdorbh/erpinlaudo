@@ -5,12 +5,29 @@ $statusMap = [
     'importada'     => ['label' => 'Emitida Manualmente','class' => 'portal-badge-info',      'icon' => 'fa-user-check'],
     'cancelada'     => ['label' => 'Cancelada',          'class' => 'portal-badge-danger',    'icon' => 'fa-ban'],
     'agendada'      => ['label' => 'Agendada',           'class' => 'portal-badge-warning',   'icon' => 'fa-clock'],
+    'erro_emissao'  => ['label' => 'Erro na emiss&atilde;o', 'class' => 'portal-badge-error', 'icon' => 'fa-exclamation-triangle'],
 ];
 $origemMap = [
     'asaas'  => ['label' => 'Asaas',  'class' => 'portal-badge-primary',   'icon' => 'fa-bolt'],
     'manual' => ['label' => 'Manual', 'class' => 'portal-badge-secondary', 'icon' => 'fa-user'],
     ''       => ['label' => 'Manual', 'class' => 'portal-badge-secondary', 'icon' => 'fa-user'],
 ];
+
+/**
+ * Retorna true se a NF está em estado "emitida" (tem PDF/XML disponível).
+ */
+function nfEmitida(object $nota): bool {
+    return in_array($nota->status ?? '', ['emitida', 'emitida_asaas', 'importada'], true);
+}
+
+/**
+ * Exibe o número da NF ou um traço (—) se não houver número.
+ * Usa echo direto (sem htmlspecialchars) para permitir entidades HTML.
+ */
+function exibirNumeroNf(object $nota): string {
+    $num = trim($nota->numero_nf ?? '');
+    return $num !== '' ? htmlspecialchars($num) : '&mdash;';
+}
 ?>
 <div class="portal-page-header">
     <div>
@@ -21,25 +38,26 @@ $origemMap = [
 
 <?php if (!empty($_GET['success'])): ?>
     <?php $msgs = [
-        'nf_emitida'    => 'NF-s emitida com sucesso via Asaas! Ela aparecera na lista abaixo.',
-        'nf_ja_emitida' => 'Ja existe uma NF-s emitida para esta conta.',
+        'nf_emitida'    => 'NF-s emitida com sucesso via Asaas! Ela aparecer&aacute; na lista abaixo.',
+        'nf_ja_emitida' => 'J&aacute; existe uma NF-s emitida para esta conta.',
     ]; ?>
     <div class="portal-alert portal-alert-success mb-3">
         <i class="fa fa-check-circle me-2"></i>
-        <?php echo htmlspecialchars($msgs[$_GET['success']] ?? 'Operacao realizada com sucesso.'); ?>
+        <?php echo $msgs[$_GET['success']] ?? 'Opera&ccedil;&atilde;o realizada com sucesso.'; ?>
     </div>
 <?php endif; ?>
 
 <?php if (!empty($_GET['error'])): ?>
     <?php $erros = [
-        'xml_indisponivel'       => 'O arquivo XML desta nota nao esta disponivel.',
-        'pdf_indisponivel'       => 'O PDF desta nota nao esta disponivel no momento.',
-        'arquivo_nao_encontrado' => 'Arquivo nao encontrado no servidor.',
-        'acesso_negado'          => 'Voce nao tem permissao para acessar este arquivo.',
+        'xml_indisponivel'       => 'O arquivo XML desta nota n&atilde;o est&aacute; dispon&iacute;vel.',
+        'pdf_indisponivel'       => 'O PDF desta nota n&atilde;o est&aacute; dispon&iacute;vel no momento.',
+        'arquivo_nao_encontrado' => 'Arquivo n&atilde;o encontrado no servidor.',
+        'acesso_negado'          => 'Voc&ecirc; n&atilde;o tem permiss&atilde;o para acessar este arquivo.',
+        'erro_download_pdf'      => 'Ocorreu um erro ao baixar o PDF. Tente novamente.',
     ]; ?>
     <div class="portal-alert portal-alert-danger mb-3">
         <i class="fa fa-exclamation-circle me-2"></i>
-        <?php echo htmlspecialchars($erros[$_GET['error']] ?? 'Ocorreu um erro.'); ?>
+        <?php echo $erros[$_GET['error']] ?? 'Ocorreu um erro.'; ?>
     </div>
 <?php endif; ?>
 
@@ -50,11 +68,11 @@ $origemMap = [
             <div class="portal-filter-field">
                 <label class="portal-filter-label"><i class="fa fa-search me-1"></i>Pesquisar</label>
                 <input type="text" name="pesquisa" class="portal-filter-input"
-                       placeholder="Numero da NF, serie..."
+                       placeholder="N&uacute;mero da NF, s&eacute;rie..."
                        value="<?php echo htmlspecialchars($filtros['pesquisa'] ?? ''); ?>">
             </div>
             <div class="portal-filter-field">
-                <label class="portal-filter-label"><i class="fa fa-calendar me-1"></i>Data Inicio</label>
+                <label class="portal-filter-label"><i class="fa fa-calendar me-1"></i>Data In&iacute;cio</label>
                 <input type="date" name="data_inicio" class="portal-filter-input"
                        value="<?php echo htmlspecialchars($filtros['data_inicio'] ?? ''); ?>">
             </div>
@@ -72,6 +90,7 @@ $origemMap = [
                     <option value="importada"     <?php echo ($filtros['status'] ?? '') === 'importada'     ? 'selected' : ''; ?>>Emitida Manualmente</option>
                     <option value="agendada"      <?php echo ($filtros['status'] ?? '') === 'agendada'      ? 'selected' : ''; ?>>Agendada</option>
                     <option value="cancelada"     <?php echo ($filtros['status'] ?? '') === 'cancelada'     ? 'selected' : ''; ?>>Cancelada</option>
+                    <option value="erro_emissao"  <?php echo ($filtros['status'] ?? '') === 'erro_emissao'  ? 'selected' : ''; ?>>Erro na emiss&atilde;o</option>
                 </select>
             </div>
             <div class="portal-filter-actions">
@@ -95,7 +114,7 @@ $origemMap = [
                 Nenhuma NF corresponde aos filtros aplicados.
                 <a href="/portal/faturamento/notas-fiscais">Limpar filtros</a>
             <?php else: ?>
-                Nao ha notas fiscais emitidas para sua conta ainda.
+                N&atilde;o h&aacute; notas fiscais emitidas para sua conta ainda.
             <?php endif; ?>
         </p>
     </div>
@@ -129,17 +148,18 @@ $origemMap = [
             </thead>
             <tbody>
                 <?php foreach ($notas as $nota):
-                    $statusInfo  = $statusMap[$nota->status] ?? ['label' => ucfirst($nota->status), 'class' => 'portal-badge-secondary', 'icon' => 'fa-file'];
+                    $statusInfo  = $statusMap[$nota->status] ?? ['label' => ucfirst($nota->status ?? ''), 'class' => 'portal-badge-secondary', 'icon' => 'fa-file'];
                     $origem      = strtolower(trim($nota->origem_emissao ?? ''));
                     if ($nota->status === 'importada') { $origem = 'manual'; }
                     $origemInfo  = $origemMap[$origem] ?? $origemMap['manual'];
-                    $temXml      = !empty($nota->xml_path);
-                    $temPdfAsaas = !empty($nota->asaas_pdf_url);
-                    $temAnexos   = !empty($nota->anexos);
+                    $emitida     = nfEmitida($nota);
+                    $temXml      = $emitida && !empty($nota->xml_path);
+                    $temPdfAsaas = $emitida && !empty($nota->asaas_pdf_url);
+                    $temAnexos   = $emitida && !empty($nota->anexos);
                 ?>
                 <tr>
-                    <td><strong><?php echo htmlspecialchars($nota->numero_nf ?: '&mdash;'); ?></strong></td>
-                    <td><?php echo htmlspecialchars($nota->serie ?: '&mdash;'); ?></td>
+                    <td><strong><?php echo exibirNumeroNf($nota); ?></strong></td>
+                    <td><?php echo !empty($nota->serie) ? htmlspecialchars($nota->serie) : '&mdash;'; ?></td>
                     <td><?php echo !empty($nota->data_emissao) ? date('d/m/Y', strtotime($nota->data_emissao)) : '&mdash;'; ?></td>
                     <td class="fw-semibold">R$ <?php echo number_format((float) $nota->valor_total, 2, ',', '.'); ?></td>
                     <td>
@@ -188,8 +208,29 @@ $origemMap = [
                                     </a>
                                 <?php endforeach; ?>
                             <?php endif; ?>
-                            <?php if (!$temPdfAsaas && !$temXml && !$temAnexos): ?>
-                                <span class="text-muted small"><i class="fa fa-clock me-1"></i>Processando</span>
+
+                            <?php if (!$emitida): ?>
+                                <?php if (($nota->status ?? '') === 'erro_emissao'): ?>
+                                    <span class="nf-status-msg nf-status-error">
+                                        <i class="fa fa-exclamation-triangle me-1"></i>Erro na emiss&atilde;o
+                                    </span>
+                                <?php elseif (($nota->status ?? '') === 'cancelada'): ?>
+                                    <span class="nf-status-msg nf-status-cancelada">
+                                        <i class="fa fa-ban me-1"></i>Cancelada
+                                    </span>
+                                <?php elseif (($nota->status ?? '') === 'agendada'): ?>
+                                    <span class="nf-status-msg nf-status-agendada">
+                                        <i class="fa fa-clock me-1"></i>Agendada
+                                    </span>
+                                <?php else: ?>
+                                    <span class="nf-status-msg nf-status-processando">
+                                        <i class="fa fa-spinner fa-spin me-1"></i>Processando
+                                    </span>
+                                <?php endif; ?>
+                            <?php elseif (!$temPdfAsaas && !$temXml && !$temAnexos): ?>
+                                <span class="nf-status-msg nf-status-processando">
+                                    <i class="fa fa-spinner fa-spin me-1"></i>Processando
+                                </span>
                             <?php endif; ?>
                         </div>
                     </td>
@@ -202,13 +243,14 @@ $origemMap = [
     <!-- CARDS Mobile -->
     <div class="d-md-none">
         <?php foreach ($notas as $nota):
-            $statusInfo  = $statusMap[$nota->status] ?? ['label' => ucfirst($nota->status), 'class' => 'portal-badge-secondary', 'icon' => 'fa-file'];
+            $statusInfo  = $statusMap[$nota->status] ?? ['label' => ucfirst($nota->status ?? ''), 'class' => 'portal-badge-secondary', 'icon' => 'fa-file'];
             $origem      = strtolower(trim($nota->origem_emissao ?? ''));
             if ($nota->status === 'importada') { $origem = 'manual'; }
             $origemInfo  = $origemMap[$origem] ?? $origemMap['manual'];
-            $temXml      = !empty($nota->xml_path);
-            $temPdfAsaas = !empty($nota->asaas_pdf_url);
-            $temAnexos   = !empty($nota->anexos);
+            $emitida     = nfEmitida($nota);
+            $temXml      = $emitida && !empty($nota->xml_path);
+            $temPdfAsaas = $emitida && !empty($nota->asaas_pdf_url);
+            $temAnexos   = $emitida && !empty($nota->anexos);
         ?>
         <div class="portal-conta-card mb-3">
             <div class="portal-conta-header">
@@ -228,11 +270,11 @@ $origemMap = [
                 <div class="portal-conta-details">
                     <div class="portal-conta-detail">
                         <span class="portal-detail-label">N&ordm; NF</span>
-                        <span class="portal-detail-value fw-semibold"><?php echo htmlspecialchars($nota->numero_nf ?: '&mdash;'); ?></span>
+                        <span class="portal-detail-value fw-semibold"><?php echo exibirNumeroNf($nota); ?></span>
                     </div>
                     <div class="portal-conta-detail">
                         <span class="portal-detail-label">S&eacute;rie</span>
-                        <span class="portal-detail-value"><?php echo htmlspecialchars($nota->serie ?: '&mdash;'); ?></span>
+                        <span class="portal-detail-value"><?php echo !empty($nota->serie) ? htmlspecialchars($nota->serie) : '&mdash;'; ?></span>
                     </div>
                     <div class="portal-conta-detail">
                         <span class="portal-detail-label">Valor</span>
@@ -262,8 +304,29 @@ $origemMap = [
                         </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
-                <?php if (!$temPdfAsaas && !$temXml && !$temAnexos): ?>
-                    <span class="text-muted small"><i class="fa fa-clock me-1"></i>Processando</span>
+
+                <?php if (!$emitida): ?>
+                    <?php if (($nota->status ?? '') === 'erro_emissao'): ?>
+                        <span class="nf-status-msg nf-status-error">
+                            <i class="fa fa-exclamation-triangle me-1"></i>Erro na emiss&atilde;o
+                        </span>
+                    <?php elseif (($nota->status ?? '') === 'cancelada'): ?>
+                        <span class="nf-status-msg nf-status-cancelada">
+                            <i class="fa fa-ban me-1"></i>Cancelada
+                        </span>
+                    <?php elseif (($nota->status ?? '') === 'agendada'): ?>
+                        <span class="nf-status-msg nf-status-agendada">
+                            <i class="fa fa-clock me-1"></i>Agendada
+                        </span>
+                    <?php else: ?>
+                        <span class="nf-status-msg nf-status-processando">
+                            <i class="fa fa-spinner fa-spin me-1"></i>Processando
+                        </span>
+                    <?php endif; ?>
+                <?php elseif (!$temPdfAsaas && !$temXml && !$temAnexos): ?>
+                    <span class="nf-status-msg nf-status-processando">
+                        <i class="fa fa-spinner fa-spin me-1"></i>Processando
+                    </span>
                 <?php endif; ?>
             </div>
         </div>
@@ -289,4 +352,11 @@ $origemMap = [
 .portal-badge-info{background:#dbeafe;color:#1e40af}
 .portal-badge-primary{background:#ede9fe;color:#5b21b6}
 .portal-badge-secondary{background:#f1f5f9;color:#475569}
+.portal-badge-error{background:#fee2e2;color:#991b1b}
+/* Mensagens de status na coluna Downloads */
+.nf-status-msg{display:inline-flex;align-items:center;font-size:.78rem;padding:.2rem .5rem;border-radius:4px;font-weight:500}
+.nf-status-error{background:#fee2e2;color:#991b1b}
+.nf-status-cancelada{background:#f1f5f9;color:#64748b}
+.nf-status-agendada{background:#fef9c3;color:#92400e}
+.nf-status-processando{background:#f0f9ff;color:#0369a1}
 </style>
