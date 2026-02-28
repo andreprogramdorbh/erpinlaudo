@@ -234,6 +234,46 @@ $apiUrl   = $apiUrl ?? '';
 </div>
 
 <script>
+// Fallback para evitar erro "Swal is not defined" caso o layout nÃ£o carregue o SweetAlert2 por algum motivo.
+// MantÃ©m os botÃµes funcionando (com alert/confirm) atÃ© que o carregamento do JS seja corrigido.
+(function () {
+    if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+        return;
+    }
+
+    const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, '');
+
+    window.Swal = {
+        fire: function (arg1, arg2) {
+            // Forma: Swal.fire({ ... })
+            if (arg1 && typeof arg1 === 'object') {
+                const title = arg1.title || '';
+                const text = stripHtml(arg1.text || arg1.html || '');
+
+                if (arg1.showCancelButton) {
+                    const msg = [title, text].filter(Boolean).join('\n\n');
+                    return Promise.resolve({ isConfirmed: window.confirm(msg) });
+                }
+
+                if (title || text) {
+                    alert([title, text].filter(Boolean).join('\n\n'));
+                }
+
+                return Promise.resolve({ isConfirmed: true });
+            }
+
+            // Forma: Swal.fire('TÃ­tulo', 'Mensagem', 'tipo')
+            if (typeof arg1 === 'string' && typeof arg2 === 'string') {
+                alert(arg1 + '\n\n' + arg2);
+                return Promise.resolve({ isConfirmed: true });
+            }
+
+            alert(String(arg1 || ''));
+            return Promise.resolve({ isConfirmed: true });
+        }
+    };
+})();
+
 function copyApiKey() {
     const input = document.getElementById('newApiKeyDisplay');
     if (input) {

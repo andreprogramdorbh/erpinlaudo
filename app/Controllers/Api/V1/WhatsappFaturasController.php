@@ -30,7 +30,13 @@ class WhatsappFaturasController extends WhatsappBaseController
         $endpoint = '/api/v1/whatsapp/faturas';
 
         // Identifica o cliente pelo telefone
-        $cliente = $this->findClienteByPhone($telefone);
+        try {
+            $cliente = $this->findClienteByPhone($telefone);
+        } catch (\Throwable $e) {
+            $summary = 'Exceção: ' . $this->safeLogMessage($e->getMessage());
+            $this->logger->log($telefone, $endpoint, 'get_faturas', 'error', $summary, $this->tenantId, $this->integracaoId);
+            $this->error('Erro interno ao buscar faturas.', 500);
+        }
         if (!$cliente) {
             $this->logger->log($telefone, $endpoint, 'get_faturas', 'error', 'Cliente não encontrado', $this->tenantId, $this->integracaoId);
             $this->error('Cliente não encontrado para o telefone informado.', 404);

@@ -26,7 +26,6 @@ class IntegracaoWhatsappController extends Controller
 
     public function __construct()
     {
-        parent::__construct();
         $this->userId = (int) ($_SESSION['user_id'] ?? 0);
         $this->crypto = new CryptoService();
         $this->pdo    = Database::getInstance();
@@ -51,6 +50,12 @@ class IntegracaoWhatsappController extends Controller
             'logs'    => $logs,
             'apiKey'  => $apiKey,
             'apiUrl'  => $apiUrl,
+            'breadcrumb' => [
+                'Configurações' => '/configuracoes',
+                'Integrações' => '#',
+                'WhatsApp' => '/integracao/whatsapp',
+            ],
+            '_layout' => 'erp',
         ]);
     }
 
@@ -220,6 +225,18 @@ class IntegracaoWhatsappController extends Controller
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_OBJ);
         } catch (\Exception $e) {
+            $logFile = dirname(__DIR__, 2) . '/storage/logs/whatsapp_bot.log';
+            file_put_contents(
+                $logFile,
+                sprintf(
+                    "[%s] [PANEL_LOGS_ERROR] tenant=%d limit=%d | %s\n",
+                    date('Y-m-d H:i:s'),
+                    $this->userId,
+                    $limit,
+                    $e->getMessage()
+                ),
+                FILE_APPEND | LOCK_EX
+            );
             return [];
         }
     }

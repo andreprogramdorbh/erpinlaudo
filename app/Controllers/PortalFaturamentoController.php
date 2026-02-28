@@ -36,6 +36,47 @@ class PortalFaturamentoController extends Controller
         $this->logger            = new Logger();
     }
 
+    private function normalizeCep(?string $cep): string
+    {
+        return preg_replace('/\D/', '', (string) ($cep ?? ''));
+    }
+
+    private function isValidCep(string $cepDigits): bool
+    {
+        return (bool) preg_match('/^\d{8}$/', $cepDigits);
+    }
+
+    /**
+     * Valida campos mínimos de endereço para emissão via Asaas (NFS-e exige endereço completo).
+     * Retorna lista de campos faltantes/invalidos para auditoria e mensagem.
+     */
+    private function validateEnderecoForAsaas(object $portal): array
+    {
+        $missing = [];
+
+        $cepDigits = $this->normalizeCep($portal->cep ?? '');
+        if (!$this->isValidCep($cepDigits)) {
+            $missing[] = 'cep';
+        }
+
+        if (empty(trim((string) ($portal->endereco ?? '')))) {
+            $missing[] = 'endereco';
+        }
+        if (empty(trim((string) ($portal->bairro ?? '')))) {
+            $missing[] = 'bairro';
+        }
+        if (empty(trim((string) ($portal->cidade ?? '')))) {
+            $missing[] = 'cidade';
+        }
+
+        $uf = strtoupper(trim((string) ($portal->estado ?? '')));
+        if (strlen($uf) !== 2) {
+            $missing[] = 'estado';
+        }
+
+        return $missing;
+    }
+
     private function getPortalCliente(): object
     {
         $id = (int) ($_SESSION['portal_cliente_id'] ?? 0);
@@ -158,6 +199,9 @@ class PortalFaturamentoController extends Controller
                 $documento    = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
                 $asaasCliente = $asaas->buscarCliente($documento, $portal->email_principal ?? null);
 
+                $cepDigits       = $this->normalizeCep($portal->cep ?? '');
+                $enderecoMissing = $this->validateEnderecoForAsaas($portal);
+
                 // Montar dados de atualização com endereço completo
                 $clienteUpdateData = [
                     'name'    => $portal->razao_social ?? $portal->nome_fantasia ?? '',
@@ -165,26 +209,71 @@ class PortalFaturamentoController extends Controller
                     'phone'   => $portal->telefone ?? $portal->celular ?? '',
                     'cpfCnpj' => $documento,
                 ];
-                if (!empty($portal->cep)) {
-                    $cepLimpo = preg_replace('/\D/', '', $portal->cep);
-                    $clienteUpdateData['postalCode']    = $cepLimpo;
-                    $clienteUpdateData['address']       = $portal->endereco ?? '';
-                    $clienteUpdateData['addressNumber'] = $portal->numero ?? 'S/N';
-                    $clienteUpdateData['complement']    = $portal->complemento ?? '';
-                    $clienteUpdateData['province']      = $portal->bairro ?? '';
-                    $clienteUpdateData['city']          = $portal->cidade ?? '';
-                    $clienteUpdateData['state']         = $portal->estado ?? '';
+                // Se o portal tiver endereço válido, sincroniza no Asaas (endereço completo).
+                if (empty($enderecoMissing)) {
+                    $clienteUpdateData['postalCode']    = $cepDigits;
+                    $clienteUpdateData['address']       = trim((string) ($portal->endereco ?? ''));
+                    $numeroEndereco = trim((string) ($portal->numero ?? ''));
+                    $clienteUpdateData['addressNumber'] = $numeroEndereco !== '' ? $numeroEndereco : 'S/N';
+                    $clienteUpdateData['complement']    = trim((string) ($portal->complemento ?? ''));
+                    $clienteUpdateData['province']      = trim((string) ($portal->bairro ?? ''));
+                    $clienteUpdateData['city']          = trim((string) ($portal->cidade ?? ''));
+                    $clienteUpdateData['state']         = strtoupper(trim((string) ($portal->estado ?? '')));
                 }
 
                 if ($asaasCliente && !empty($asaasCliente['id'])) {
                     $customerId = $asaasCliente['id'];
-                    $asaas->atualizarCliente($customerId, $clienteUpdateData);
+                    // Se o portal não tem endereço completo, tenta usar o endereço já existente no Asaas.
+                    if (!empty($enderecoMissing)) {
+                        $asaasPostal = preg_replace('/\D/', '', (string) ($asaasCliente['postalCode'] ?? ''));
+                        $asaasHasAddress = $this->isValidCep($asaasPostal);
+
+                        if (!$asaasHasAddress) {
+                            $this->logger->error('[Portal] NFS-e: Endereço incompleto para emissão (portal e Asaas)', [
+                                'portal_id'        => $portal->id,
+                                'cliente_id'       => $clienteId,
+                                'tenant_id'        => $tenantId,
+                                'customer_id'      => $customerId,
+                                'missing'          => $enderecoMissing,
+                                'cep'              => $portal->cep ?? null,
+                                'cep_digits'       => $cepDigits,
+                                'asaas_postalCode' => $asaasCliente['postalCode'] ?? null,
+                            ]);
+                            http_response_code(422);
+                            echo json_encode([
+                                'success' => false,
+                                'error'   => 'Endereço do cliente incompleto. Atualize o CEP e endereço (CEP, rua, número, bairro, cidade e UF) e tente novamente.',
+                                'missing' => $enderecoMissing,
+                            ]);
+                            return;
+                        }
+                    } else {
+                        $asaas->atualizarCliente($customerId, $clienteUpdateData);
+                    }
                     $this->logger->info('[Portal] NFS-e: Endereço do cliente sincronizado no Asaas', [
                         'customer_id' => $customerId,
                         'cep'         => $portal->cep ?? null,
                         'cidade'      => $portal->cidade ?? null,
                     ]);
                 } else {
+                    // Para criar cliente no Asaas, precisamos de endereço válido (senão a emissão falhará).
+                    if (!empty($enderecoMissing)) {
+                        $this->logger->error('[Portal] NFS-e: Endereço incompleto para criar cliente no Asaas', [
+                            'portal_id'  => $portal->id,
+                            'cliente_id' => $clienteId,
+                            'tenant_id'  => $tenantId,
+                            'missing'    => $enderecoMissing,
+                            'cep'        => $portal->cep ?? null,
+                            'cep_digits' => $cepDigits,
+                        ]);
+                        http_response_code(422);
+                        echo json_encode([
+                            'success' => false,
+                            'error'   => 'Endereço do cliente incompleto. Preencha CEP e endereço (CEP, rua, número, bairro, cidade e UF) para emitir a NF-s.',
+                            'missing' => $enderecoMissing,
+                        ]);
+                        return;
+                    }
                     // Cliente não existe no Asaas — criar com endereço completo
                     $novoCliente = $asaas->criarCliente($clienteUpdateData);
                     $customerId  = $novoCliente['id'] ?? null;
@@ -336,7 +425,20 @@ class PortalFaturamentoController extends Controller
             ]);
 
         } catch (\RuntimeException $e) {
-            $this->logger->error('[Portal] Erro ao emitir NF-s via Asaas: ' . $e->getMessage(), ['conta_id' => $contaId]);
+            $cepRaw    = isset($portal) ? ($portal->cep ?? null) : null;
+            $cepDigits = isset($portal) ? $this->normalizeCep($cepRaw) : '';
+            $missingEndereco = isset($portal) ? $this->validateEnderecoForAsaas($portal) : [];
+
+            $this->logger->error('[Portal] Erro ao emitir NF-s via Asaas: ' . $e->getMessage(), [
+                'conta_id'   => $contaId,
+                'portal_id'  => isset($portal) ? ($portal->id ?? null) : null,
+                'cliente_id' => isset($portal) ? ($portal->cliente_id ?? null) : null,
+                'tenant_id'  => isset($portal) ? ($portal->tenant_id ?? null) : null,
+                'cep'        => $cepRaw,
+                'cep_digits' => $cepDigits,
+                'cep_len'    => strlen($cepDigits),
+                'missing'    => $missingEndereco,
+            ]);
             http_response_code(500);
             echo json_encode(['success' => false, 'error' => 'Erro ao emitir NF-s: ' . $e->getMessage()]);
         } catch (\Exception $e) {

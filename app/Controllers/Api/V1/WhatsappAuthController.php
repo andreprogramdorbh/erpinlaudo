@@ -33,7 +33,17 @@ class WhatsappAuthController extends WhatsappBaseController
         $telefone = $this->getRequestPhone();
         $endpoint = '/api/v1/whatsapp/identificar';
 
-        $cliente = $this->findClienteByPhone($telefone);
+        try {
+            $cliente = $this->findClienteByPhone($telefone);
+        } catch (\Throwable $e) {
+            $summary = 'Exceção: ' . $this->safeLogMessage($e->getMessage());
+            $this->logger->log(
+                $telefone, $endpoint, 'identificar',
+                'error', $summary,
+                $this->tenantId, $this->integracaoId
+            );
+            $this->error('Erro interno ao identificar o cliente.', 500);
+        }
 
         if (!$cliente) {
             $this->logger->log(

@@ -26,7 +26,13 @@ class WhatsappNotasFiscaisController extends WhatsappBaseController
         $limite   = min((int) ($body['limite'] ?? 5), 10);
         $endpoint = '/api/v1/whatsapp/notas-fiscais';
 
-        $cliente = $this->findClienteByPhone($telefone);
+        try {
+            $cliente = $this->findClienteByPhone($telefone);
+        } catch (\Throwable $e) {
+            $summary = 'Exceção: ' . $this->safeLogMessage($e->getMessage());
+            $this->logger->log($telefone, $endpoint, 'get_notas_fiscais', 'error', $summary, $this->tenantId, $this->integracaoId);
+            $this->error('Erro interno ao buscar notas fiscais.', 500);
+        }
         if (!$cliente) {
             $this->logger->log($telefone, $endpoint, 'get_notas_fiscais', 'error', 'Cliente não encontrado', $this->tenantId, $this->integracaoId);
             $this->error('Cliente não encontrado para o telefone informado.', 404);

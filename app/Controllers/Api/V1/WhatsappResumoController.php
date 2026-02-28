@@ -27,7 +27,13 @@ class WhatsappResumoController extends WhatsappBaseController
         $telefone = $this->getRequestPhone();
         $endpoint = '/api/v1/whatsapp/resumo';
 
-        $cliente = $this->findClienteByPhone($telefone);
+        try {
+            $cliente = $this->findClienteByPhone($telefone);
+        } catch (\Throwable $e) {
+            $summary = 'Exceção: ' . $this->safeLogMessage($e->getMessage());
+            $this->logger->log($telefone, $endpoint, 'get_resumo', 'error', $summary, $this->tenantId, $this->integracaoId);
+            $this->error('Erro interno ao obter resumo financeiro.', 500);
+        }
         if (!$cliente) {
             $this->logger->log($telefone, $endpoint, 'get_resumo', 'error', 'Cliente não encontrado', $this->tenantId, $this->integracaoId);
             $this->error('Cliente não encontrado para o telefone informado.', 404);
