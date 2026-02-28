@@ -20,7 +20,8 @@ class PortalCliente extends Model
     {
         $stmt = $this->pdo->prepare(
             "SELECT pc.*, c.razao_social, c.nome_fantasia, c.cpf_cnpj, c.email AS email_principal,
-                    c.telefone, c.celular, c.cidade, c.estado, c.usuario_id AS tenant_id
+                    c.telefone, c.celular, c.cidade, c.estado, c.usuario_id AS tenant_id,
+                    c.endereco, c.numero, c.complemento, c.bairro, c.cep
              FROM {$this->table} pc
              INNER JOIN clientes c ON c.id = pc.cliente_id
              WHERE pc.email = ? AND pc.ativo = 1
@@ -49,7 +50,8 @@ class PortalCliente extends Model
     {
         $stmt = $this->pdo->prepare(
             "SELECT pc.*, c.razao_social, c.nome_fantasia, c.cpf_cnpj, c.email AS email_principal,
-                    c.telefone, c.celular, c.cidade, c.estado, c.usuario_id AS tenant_id
+                    c.telefone, c.celular, c.cidade, c.estado, c.usuario_id AS tenant_id,
+                    c.endereco, c.numero, c.complemento, c.bairro, c.cep
              FROM {$this->table} pc
              INNER JOIN clientes c ON c.id = pc.cliente_id
              WHERE pc.id = ? AND pc.ativo = 1

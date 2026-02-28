@@ -148,6 +148,57 @@ class PortalFaturamentoController extends Controller
             $descricao = $conta->descricao ?? 'Serviços Prestados';
             $valor     = (float) $conta->valor;
             $dataHoje  = date('Y-m-d');
+            $customerId = null; // ID do cliente no Asaas (será preenchido abaixo)
+
+            // ---------------------------------------------------------------
+            // SINCRONIZAR ENDEREÇO DO CLIENTE NO ASAAS
+            // O Asaas exige endereço completo com CEP válido para emitir NFS-e
+            // ---------------------------------------------------------------
+            try {
+                $documento    = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
+                $asaasCliente = $asaas->buscarCliente($documento, $portal->email_principal ?? null);
+
+                // Montar dados de atualização com endereço completo
+                $clienteUpdateData = [
+                    'name'    => $portal->razao_social ?? $portal->nome_fantasia ?? '',
+                    'email'   => $portal->email_principal ?? '',
+                    'phone'   => $portal->telefone ?? $portal->celular ?? '',
+                    'cpfCnpj' => $documento,
+                ];
+                if (!empty($portal->cep)) {
+                    $cepLimpo = preg_replace('/\D/', '', $portal->cep);
+                    $clienteUpdateData['postalCode']    = $cepLimpo;
+                    $clienteUpdateData['address']       = $portal->endereco ?? '';
+                    $clienteUpdateData['addressNumber'] = $portal->numero ?? 'S/N';
+                    $clienteUpdateData['complement']    = $portal->complemento ?? '';
+                    $clienteUpdateData['province']      = $portal->bairro ?? '';
+                    $clienteUpdateData['city']          = $portal->cidade ?? '';
+                    $clienteUpdateData['state']         = $portal->estado ?? '';
+                }
+
+                if ($asaasCliente && !empty($asaasCliente['id'])) {
+                    $customerId = $asaasCliente['id'];
+                    $asaas->atualizarCliente($customerId, $clienteUpdateData);
+                    $this->logger->info('[Portal] NFS-e: Endereço do cliente sincronizado no Asaas', [
+                        'customer_id' => $customerId,
+                        'cep'         => $portal->cep ?? null,
+                        'cidade'      => $portal->cidade ?? null,
+                    ]);
+                } else {
+                    // Cliente não existe no Asaas — criar com endereço completo
+                    $novoCliente = $asaas->criarCliente($clienteUpdateData);
+                    $customerId  = $novoCliente['id'] ?? null;
+                    $this->logger->info('[Portal] NFS-e: Cliente criado no Asaas com endereço', [
+                        'customer_id' => $customerId,
+                    ]);
+                }
+            } catch (\Exception $eSyncCliente) {
+                // Não bloquear a emissão se a sincronização falhar — apenas logar
+                $this->logger->warning('[Portal] NFS-e: Falha ao sincronizar endereço do cliente no Asaas (não bloqueante)', [
+                    'error'      => $eSyncCliente->getMessage(),
+                    'cliente_id' => $clienteId,
+                ]);
+            }
 
             // Carregar configurações de NFS-e do tenant
             $configNfs  = $this->configNfsModel->findByUsuarioId($tenantId);
@@ -233,6 +284,11 @@ class PortalFaturamentoController extends Controller
             // Vínculo com pagamento Asaas (sobrescreve o do template se existir)
             if (!empty($conta->asaas_payment_id)) {
                 $payload['payment'] = $conta->asaas_payment_id;
+            }
+
+            // Adicionar customer_id se não há payment vinculado (emissão avulsa)
+            if (empty($payload['payment']) && !empty($customerId)) {
+                $payload['customer'] = $customerId;
             }
 
             $response = $asaas->agendarNotaFiscal($payload);

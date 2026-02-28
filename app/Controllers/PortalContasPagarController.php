@@ -490,13 +490,34 @@ class PortalContasPagarController extends Controller
     {
         $documento    = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
         $asaasCliente = $asaas->buscarCliente($documento, $portal->email_principal ?? null);
+
+        // Montar dados completos do cliente (com endereço para NFS-e)
+        $dadosCliente = [
+            'name'    => $portal->razao_social ?? $portal->nome_fantasia ?? '',
+            'email'   => $portal->email_principal ?? '',
+            'phone'   => $portal->telefone ?? $portal->celular ?? '',
+            'cpfCnpj' => $documento,
+        ];
+        if (!empty($portal->cep)) {
+            $cepLimpo = preg_replace('/\D/', '', $portal->cep);
+            $dadosCliente['postalCode']    = $cepLimpo;
+            $dadosCliente['address']       = $portal->endereco ?? '';
+            $dadosCliente['addressNumber'] = $portal->numero ?? 'S/N';
+            $dadosCliente['complement']    = $portal->complemento ?? '';
+            $dadosCliente['province']      = $portal->bairro ?? '';
+            $dadosCliente['city']          = $portal->cidade ?? '';
+            $dadosCliente['state']         = $portal->estado ?? '';
+        }
+
         if (!$asaasCliente) {
-            $asaasCliente = $asaas->criarCliente([
-                'name'    => $portal->razao_social ?? '',
-                'email'   => $portal->email_principal ?? '',
-                'phone'   => $portal->telefone ?? $portal->celular ?? '',
-                'cpfCnpj' => $documento,
-            ]);
+            $asaasCliente = $asaas->criarCliente($dadosCliente);
+        } else {
+            // Atualizar endereço do cliente existente (necessário para NFS-e)
+            try {
+                $asaas->atualizarCliente($asaasCliente['id'], $dadosCliente);
+            } catch (\Exception $e) {
+                // Não bloquear o pagamento se a atualização falhar
+            }
         }
         $dadosBase = [
             'customer'          => $asaasCliente['id'],

@@ -729,4 +729,29 @@ class AsaasService
 
         return $responseData ?? [];
     }
+
+    /**
+     * Atualiza dados de um cliente no Asaas (endereço, telefone, etc.).
+     *
+     * @param  string $customerId  ID do cliente no Asaas (ex: cus_000000000000)
+     * @param  array  $dados       Campos a atualizar (name, email, phone, address, addressNumber, province, postalCode, etc.)
+     * @return array
+     */
+    public function atualizarCliente(string $customerId, array $dados): array
+    {
+        try {
+            $response = $this->makeRequest('PUT', "/customers/{$customerId}", $dados);
+            $this->logAsaas('info', 'Cliente Asaas atualizado', [
+                'customer_id' => $customerId,
+                'campos'      => array_keys($dados),
+            ]);
+            return $response;
+        } catch (\Exception $e) {
+            $this->logAsaas('error', 'Erro ao atualizar cliente Asaas', [
+                'customer_id' => $customerId,
+                'error'       => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
 }
