@@ -1,26 +1,23 @@
 <?php
 namespace App\Controllers\Api\V1;
 
-use App\Core\Database;
-use PDO;
-
 /**
  * WhatsappAuthController
  *
  * Endpoint: POST /api/v1/whatsapp/identificar
  *
  * Identifica o cliente pelo número de telefone do WhatsApp.
- * Retorna os dados básicos do cliente se encontrado.
+ * A lógica de normalização e busca está centralizada em WhatsappBaseController::findClienteByPhone().
  *
  * Payload esperado:
  * {
- *   "telefone": "+5511999998888"
+ *   "telefone": "+5531927466755"
  * }
  *
  * Resposta de sucesso:
  * {
  *   "status": "success",
- *   "message": "Cliente identificado.",
+ *   "message": "Cliente identificado com sucesso.",
  *   "data": {
  *     "cliente_id": 42,
  *     "nome": "Empresa Exemplo LTDA",
@@ -44,7 +41,10 @@ class WhatsappAuthController extends WhatsappBaseController
                 'error', 'Cliente não encontrado',
                 $this->tenantId, $this->integracaoId
             );
-            $this->error('Cliente não encontrado para o telefone informado. Verifique o número ou entre em contato com o suporte.', 404);
+            $this->error(
+                'Cliente não encontrado para o telefone informado. Verifique o número ou entre em contato com o suporte.',
+                404
+            );
         }
 
         $this->logger->log(
@@ -59,39 +59,5 @@ class WhatsappAuthController extends WhatsappBaseController
             'cpf_cnpj'   => $cliente->cpf_cnpj ?? '',
             'email'      => $cliente->email ?? '',
         ]);
-    }
-
-    /**
-     * Busca o cliente pelo telefone ou celular no tenant correto.
-     * Normaliza o número para comparação (remove formatação).
-     */
-    private function findClienteByPhone(string $telefoneNormalizado): object|false
-    {
-        $pdo = Database::getInstance();
-
-        // Busca pelo número normalizado (apenas dígitos) no telefone ou celular
-        // Compara os últimos 11 dígitos para cobrir variações de DDI
-        $phoneShort = substr($telefoneNormalizado, -11); // Ex: 11999998888
-
-        $stmt = $pdo->prepare(
-            "SELECT pc.id, pc.cliente_id, pc.email,
-                    c.razao_social, c.nome_fantasia, c.cpf_cnpj,
-                    c.telefone, c.celular
-             FROM portal_clientes pc
-             INNER JOIN clientes c ON c.id = pc.cliente_id
-             WHERE c.usuario_id = :tenant_id
-               AND pc.ativo = 1
-               AND (
-                   REGEXP_REPLACE(c.telefone, '[^0-9]', '') LIKE :phone_like
-                   OR REGEXP_REPLACE(c.celular, '[^0-9]', '') LIKE :phone_like
-               )
-             LIMIT 1"
-        );
-        $stmt->execute([
-            ':tenant_id'   => $this->tenantId,
-            ':phone_like'  => '%' . $phoneShort,
-        ]);
-
-        return $stmt->fetch(PDO::FETCH_OBJ) ?: false;
     }
 }

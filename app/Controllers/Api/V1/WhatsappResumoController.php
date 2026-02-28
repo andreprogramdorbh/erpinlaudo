@@ -96,24 +96,4 @@ class WhatsappResumoController extends WhatsappBaseController
         ]);
     }
 
-    private function findClienteByPhone(string $telefoneNormalizado): object|false
-    {
-        $pdo        = Database::getInstance();
-        $phoneShort = substr($telefoneNormalizado, -11);
-
-        $stmt = $pdo->prepare(
-            "SELECT pc.cliente_id, c.razao_social, c.nome_fantasia, c.cpf_cnpj
-             FROM portal_clientes pc
-             INNER JOIN clientes c ON c.id = pc.cliente_id
-             WHERE c.usuario_id = :tenant_id
-               AND pc.ativo = 1
-               AND (
-                   REGEXP_REPLACE(c.telefone, '[^0-9]', '') LIKE :phone_like
-                   OR REGEXP_REPLACE(c.celular, '[^0-9]', '') LIKE :phone_like
-               )
-             LIMIT 1"
-        );
-        $stmt->execute([':tenant_id' => $this->tenantId, ':phone_like' => '%' . $phoneShort]);
-        return $stmt->fetch(PDO::FETCH_OBJ) ?: false;
-    }
 }

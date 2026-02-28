@@ -1,7 +1,9 @@
 <?php
 namespace App\Controllers\Api\V1;
 
+use App\Core\Database;
 use App\Services\WhatsappLogger;
+use PDO;
 
 /**
  * Controller base para todos os endpoints da API do Bot WhatsApp.
@@ -9,8 +11,23 @@ use App\Services\WhatsappLogger;
  * Fornece métodos utilitários para:
  *  - Responder em JSON padronizado
  *  - Obter o tenant_id injetado pelo middleware
- *  - Normalizar números de telefone
+ *  - Normalizar números de telefone (incluindo variações brasileiras)
+ *  - Buscar cliente por telefone com múltiplas variações de formato
  *  - Registrar logs
+ *
+ * ─── Normalização de telefone brasileiro ──────────────────────────────────────
+ *
+ * O WhatsApp (Baileys) envia o número no formato E.164:
+ *   +5531927466755  →  DDI=55, DDD=31, número=927466755 (9 dígitos)
+ *
+ * O banco pode armazenar em qualquer formato:
+ *   (31) 9274-6755   →  10 dígitos (DDD + 8 dígitos, sem o 9 extra)
+ *   (31) 92746-6755  →  11 dígitos (DDD + 9 dígitos, com o 9)
+ *   3192746755       →  10 dígitos sem DDI e sem 9
+ *   31927466755      →  11 dígitos sem DDI, com 9
+ *   5531927466755    →  13 dígitos com DDI e 9
+ *
+ * A solução é gerar TODAS as variações e buscar qualquer uma no banco.
  */
 abstract class WhatsappBaseController
 {
@@ -27,6 +44,8 @@ abstract class WhatsappBaseController
         // Garante que o Content-Type seja JSON em todas as respostas
         header('Content-Type: application/json; charset=utf-8');
     }
+
+    // ─── Respostas JSON ───────────────────────────────────────────────────────
 
     /**
      * Retorna uma resposta JSON de sucesso padronizada.
@@ -56,15 +75,17 @@ abstract class WhatsappBaseController
         exit();
     }
 
+    // ─── Normalização de telefone ─────────────────────────────────────────────
+
     /**
-     * Normaliza um número de telefone para o formato E.164 sem o '+'.
-     * Aceita formatos: +5511999998888, 5511999998888, (11) 99999-8888, etc.
+     * Normaliza um número de telefone para apenas dígitos com DDI 55.
+     * Aceita: +5511999998888, 5511999998888, (11) 99999-8888, etc.
      */
     protected function normalizePhone(string $phone): string
     {
         $clean = preg_replace('/\D/', '', $phone);
 
-        // Se não tiver DDI, assume Brasil (55)
+        // Se não tiver DDI (≤ 11 dígitos), assume Brasil (55)
         if (strlen($clean) <= 11) {
             $clean = '55' . $clean;
         }
@@ -73,11 +94,127 @@ abstract class WhatsappBaseController
     }
 
     /**
+     * Gera todas as variações possíveis do número para busca no banco.
+     *
+     * Exemplo de entrada: "5531927466755" (WhatsApp com DDI)
+     * Variações geradas:
+     *   5531927466755  → com DDI, com 9 (13 dígitos)
+     *   553192746755   → com DDI, sem 9 (12 dígitos)
+     *   31927466755    → sem DDI, com 9 (11 dígitos)
+     *   3192746755     → sem DDI, sem 9 (10 dígitos)  ← FORMATO MAIS COMUM NO BANCO
+     *   927466755      → só número, com 9 (9 dígitos)
+     *   92746755       → só número, sem 9 (8 dígitos)
+     *
+     * @param string $digits Número já limpo (somente dígitos, com DDI 55)
+     * @return string[] Array de variações únicas com 8+ dígitos
+     */
+    protected function buildPhoneVariants(string $digits): array
+    {
+        $variants = [];
+
+        // Remove DDI 55 se presente para trabalhar com DDD + número
+        $withoutDdi = $digits;
+        if (str_starts_with($withoutDdi, '55') && strlen($withoutDdi) >= 12) {
+            $withoutDdi = substr($withoutDdi, 2);
+        }
+
+        // Extrai DDD (2 dígitos) e número local
+        $ddd   = substr($withoutDdi, 0, 2);
+        $local = substr($withoutDdi, 2); // Ex: 927466755 (9 dígitos) ou 92746755 (8 dígitos)
+
+        // Variação sem o 9 inicial (para números antigos de 8 dígitos)
+        // Regra: se o número local tem 9 dígitos e começa com 9, remove o primeiro 9
+        $localSem9 = $local;
+        if (strlen($local) === 9 && str_starts_with($local, '9')) {
+            $localSem9 = substr($local, 1);
+        }
+
+        // Monta todas as combinações possíveis
+        $combos = [
+            '55' . $ddd . $local,     // 5531927466755 (13 dígitos, DDI + DDD + 9 dígitos)
+            '55' . $ddd . $localSem9, // 553192746755  (12 dígitos, DDI + DDD + 8 dígitos)
+            $ddd . $local,            // 31927466755   (11 dígitos, DDD + 9 dígitos)
+            $ddd . $localSem9,        // 3192746755    (10 dígitos, DDD + 8 dígitos) ← CASO DO BUG
+            $local,                   // 927466755     (9 dígitos, só número com 9)
+            $localSem9,               // 92746755      (8 dígitos, só número sem 9)
+        ];
+
+        // Remove duplicatas e variações muito curtas (< 8 dígitos)
+        foreach ($combos as $v) {
+            if (strlen($v) >= 8 && !in_array($v, $variants, true)) {
+                $variants[] = $v;
+            }
+        }
+
+        return $variants;
+    }
+
+    /**
+     * Busca o cliente pelo telefone no tenant correto.
+     * Tenta todas as variações de formato do número para máxima compatibilidade.
+     *
+     * @param string $telefoneNormalizado Número normalizado (somente dígitos, com DDI)
+     * @return object|false Objeto com dados do cliente ou false se não encontrado
+     */
+    protected function findClienteByPhone(string $telefoneNormalizado): object|false
+    {
+        $pdo      = Database::getInstance();
+        $variants = $this->buildPhoneVariants($telefoneNormalizado);
+
+        if (empty($variants)) {
+            return false;
+        }
+
+        // Monta os placeholders para o IN (uma variação por placeholder)
+        $placeholders = [];
+        $params       = [':tenant_id' => $this->tenantId];
+
+        foreach ($variants as $i => $variant) {
+            $key            = ':phone_' . $i;
+            $placeholders[] = $key;
+            $params[$key]   = $variant;
+        }
+
+        $inClause = implode(', ', $placeholders);
+
+        /*
+         * REGEXP_REPLACE remove toda formatação do banco (parênteses, traços, espaços, +).
+         * O IN com múltiplas variações garante que qualquer formato salvo seja encontrado.
+         *
+         * Nota: portal_clientes pode não existir para todos os clientes.
+         * Usamos LEFT JOIN para buscar clientes mesmo sem acesso ao portal,
+         * mas priorizamos aqueles com portal ativo.
+         */
+        $sql = "
+            SELECT c.id AS cliente_id, c.razao_social, c.nome_fantasia,
+                   c.cpf_cnpj, c.telefone, c.celular,
+                   pc.email, pc.ativo AS portal_ativo
+            FROM clientes c
+            LEFT JOIN portal_clientes pc ON pc.cliente_id = c.id AND pc.ativo = 1
+            WHERE c.usuario_id = :tenant_id
+              AND c.status = 'ativo'
+              AND (
+                  REGEXP_REPLACE(c.telefone, '[^0-9]', '') IN ({$inClause})
+                  OR REGEXP_REPLACE(c.celular,  '[^0-9]', '') IN ({$inClause})
+              )
+            ORDER BY pc.ativo DESC
+            LIMIT 1
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetch(PDO::FETCH_OBJ) ?: false;
+    }
+
+    // ─── Requisição ───────────────────────────────────────────────────────────
+
+    /**
      * Obtém o telefone do corpo da requisição (POST JSON ou form-data).
      */
     protected function getRequestPhone(): string
     {
-        $body = $this->getRequestBody();
+        $body  = $this->getRequestBody();
         $phone = $body['telefone'] ?? '';
         if (empty($phone)) {
             $this->error('O campo "telefone" é obrigatório.', 422);
@@ -94,7 +231,7 @@ abstract class WhatsappBaseController
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 
         if (str_contains($contentType, 'application/json')) {
-            $raw = file_get_contents('php://input');
+            $raw     = file_get_contents('php://input');
             $decoded = json_decode($raw, true);
             return is_array($decoded) ? $decoded : [];
         }
@@ -102,8 +239,10 @@ abstract class WhatsappBaseController
         return $_POST;
     }
 
+    // ─── Formatação ───────────────────────────────────────────────────────────
+
     /**
-     * Formata um valor monetário para exibição (ex: 1500.50 -> "R$ 1.500,50")
+     * Formata um valor monetário para exibição (ex: 1500.50 → "R$ 1.500,50")
      */
     protected function formatMoney(float $value): string
     {
