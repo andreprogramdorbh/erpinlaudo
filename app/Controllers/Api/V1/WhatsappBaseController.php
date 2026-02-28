@@ -11,23 +11,24 @@ use PDO;
  * Fornece métodos utilitários para:
  *  - Responder em JSON padronizado
  *  - Obter o tenant_id injetado pelo middleware
- *  - Normalizar números de telefone (incluindo variações brasileiras)
- *  - Buscar cliente por telefone com múltiplas variações de formato
+ *  - Normalizar números de telefone para o padrão E.164 sem '+'
+ *  - Buscar cliente por telefone (busca direta + fallback com variações)
  *  - Registrar logs
  *
- * ─── Normalização de telefone brasileiro ──────────────────────────────────────
+ * ─── Padrão de armazenamento de telefone ──────────────────────────────────────
  *
- * O WhatsApp (Baileys) envia o número no formato E.164:
- *   +5531927466755  →  DDI=55, DDD=31, número=927466755 (9 dígitos)
+ * A partir de 2026-02-28, o ClientesController normaliza o telefone antes
+ * de gravar no banco, sempre no formato E.164 sem '+' (DDI 55 incluído):
  *
- * O banco pode armazenar em qualquer formato:
- *   (31) 9274-6755   →  10 dígitos (DDD + 8 dígitos, sem o 9 extra)
- *   (31) 92746-6755  →  11 dígitos (DDD + 9 dígitos, com o 9)
- *   3192746755       →  10 dígitos sem DDI e sem 9
- *   31927466755      →  11 dígitos sem DDI, com 9
- *   5531927466755    →  13 dígitos com DDI e 9
+ *   (31) 99274-6755  →  5531992746755  (13 dígitos: DDI+DDD+9dígitos)
+ *   (31) 9274-6755   →  5531927466755  (13 dígitos: DDI+DDD+9 inserido)
  *
- * A solução é gerar TODAS as variações e buscar qualquer uma no banco.
+ * O WhatsApp (Baileys) também envia neste mesmo formato:
+ *   +5531992746755  →  normalizado para  5531992746755
+ *
+ * Portanto a busca primária é DIRETA (igualdade exata).
+ * O fallback com múltiplas variações mantém compatibilidade com registros
+ * gravados antes da normalização.
  */
 abstract class WhatsappBaseController
 {
@@ -151,21 +152,58 @@ abstract class WhatsappBaseController
 
     /**
      * Busca o cliente pelo telefone no tenant correto.
-     * Tenta todas as variações de formato do número para máxima compatibilidade.
      *
-     * @param string $telefoneNormalizado Número normalizado (somente dígitos, com DDI)
+     * Estratégia em duas etapas:
+     *  1. Busca DIRETA: compara o número normalizado exatamente como está no banco.
+     *     Funciona para todos os registros gravados após 2026-02-28 (com DDI 55).
+     *  2. Fallback com VARIAÇÕES: gera múltiplas representações do número e
+     *     busca qualquer uma delas. Garante compatibilidade com registros antigos.
+     *
+     * @param string $telefoneNormalizado Número normalizado (somente dígitos, com DDI 55)
      * @return object|false Objeto com dados do cliente ou false se não encontrado
      */
     protected function findClienteByPhone(string $telefoneNormalizado): object|false
     {
-        $pdo      = Database::getInstance();
+        $pdo = Database::getInstance();
+
+        $baseQuery = "
+            SELECT c.id AS cliente_id, c.razao_social, c.nome_fantasia,
+                   c.cpf_cnpj, c.telefone, c.celular,
+                   pc.email, pc.ativo AS portal_ativo
+            FROM clientes c
+            LEFT JOIN portal_clientes pc ON pc.cliente_id = c.id AND pc.ativo = 1
+            WHERE c.usuario_id = :tenant_id
+              AND c.status = 'ativo'
+        ";
+
+        // ─── Etapa 1: Busca direta (formato padronizado com DDI 55) ─────────────────
+        // O banco agora armazena sempre com DDI 55 (ex: 5531992746755).
+        // O WhatsApp também envia neste formato — a busca direta é suficiente.
+        $sqlDireto = $baseQuery . "
+              AND (
+                  REGEXP_REPLACE(c.telefone, '[^0-9]', '') = :phone
+                  OR REGEXP_REPLACE(c.celular,  '[^0-9]', '') = :phone
+              )
+            ORDER BY pc.ativo DESC
+            LIMIT 1
+        ";
+
+        $stmt = $pdo->prepare($sqlDireto);
+        $stmt->execute([':tenant_id' => $this->tenantId, ':phone' => $telefoneNormalizado]);
+        $result = $stmt->fetch(PDO::FETCH_OBJ);
+
+        if ($result) {
+            return $result;
+        }
+
+        // ─── Etapa 2: Fallback com variações (compatibilidade com registros antigos) ───
+        // Registros gravados antes da normalização podem estar em outros formatos.
         $variants = $this->buildPhoneVariants($telefoneNormalizado);
 
         if (empty($variants)) {
             return false;
         }
 
-        // Monta os placeholders para o IN (uma variação por placeholder)
         $placeholders = [];
         $params       = [':tenant_id' => $this->tenantId];
 
@@ -177,22 +215,7 @@ abstract class WhatsappBaseController
 
         $inClause = implode(', ', $placeholders);
 
-        /*
-         * REGEXP_REPLACE remove toda formatação do banco (parênteses, traços, espaços, +).
-         * O IN com múltiplas variações garante que qualquer formato salvo seja encontrado.
-         *
-         * Nota: portal_clientes pode não existir para todos os clientes.
-         * Usamos LEFT JOIN para buscar clientes mesmo sem acesso ao portal,
-         * mas priorizamos aqueles com portal ativo.
-         */
-        $sql = "
-            SELECT c.id AS cliente_id, c.razao_social, c.nome_fantasia,
-                   c.cpf_cnpj, c.telefone, c.celular,
-                   pc.email, pc.ativo AS portal_ativo
-            FROM clientes c
-            LEFT JOIN portal_clientes pc ON pc.cliente_id = c.id AND pc.ativo = 1
-            WHERE c.usuario_id = :tenant_id
-              AND c.status = 'ativo'
+        $sqlFallback = $baseQuery . "
               AND (
                   REGEXP_REPLACE(c.telefone, '[^0-9]', '') IN ({$inClause})
                   OR REGEXP_REPLACE(c.celular,  '[^0-9]', '') IN ({$inClause})
@@ -201,7 +224,7 @@ abstract class WhatsappBaseController
             LIMIT 1
         ";
 
-        $stmt = $pdo->prepare($sql);
+        $stmt = $pdo->prepare($sqlFallback);
         $stmt->execute($params);
 
         return $stmt->fetch(PDO::FETCH_OBJ) ?: false;

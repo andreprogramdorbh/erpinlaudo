@@ -164,8 +164,8 @@ class ClientesController extends Controller
                 'numero' => trim(strip_tags($_POST['numero'] ?? '')),
                 'complemento' => trim(strip_tags($_POST['complemento'] ?? '')),
                 'cep' => preg_replace('/\D/', '', $_POST['cep'] ?? ''),
-                'telefone' => preg_replace('/\D/', '', $_POST['telefone'] ?? ''),
-                'celular' => preg_replace('/\D/', '', $_POST['celular'] ?? ''),
+                'telefone' => $this->normalizarTelefone($_POST['telefone'] ?? ''),
+                'celular' => $this->normalizarTelefone($_POST['celular'] ?? ''),
                 'instagram' => trim(strip_tags($_POST['instagram'] ?? '')),
                 'tiktok' => trim(strip_tags($_POST['tiktok'] ?? '')),
                 'facebook' => trim(strip_tags($_POST['facebook'] ?? '')),
@@ -307,8 +307,8 @@ class ClientesController extends Controller
                 'numero' => trim(strip_tags($_POST['numero'] ?? '')),
                 'complemento' => trim(strip_tags($_POST['complemento'] ?? '')),
                 'cep' => preg_replace('/\D/', '', $_POST['cep'] ?? ''),
-                'telefone' => preg_replace('/\D/', '', $_POST['telefone'] ?? ''),
-                'celular' => preg_replace('/\D/', '', $_POST['celular'] ?? ''),
+                'telefone' => $this->normalizarTelefone($_POST['telefone'] ?? ''),
+                'celular' => $this->normalizarTelefone($_POST['celular'] ?? ''),
                 'instagram' => trim(strip_tags($_POST['instagram'] ?? '')),
                 'tiktok' => trim(strip_tags($_POST['tiktok'] ?? '')),
                 'facebook' => trim(strip_tags($_POST['facebook'] ?? '')),
@@ -675,7 +675,7 @@ class ClientesController extends Controller
             'bairro'             => $dadosApi['bairro'] ?? '',
             'cidade'             => $dadosApi['cidade'] ?? '',
             'estado'             => $dadosApi['estado'] ?? '',
-            'telefone'           => $dadosApi['telefone'] ?? '',
+            'telefone'           => $this->normalizarTelefone($dadosApi['telefone'] ?? ''),
             'cnae_principal'     => $dadosApi['cnae_principal'] ?? '',
             'descricao_cnae'     => $dadosApi['descricao_cnae'] ?? '',
             'situacao_cadastral' => $dadosApi['situacao_cadastral'] ?? '',
@@ -800,6 +800,49 @@ class ClientesController extends Controller
             $this->logger->error('Erro no download de anexo: ' . $e->getMessage());
             echo 'Erro ao baixar arquivo.';
         }
+    }
+
+    /**
+     * Normaliza um número de telefone para o formato E.164 sem o '+',
+     * sempre incluindo o DDI 55 (Brasil).
+     *
+     * Exemplos de entrada → saída:
+     *   (31) 9274-6755   → 5531927466755  (fixo 8 dígitos → insere 9 após DDD)
+     *   (31) 99274-6755  → 5531992746755  (celular 9 dígitos)
+     *   31992746755      → 5531992746755  (sem máscara, sem DDI)
+     *   5531992746755    → 5531992746755  (já com DDI — retorna igual)
+     *
+     * @param string $telefone Telefone em qualquer formato
+     * @return string Telefone normalizado (somente dígitos, com DDI 55)
+     */
+    private function normalizarTelefone(string $telefone): string
+    {
+        // Remove tudo que não for dígito
+        $digits = preg_replace('/\D/', '', $telefone);
+
+        if ($digits === '') {
+            return '';
+        }
+
+        // Já tem DDI 55 (13 dígitos = DDI+DDD+9dígitos ou 12 = DDI+DDD+8dígitos)
+        if (str_starts_with($digits, '55') && strlen($digits) >= 12) {
+            return $digits;
+        }
+
+        // DDD + 9 dígitos (11 dígitos) → adiciona DDI 55
+        if (strlen($digits) === 11) {
+            return '55' . $digits;
+        }
+
+        // DDD + 8 dígitos (10 dígitos, fixo) → adiciona DDI 55 e insere 9 após DDD
+        if (strlen($digits) === 10) {
+            $ddd    = substr($digits, 0, 2);
+            $numero = substr($digits, 2); // 8 dígitos
+            return '55' . $ddd . '9' . $numero;
+        }
+
+        // Qualquer outro formato: adiciona DDI 55 e retorna como está
+        return '55' . $digits;
     }
 
     public function removeAnexo()
