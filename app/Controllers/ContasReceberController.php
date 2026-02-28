@@ -603,32 +603,36 @@ class ContasReceberController extends Controller
                 exit();
             }
 
-            if (!isset($_FILES['anexo']) || $_FILES['anexo']['error'] !== UPLOAD_ERR_OK) {
+            if (!isset($_FILES['anexo'])) {
                 header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
                 exit();
             }
 
-            $file = $_FILES['anexo'];
+            $files = $_FILES['anexo'];
             $maxSize = 5 * 1024 * 1024;
-            if (($file['size'] ?? 0) > $maxSize) {
-                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=file_too_large&tab=anexos");
-                exit();
-            }
-
-            $tmpPath = $file['tmp_name'];
             $finfo = new \finfo(FILEINFO_MIME_TYPE);
-            $mime = $finfo->file($tmpPath) ?: '';
 
             $allowed = [
                 'application/pdf' => 'pdf',
                 'image/jpeg' => 'jpg',
                 'image/png' => 'png',
+                // Excel (legacy + OpenXML)
+                'application/vnd.ms-excel' => 'xls',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+                'application/vnd.ms-excel.sheet.macroEnabled.12' => 'xlsm',
+                'application/vnd.ms-excel.sheet.binary.macroEnabled.12' => 'xlsb',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.template' => 'xltx',
+                'application/vnd.ms-excel.template.macroEnabled.12' => 'xltm',
             ];
 
-            if (!isset($allowed[$mime])) {
-                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=invalid_file_type&tab=anexos");
-                exit();
-            }
+            $excelExts = ['xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm'];
+            $excelFallbackMimes = [
+                'application/zip',
+                'application/octet-stream',
+                'application/vnd.ms-office',
+                'application/x-ole-storage',
+                'application/cdfv2',
+            ];
 
             $baseDir = BASE_PATH . '/storage/uploads/contas_receber/' . $usuarioId . '/' . $contaId;
             if (!is_dir($baseDir)) {
@@ -639,33 +643,76 @@ class ContasReceberController extends Controller
                 }
             }
 
-            $ext = $allowed[$mime];
-            $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
-            $destPath = $baseDir . '/' . $safeName;
+            $isMulti = is_array($files['name'] ?? null);
+            $count = $isMulti ? count((array) $files['name']) : 1;
 
-            if (!move_uploaded_file($tmpPath, $destPath)) {
-                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
-                exit();
+            for ($i = 0; $i < $count; $i++) {
+                $error = $isMulti ? ($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) : ($files['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($error !== UPLOAD_ERR_OK) {
+                    header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
+                    exit();
+                }
+
+                $name = $isMulti ? ($files['name'][$i] ?? '') : ($files['name'] ?? '');
+                $size = $isMulti ? ($files['size'][$i] ?? 0) : ($files['size'] ?? 0);
+                $tmpPath = $isMulti ? ($files['tmp_name'][$i] ?? '') : ($files['tmp_name'] ?? '');
+
+                if ($size > $maxSize) {
+                    header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=file_too_large&tab=anexos");
+                    exit();
+                }
+
+                $mime = $tmpPath !== '' ? ($finfo->file($tmpPath) ?: '') : '';
+                $origExt = strtolower(pathinfo((string) $name, PATHINFO_EXTENSION));
+
+                $ext = $allowed[$mime] ?? null;
+                if ($ext === null && in_array($origExt, $excelExts, true)) {
+                    if (in_array($mime, $excelFallbackMimes, true) ||
+                        str_starts_with($mime, 'application/vnd.ms-excel') ||
+                        str_starts_with($mime, 'application/vnd.openxmlformats')) {
+                        $ext = $origExt;
+                    }
+                }
+
+                if ($ext === null) {
+                    $this->logger->warning('Upload anexo (contas_receber): tipo de arquivo inválido', [
+                        'conta_receber_id' => $contaId,
+                        'mime' => $mime,
+                        'original_name' => $name,
+                        'original_ext' => $origExt,
+                    ]);
+                    header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=invalid_file_type&tab=anexos");
+                    exit();
+                }
+
+                $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
+                $destPath = $baseDir . '/' . $safeName;
+
+                if (!move_uploaded_file($tmpPath, $destPath)) {
+                    header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=upload_failed&tab=anexos");
+                    exit();
+                }
+
+                $relativePath = 'storage/uploads/contas_receber/' . $usuarioId . '/' . $contaId . '/' . $safeName;
+
+                $anexoId = $this->anexoModel->create([
+                    'usuario_id' => $usuarioId,
+                    'conta_receber_id' => $contaId,
+                    'file_path' => $relativePath,
+                    'original_name' => $name !== '' ? $name : 'anexo',
+                    'mime_type' => $mime,
+                    'file_size' => $size ?: null,
+                ]);
+
+                if ($anexoId) {
+                    AuditLogger::log('upload_conta_receber_anexo', ['id' => $anexoId, 'conta_receber_id' => $contaId]);
+                } else {
+                    @unlink($destPath);
+                    header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=db_failure&tab=anexos");
+                    exit();
+                }
             }
-
-            $relativePath = 'storage/uploads/contas_receber/' . $usuarioId . '/' . $contaId . '/' . $safeName;
-
-            $anexoId = $this->anexoModel->create([
-                'usuario_id' => $usuarioId,
-                'conta_receber_id' => $contaId,
-                'file_path' => $relativePath,
-                'original_name' => $file['name'] ?? 'anexo',
-                'mime_type' => $mime,
-                'file_size' => $file['size'] ?? null,
-            ]);
-
-            if ($anexoId) {
-                AuditLogger::log('upload_conta_receber_anexo', ['id' => $anexoId, 'conta_receber_id' => $contaId]);
-                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?success=upload&tab=anexos");
-            } else {
-                @unlink($destPath);
-                header("Location: /financeiro/contas-a-receber/edit/{$contaId}?error=db_failure&tab=anexos");
-            }
+            header("Location: /financeiro/contas-a-receber/edit/{$contaId}?success=upload&tab=anexos");
         } catch (\Exception $e) {
             $this->logger->error('Erro ao enviar anexo (contas a receber): ' . $e->getMessage());
             $contaId = (int)($_POST['conta_receber_id'] ?? 0);

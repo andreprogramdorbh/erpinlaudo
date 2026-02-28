@@ -18,8 +18,8 @@ $anexos = $anexos ?? [];
                 <input type="hidden" name="conta_pagar_id" value="<?php echo (int)$contaId; ?>">
 
                 <div class="col-md-8">
-                    <label class="form-label small fw-bold text-muted">Arquivo (PDF/JPG/PNG até 5MB)</label>
-                    <input type="file" name="anexo" class="form-control" required>
+                    <label class="form-label small fw-bold text-muted">Arquivo (PDF/JPG/PNG/XLS/XLSX até 5MB)</label>
+                    <input type="file" name="anexo" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx,.xlsm,.xlsb,.xlt,.xltx,.xltm,application/pdf,image/jpeg,image/png,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
                 </div>
 
                 <div class="col-md-4 d-grid">

@@ -283,9 +283,43 @@ class NotasFiscaisController extends Controller
                 'image/jpg'       => 'jpg',
                 'text/xml'        => 'xml',
                 'application/xml' => 'xml',
+                // Excel (legacy + OpenXML)
+                'application/vnd.ms-excel' => 'xls',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+                'application/vnd.ms-excel.sheet.macroEnabled.12' => 'xlsm',
+                'application/vnd.ms-excel.sheet.binary.macroEnabled.12' => 'xlsb',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.template' => 'xltx',
+                'application/vnd.ms-excel.template.macroEnabled.12' => 'xltm',
             ];
 
-            if (!isset($allowed[$mime])) {
+            $excelExts = ['xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'xltm'];
+            $excelFallbackMimes = [
+                'application/zip',
+                'application/octet-stream',
+                'application/vnd.ms-office',
+                'application/x-ole-storage',
+                'application/cdfv2',
+            ];
+
+            $ext = $allowed[$mime] ?? null;
+            if ($ext === null) {
+                $origName = (string) ($file['name'] ?? '');
+                $origExt = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+                if (in_array($origExt, $excelExts, true)) {
+                    if (in_array($mime, $excelFallbackMimes, true) ||
+                        str_starts_with($mime, 'application/vnd.ms-excel') ||
+                        str_starts_with($mime, 'application/vnd.openxmlformats')) {
+                        $ext = $origExt;
+                    }
+                }
+            }
+
+            if ($ext === null) {
+                $this->logger->warning('uploadAnexo_NF: invalid_file_type', [
+                    'nota_fiscal_id' => $notaId,
+                    'mime' => $mime,
+                    'original_name' => $file['name'] ?? '',
+                ]);
                 header("Location: /faturamento/notas-fiscais/edit/{$notaId}?error=invalid_file_type&tab=anexos");
                 exit();
             }
@@ -299,7 +333,6 @@ class NotasFiscaisController extends Controller
                 }
             }
 
-            $ext      = $allowed[$mime];
             $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
             $destPath = $baseDir . '/' . $safeName;
 

@@ -21,16 +21,16 @@ $anexos = $anexos ?? [];
                 <input type="hidden" name="nota_fiscal_id" value="<?php echo (int)$notaId; ?>">
                 <div class="col-md-8">
                     <label class="form-label small fw-bold text-muted">
-                        Arquivo (PDF / XML / JPG — máximo 10 MB)
+                        Arquivo (PDF / XML / JPG / XLS / XLSX — máximo 10 MB)
                     </label>
                     <input type="file"
                            name="anexo"
                            id="inputAnexoNF"
                            class="form-control"
-                           accept=".pdf,.xml,.jpg,.jpeg,application/pdf,text/xml,application/xml,image/jpeg"
+                           accept=".pdf,.xml,.jpg,.jpeg,.xls,.xlsx,.xlsm,.xlsb,.xlt,.xltx,.xltm,application/pdf,text/xml,application/xml,image/jpeg,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                            required>
                     <div class="form-text text-muted">
-                        Formatos aceitos: PDF, XML, JPG. Tamanho máximo: 10 MB.
+                        Formatos aceitos: PDF, XML, JPG, Excel. Tamanho máximo: 10 MB.
                     </div>
                 </div>
                 <div class="col-md-4 d-grid">
