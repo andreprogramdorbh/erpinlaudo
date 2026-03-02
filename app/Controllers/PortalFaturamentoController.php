@@ -99,6 +99,110 @@ class PortalFaturamentoController extends Controller
         return new AsaasService($config->api_key, $config->environment ?? 'sandbox');
     }
 
+    /**
+     * Sincroniza em tempo real as NFs com asaas_invoice_id mas sem pdfUrl.
+     * Consulta a API Asaas para cada NF pendente e atualiza o banco de dados.
+     * Modifica os objetos $notas in-place para refletir os dados atualizados.
+     *
+     * @param  array  $notas     Lista de objetos de notas fiscais (passada por referência)
+     * @param  int    $tenantId  ID do tenant (usuario_id)
+     */
+    private function sincronizarNotasPendentes(array &$notas, int $tenantId): void
+    {
+        // Filtra apenas NFs que precisam de sincronização:
+        // - Têm asaas_invoice_id (foram criadas via Asaas)
+        // - Não têm pdfUrl (ainda não foram autorizadas ou não sincronizamos)
+        // - Não estão canceladas ou com erro (já estão em estado final)
+        $pendentes = array_filter($notas, function ($nota) {
+            return !empty($nota->asaas_invoice_id)
+                && empty($nota->asaas_pdf_url)
+                && !in_array($nota->status ?? '', ['cancelada', 'erro_emissao'], true);
+        });
+
+        if (empty($pendentes)) {
+            return;
+        }
+
+        // Obtém o serviço Asaas (retorna null se não configurado)
+        $asaas = $this->getAsaasService($tenantId);
+        if (!$asaas) {
+            $this->logger->warning('[Portal] Sincronização de NFs: Asaas não configurado', [
+                'tenant_id'   => $tenantId,
+                'pendentes'   => count($pendentes),
+            ]);
+            return;
+        }
+
+        $this->logger->info('[Portal] Sincronizando NFs pendentes com Asaas', [
+            'tenant_id' => $tenantId,
+            'total'     => count($pendentes),
+        ]);
+
+        foreach ($pendentes as &$nota) {
+            try {
+                $invoiceData = $asaas->consultarNotaFiscal((string) $nota->asaas_invoice_id);
+                $asaasStatus = $invoiceData['status'] ?? null;
+                $pdfUrl      = $invoiceData['pdfUrl'] ?? $invoiceData['invoiceUrl'] ?? null;
+                $xmlUrl      = $invoiceData['xmlUrl'] ?? null;
+                $numeroNf    = $invoiceData['number'] ?? null;
+
+                if (!$asaasStatus) {
+                    continue;
+                }
+
+                // Mapeia o status Asaas para o status interno do banco
+                $novoStatus = AsaasService::mapearStatusNfsParaBanco($asaasStatus);
+
+                // Prepara os dados para atualização
+                $updateData = [
+                    'asaas_status' => $asaasStatus,
+                    'status'       => $novoStatus,
+                ];
+
+                // Atualiza pdfUrl se disponível
+                if ($pdfUrl) {
+                    $updateData['asaas_pdf_url'] = $pdfUrl;
+                }
+
+                // Atualiza número da NF se disponível e ainda não temos
+                if ($numeroNf && empty($nota->numero_nf)) {
+                    $updateData['numero_nf'] = (string) $numeroNf;
+                }
+
+                // Persiste no banco
+                $this->notaFiscalModel->update((int) $nota->id, $updateData);
+
+                // Atualiza o objeto in-place para a view refletir os dados atualizados
+                $nota->asaas_status = $asaasStatus;
+                $nota->status       = $novoStatus;
+                if ($pdfUrl) {
+                    $nota->asaas_pdf_url = $pdfUrl;
+                }
+                if ($numeroNf && empty($nota->numero_nf)) {
+                    $nota->numero_nf = (string) $numeroNf;
+                }
+
+                $this->logger->info('[Portal] NF sincronizada com Asaas', [
+                    'nota_id'          => $nota->id,
+                    'asaas_invoice_id' => $nota->asaas_invoice_id,
+                    'asaas_status'     => $asaasStatus,
+                    'status_banco'     => $novoStatus,
+                    'pdf_url'          => $pdfUrl ? 'sim' : 'não',
+                    'numero_nf'        => $numeroNf,
+                ]);
+
+            } catch (\Exception $e) {
+                $this->logger->warning('[Portal] Falha ao sincronizar NF com Asaas', [
+                    'nota_id'          => $nota->id ?? null,
+                    'asaas_invoice_id' => $nota->asaas_invoice_id ?? null,
+                    'error'            => $e->getMessage(),
+                ]);
+                // Não interrompe o loop — continua com as demais NFs
+            }
+        }
+        unset($nota); // Limpa a referência do foreach
+    }
+
     // GET /portal/faturamento/notas-fiscais
     public function notasFiscais(): void
     {
@@ -121,6 +225,13 @@ class PortalFaturamentoController extends Controller
         ]);
 
         $notas = $this->notaFiscalModel->findByClienteIdAndTenantId($clienteId, $tenantId, $filtros);
+
+        // ---------------------------------------------------------------
+        // SINCRONIZAÇÃO EM TEMPO REAL COM ASAAS
+        // Verifica notas com asaas_invoice_id mas sem pdfUrl e consulta a API
+        // para atualizar status e URLs (NFs que foram SCHEDULED e agora estão AUTHORIZED)
+        // ---------------------------------------------------------------
+        $this->sincronizarNotasPendentes($notas, $tenantId);
 
         foreach ($notas as $nota) {
             try {
@@ -387,6 +498,10 @@ class PortalFaturamentoController extends Controller
             $pdfUrl         = $response['pdfUrl'] ?? $response['invoiceUrl'] ?? null;
             $numeroNf       = $response['number'] ?? '';
 
+            // Mapeia o status Asaas para o status interno do banco.
+            // SCHEDULED/SYNCHRONIZED = 'agendada'; AUTHORIZED = 'emitida'
+            $statusBanco = AsaasService::mapearStatusNfsParaBanco($asaasStatus);
+
             $nfId = $this->notaFiscalModel->create([
                 'usuario_id'        => $tenantId,
                 'cliente_id'        => $clienteId,
@@ -394,7 +509,7 @@ class PortalFaturamentoController extends Controller
                 'serie'             => '1',
                 'valor_total'       => $valor,
                 'data_emissao'      => $dataHoje,
-                'status'            => 'emitida',
+                'status'            => $statusBanco,
                 'xml_path'          => null,
                 'asaas_invoice_id'  => $asaasInvoiceId,
                 'origem_emissao'    => 'asaas',
@@ -468,13 +583,23 @@ class PortalFaturamentoController extends Controller
                     $asaas = $this->getAsaasService($tenantId);
                     if ($asaas) {
                         $invoiceData = $asaas->consultarNotaFiscal($nota->asaas_invoice_id);
+                        $asaasStatusAtual = $invoiceData['status'] ?? $nota->asaas_status;
                         $pdfUrl = $invoiceData['pdfUrl'] ?? $invoiceData['invoiceUrl'] ?? $nota->asaas_pdf_url ?? null;
+                        $numeroNf = $invoiceData['number'] ?? null;
+
+                        // Atualiza banco com status e pdfUrl mais recentes
+                        $updateFields = [
+                            'asaas_status' => $asaasStatusAtual,
+                            'status'       => AsaasService::mapearStatusNfsParaBanco($asaasStatusAtual),
+                        ];
                         if ($pdfUrl && $pdfUrl !== $nota->asaas_pdf_url) {
-                            $this->notaFiscalModel->update($id, [
-                                'asaas_pdf_url' => $pdfUrl,
-                                'asaas_status'  => $invoiceData['status'] ?? $nota->asaas_status,
-                            ]);
+                            $updateFields['asaas_pdf_url'] = $pdfUrl;
                         }
+                        if ($numeroNf && empty($nota->numero_nf)) {
+                            $updateFields['numero_nf'] = (string) $numeroNf;
+                        }
+                        $this->notaFiscalModel->update($id, $updateFields);
+
                         if ($pdfUrl) {
                             header('Location: ' . $pdfUrl);
                             exit();

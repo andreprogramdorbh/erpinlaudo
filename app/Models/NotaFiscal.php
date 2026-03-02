@@ -125,6 +125,40 @@ class NotaFiscal extends Model
     }
 
     /**
+     * Busca uma NF pelo asaas_invoice_id sem filtro de tenant (para uso em webhooks).
+     * Retorna o registro com usuario_id para validação posterior.
+     */
+    public function findByAsaasInvoiceIdGlobal(string $invoiceId): object|false
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table}
+             WHERE asaas_invoice_id = :invoice_id
+             LIMIT 1"
+        );
+        $stmt->execute([':invoice_id' => $invoiceId]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Busca NFs com asaas_invoice_id mas sem pdfUrl (precisam de sincronização).
+     */
+    public function findPendingSyncByClienteAndTenant(int $clienteId, int $tenantId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table}
+             WHERE cliente_id = :cliente_id
+               AND usuario_id = :tenant_id
+               AND asaas_invoice_id IS NOT NULL
+               AND asaas_invoice_id != ''
+               AND (asaas_pdf_url IS NULL OR asaas_pdf_url = '')
+               AND status NOT IN ('cancelada', 'erro_emissao')
+             ORDER BY id DESC"
+        );
+        $stmt->execute([':cliente_id' => $clienteId, ':tenant_id' => $tenantId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /**
      * Busca uma NF pelo conta_receber_id e tenant.
      */
     public function findByContaReceberId(int $contaReceberId, int $tenantId): object|false

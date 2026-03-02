@@ -8,8 +8,10 @@ use App\Core\Auth;
 use App\Models\Integracao;
 use App\Models\User;
 use App\Models\ContaReceber;
+use App\Models\NotaFiscal;
 use App\Core\Audit\AuditLogger;
 use App\Core\Logger;
+use App\Services\AsaasService;
 use App\Services\CryptoService;
 use App\Services\MailService;
 use App\Services\ContaReceberRecorrenciaService;
@@ -495,9 +497,19 @@ class IntegracaoController extends Controller
 
         // 2. Extrai tenantId do externalReference
         // Formato esperado: "u:{usuario_id}|cr:{conta_receber_id}"
+        // Suporta tanto eventos PAYMENT_* ($data['payment']) quanto INVOICE_* ($data['invoice'])
         $tenantId = null;
         $payment  = $data['payment'] ?? [];
-        $extRef   = (string)($payment['externalReference'] ?? $data['externalReference'] ?? '');
+        $invoice  = $data['invoice'] ?? [];
+
+        // Para eventos INVOICE_*, o externalReference fica dentro de $data['invoice']
+        // Para eventos PAYMENT_*, fica dentro de $data['payment']
+        $extRef = (string)(
+            $payment['externalReference']
+            ?? $invoice['externalReference']
+            ?? $data['externalReference']
+            ?? ''
+        );
 
         if ($extRef !== '' && preg_match('/u:(\d+)/', $extRef, $m)) {
             $tenantId = (int)$m[1];
@@ -604,14 +616,29 @@ class IntegracaoController extends Controller
                 exit();
             }
         } else {
-            $this->logger->warning('Webhook Asaas: tenantId nao identificado no externalReference', [
-                'external_reference' => $extRef,
-                'event'              => $data['event'] ?? '',
-                'payment_id'         => $payment['id'] ?? null,
+            $eventType = (string)($data['event'] ?? '');
+
+            // Eventos INVOICE_* podem ser processados sem tenantId via externalReference
+            // porque usamos findByAsaasInvoiceIdGlobal() para localizar a NF pelo invoice.id
+            $isInvoiceEvent = str_starts_with($eventType, 'INVOICE_');
+
+            if (!$isInvoiceEvent) {
+                $this->logger->warning('Webhook Asaas: tenantId nao identificado no externalReference', [
+                    'external_reference' => $extRef,
+                    'event'              => $eventType,
+                    'payment_id'         => $payment['id'] ?? null,
+                ]);
+                http_response_code(200);
+                echo json_encode(['received' => true, 'processed' => false, 'reason' => 'tenant_not_identified']);
+                exit();
+            }
+
+            // Para eventos INVOICE_* sem tenantId: continua o processamento
+            // O handler INVOICE_* usara findByAsaasInvoiceIdGlobal() como fallback
+            $this->logger->info('Webhook Asaas: evento INVOICE sem tenantId no extRef, processando via invoice.id', [
+                'event'      => $eventType,
+                'invoice_id' => $invoice['id'] ?? null,
             ]);
-            http_response_code(200);
-            echo json_encode(['received' => true, 'processed' => false, 'reason' => 'tenant_not_identified']);
-            exit();
         }
 
         // 4. Processa o evento
@@ -621,8 +648,9 @@ class IntegracaoController extends Controller
             'event'      => $event,
             'tenant_id'  => $tenantId,
             'payment_id' => $payment['id'] ?? null,
-            'value'      => $payment['value'] ?? null,
-            'status'     => $payment['status'] ?? null,
+            'invoice_id' => $invoice['id'] ?? null,
+            'value'      => $payment['value'] ?? $invoice['value'] ?? null,
+            'status'     => $payment['status'] ?? $invoice['status'] ?? null,
             'ext_ref'    => $extRef,
         ]);
 
@@ -786,6 +814,194 @@ class IntegracaoController extends Controller
                     'event'      => $event,
                     'tenant_id'  => $tenantId,
                     'payment_id' => $payment['id'] ?? null,
+                ]);
+                break;
+
+            // ---------------------------------------------------------------
+            // EVENTOS DE NOTA FISCAL DE SERVICO (NFS-e) VIA ASAAS
+            // Documentacao: https://docs.asaas.com/docs/webhook-para-notas-fiscais
+            // Payload: $data['invoice'] contem os dados da NF
+            // ---------------------------------------------------------------
+
+            case 'INVOICE_AUTHORIZED':
+                // NFS-e autorizada pela prefeitura — pdfUrl e xmlUrl disponiveis
+                try {
+                    $invoice     = $data['invoice'] ?? [];
+                    $invoiceId   = (string)($invoice['id'] ?? '');
+                    $asaasStatus = (string)($invoice['status'] ?? 'AUTHORIZED');
+                    $pdfUrl      = $invoice['pdfUrl'] ?? $invoice['invoiceUrl'] ?? null;
+                    $xmlUrl      = $invoice['xmlUrl'] ?? null;
+                    $numeroNf    = $invoice['number'] ?? null;
+
+                    if (empty($invoiceId)) {
+                        $this->logger->warning('Webhook Asaas INVOICE_AUTHORIZED: invoice.id ausente', [
+                            'data' => $invoice,
+                        ]);
+                        break;
+                    }
+
+                    $notaModel = new NotaFiscal();
+
+                    // Tenta buscar pelo invoiceId global (sem tenantId)
+                    $nota = $notaModel->findByAsaasInvoiceIdGlobal($invoiceId);
+
+                    // Fallback: tenta com tenantId se disponivel
+                    if (!$nota && $tenantId) {
+                        $nota = $notaModel->findByAsaasInvoiceId($invoiceId, $tenantId);
+                    }
+
+                    if (!$nota) {
+                        $this->logger->warning('Webhook Asaas INVOICE_AUTHORIZED: NF nao encontrada', [
+                            'invoice_id' => $invoiceId,
+                            'tenant_id'  => $tenantId,
+                        ]);
+                        break;
+                    }
+
+                    $updateData = [
+                        'asaas_status' => $asaasStatus,
+                        'status'       => AsaasService::mapearStatusNfsParaBanco($asaasStatus),
+                    ];
+                    if ($pdfUrl) {
+                        $updateData['asaas_pdf_url'] = $pdfUrl;
+                    }
+                    if ($numeroNf && empty($nota->numero_nf)) {
+                        $updateData['numero_nf'] = (string)$numeroNf;
+                    }
+
+                    $notaModel->update((int)$nota->id, $updateData);
+
+                    AuditLogger::log('asaas_invoice_authorized', [
+                        'nota_id'    => $nota->id,
+                        'invoice_id' => $invoiceId,
+                        'numero_nf'  => $numeroNf,
+                        'pdf_url'    => $pdfUrl ? 'sim' : 'nao',
+                    ]);
+
+                    $this->logger->info('Webhook Asaas: NFS-e autorizada e atualizada', [
+                        'nota_id'    => $nota->id,
+                        'invoice_id' => $invoiceId,
+                        'numero_nf'  => $numeroNf,
+                        'pdf_url'    => $pdfUrl ? 'sim' : 'nao',
+                    ]);
+                } catch (\Exception $e) {
+                    $this->logger->error('Webhook Asaas INVOICE_AUTHORIZED: erro ao processar', [
+                        'error'   => $e->getMessage(),
+                        'invoice' => $data['invoice'] ?? [],
+                    ]);
+                }
+                break;
+
+            case 'INVOICE_CANCELED':
+                // NFS-e cancelada
+                try {
+                    $invoice   = $data['invoice'] ?? [];
+                    $invoiceId = (string)($invoice['id'] ?? '');
+
+                    if (empty($invoiceId)) {
+                        break;
+                    }
+
+                    $notaModel = new NotaFiscal();
+                    $nota = $notaModel->findByAsaasInvoiceIdGlobal($invoiceId);
+                    if (!$nota && $tenantId) {
+                        $nota = $notaModel->findByAsaasInvoiceId($invoiceId, $tenantId);
+                    }
+
+                    if ($nota) {
+                        $notaModel->update((int)$nota->id, [
+                            'asaas_status' => 'CANCELED',
+                            'status'       => 'cancelada',
+                        ]);
+                        $this->logger->info('Webhook Asaas: NFS-e cancelada', [
+                            'nota_id'    => $nota->id,
+                            'invoice_id' => $invoiceId,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $this->logger->error('Webhook Asaas INVOICE_CANCELED: erro', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                break;
+
+            case 'INVOICE_ERROR':
+                // NFS-e com erro na emissao
+                try {
+                    $invoice   = $data['invoice'] ?? [];
+                    $invoiceId = (string)($invoice['id'] ?? '');
+                    $errorDesc = $invoice['observations'] ?? $invoice['description'] ?? 'Erro na emissao';
+
+                    if (empty($invoiceId)) {
+                        break;
+                    }
+
+                    $notaModel = new NotaFiscal();
+                    $nota = $notaModel->findByAsaasInvoiceIdGlobal($invoiceId);
+                    if (!$nota && $tenantId) {
+                        $nota = $notaModel->findByAsaasInvoiceId($invoiceId, $tenantId);
+                    }
+
+                    if ($nota) {
+                        $notaModel->update((int)$nota->id, [
+                            'asaas_status' => 'ERROR',
+                            'status'       => 'erro_emissao',
+                        ]);
+                        $this->logger->warning('Webhook Asaas: NFS-e com erro', [
+                            'nota_id'    => $nota->id,
+                            'invoice_id' => $invoiceId,
+                            'error_desc' => $errorDesc,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $this->logger->error('Webhook Asaas INVOICE_ERROR: erro', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                break;
+
+            case 'INVOICE_SYNCHRONIZED':
+                // NFS-e enviada a prefeitura (aguardando autorizacao)
+                try {
+                    $invoice   = $data['invoice'] ?? [];
+                    $invoiceId = (string)($invoice['id'] ?? '');
+
+                    if (empty($invoiceId)) {
+                        break;
+                    }
+
+                    $notaModel = new NotaFiscal();
+                    $nota = $notaModel->findByAsaasInvoiceIdGlobal($invoiceId);
+                    if (!$nota && $tenantId) {
+                        $nota = $notaModel->findByAsaasInvoiceId($invoiceId, $tenantId);
+                    }
+
+                    if ($nota) {
+                        $notaModel->update((int)$nota->id, [
+                            'asaas_status' => 'SYNCHRONIZED',
+                            'status'       => 'agendada',
+                        ]);
+                        $this->logger->info('Webhook Asaas: NFS-e sincronizada com prefeitura', [
+                            'nota_id'    => $nota->id,
+                            'invoice_id' => $invoiceId,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $this->logger->error('Webhook Asaas INVOICE_SYNCHRONIZED: erro', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                break;
+
+            case 'INVOICE_CREATED':
+            case 'INVOICE_UPDATED':
+            case 'INVOICE_PROCESSING_CANCELLATION':
+            case 'INVOICE_CANCELLATION_DENIED':
+                // Eventos informativos de NFS-e — apenas log
+                $this->logger->info('Webhook Asaas: evento NFS-e informativo', [
+                    'event'      => $event,
+                    'invoice_id' => ($data['invoice']['id'] ?? null),
+                    'status'     => ($data['invoice']['status'] ?? null),
                 ]);
                 break;
 

@@ -638,6 +638,30 @@ class AsaasService
     }
 
     /**
+     * Mapeia o status da NF do Asaas para o status interno do banco de dados.
+     *
+     * Asaas statuses: SCHEDULED, SYNCHRONIZED, AUTHORIZED, PROCESSING_CANCELLATION,
+     *                 CANCELED, CANCELLATION_DENIED, ERROR
+     * DB statuses:    agendada, emitida, cancelada, erro_emissao
+     *
+     * @param  string $asaasStatus
+     * @return string
+     */
+    public static function mapearStatusNfsParaBanco(string $asaasStatus): string
+    {
+        return match (strtoupper($asaasStatus)) {
+            'SCHEDULED'               => 'agendada',
+            'SYNCHRONIZED'            => 'agendada',   // ainda processando na prefeitura
+            'AUTHORIZED'              => 'emitida',
+            'PROCESSING_CANCELLATION' => 'cancelada',  // em processo de cancelamento
+            'CANCELED'                => 'cancelada',
+            'CANCELLATION_DENIED'     => 'emitida',    // cancelamento negado = ainda emitida
+            'ERROR'                   => 'erro_emissao',
+            default                   => 'agendada',
+        };
+    }
+
+    /**
      * Mapeia o status da NF do Asaas para texto legível em português.
      *
      * @param  string $asaasStatus
