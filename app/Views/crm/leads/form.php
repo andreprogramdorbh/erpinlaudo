@@ -453,6 +453,10 @@ function switchTab(tab) {
   document.getElementById('tab-' + tab).style.display = 'block';
   document.querySelectorAll('.crm-tab').forEach(el => el.classList.remove('active'));
   event.currentTarget.classList.add('active');
+  // Atualiza a URL para preservar a aba ativa em reloads
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', tab);
+  history.replaceState(null, '', url.toString());
 }
 
 // Toggle chips de especialidade
@@ -522,7 +526,12 @@ function salvarInteracao() {
     .then(r => r.json())
     .then(res => {
       if (!res.success) { alert(res.error || 'Erro ao salvar.'); return; }
-      location.reload();
+      // Redireciona preservando a aba de interações
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'interacoes');
+      url.searchParams.delete('success');
+      url.searchParams.delete('error');
+      window.location.href = url.toString();
     })
     .catch(() => alert('Erro de conexão.'));
 }
