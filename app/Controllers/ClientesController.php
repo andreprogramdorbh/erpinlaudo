@@ -59,7 +59,8 @@ class ClientesController extends Controller
                 ],
                 'clientes' => $clientes,
                 'totalClientes' => $totalClientes,
-                'filtros' => $filtros
+                'filtros' => $filtros,
+                '_layout' => 'erp'
             ]);
         } catch (\Exception $e) {
             $this->logger->error("Erro ao listar clientes: " . $e->getMessage());

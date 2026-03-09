@@ -1,7 +1,7 @@
 <?php
 use App\Core\UI;
 use App\Core\Auth;
-require_once dirname(__DIR__) . '/layout/erp_header.php';
+
 
 // Header da Seção com Ação (Novo Cliente)
 $actions = [];
@@ -122,5 +122,4 @@ UI::sectionHeader('Gestão de Clientes', 'Visualize e gerencie sua base de clien
         }
     }
 </script>
-
-<?php require_once dirname(__DIR__) . '/layout/erp_footer.php'; ?>
+
