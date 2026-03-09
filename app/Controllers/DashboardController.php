@@ -407,6 +407,7 @@ class DashboardController extends Controller
             'contasVencidas'      => $contasVencidas,
             'mesAtual'            => date('Y-m'),
             'hoje'                => date('Y-m-d'),
+            '_layout'             => 'erp',
         ]);
     }
 }

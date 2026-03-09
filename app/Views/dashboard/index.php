@@ -1,6 +1,6 @@
 <?php
 use App\Core\Auth;
-require_once dirname(__DIR__) . '/layout/erp_header.php';
+
 
 // Helpers
 function brl($v){ return 'R$ ' . number_format((float)$v, 2, ',', '.'); }
@@ -564,5 +564,4 @@ new Chart(document.getElementById('chartLeads'), {
     cutout: '65%'
   }
 });
-</script>
-<?php require_once dirname(__DIR__) . '/layout/erp_footer.php'; ?>
+</script>
