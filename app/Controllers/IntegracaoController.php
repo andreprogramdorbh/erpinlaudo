@@ -106,6 +106,7 @@ class IntegracaoController extends Controller
         View::render('integracoes/email', [
             'title' => 'Configuração E-mail',
             'config' => $config,
+            'crypto_configured' => CryptoService::isConfigured(),
             'breadcrumb' => [
                 'Configurações' => '/configuracoes',
                 'Integrações' => '#',
@@ -315,6 +316,41 @@ class IntegracaoController extends Controller
                 'error_type' => $this->classifyEmailError($e->getMessage()),
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
+        }
+    }
+
+    /**
+     * Gera uma nova APP_ENCRYPTION_KEY segura e retorna ao frontend.
+     * A chave gerada deve ser copiada e adicionada ao arquivo .env do servidor.
+     * POST /integracao/email/gerar-chave
+     */
+    public function gerarChaveEmail(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!Auth::can('manage_settings')) {
+            echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+            return;
+        }
+
+        try {
+            // Gera 32 bytes aleatórios criptograficamente seguros e codifica em base64
+            $rawBytes = random_bytes(32);
+            $chave = 'base64:' . base64_encode($rawBytes);
+
+            AuditLogger::log('generate_app_encryption_key', [
+                'usuario_id' => Auth::user()->id,
+                'action' => 'Nova APP_ENCRYPTION_KEY gerada via painel',
+            ]);
+
+            echo json_encode([
+                'success' => true,
+                'chave' => $chave,
+                'instrucao' => 'Adicione esta linha ao arquivo .env do servidor: APP_KEY=' . $chave,
+            ]);
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao gerar chave de criptografia: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => 'Erro ao gerar chave: ' . $e->getMessage()]);
         }
     }
 

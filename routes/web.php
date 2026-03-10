@@ -225,6 +225,7 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/integracao/email", "IntegracaoController@email");
         Router::post("/integracao/email/save", "IntegracaoController@saveEmail");
         Router::post("/integracao/email/test", "IntegracaoController@testEmail");
+        Router::post("/integracao/email/gerar-chave", "IntegracaoController@gerarChaveEmail");
 
         // Integração Bot WhatsApp
         Router::get("/integracao/whatsapp",               "IntegracaoWhatsappController@index");
