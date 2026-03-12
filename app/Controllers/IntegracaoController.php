@@ -147,6 +147,26 @@ class IntegracaoController extends Controller
             $row = $this->integracaoModel->findByNomeAndUsuarioId('email', $usuarioId);
             $existing = $row ? $this->integracaoModel->getDecodedConfig($row) : [];
 
+            // Se o usuário manteve '********', verifica se a senha existente ainda é descriptogravável
+            // Se não for (chave trocada), exige que o usuário redigite
+            if ($password === '********') {
+                $existingEnc = (string)($existing['password_enc'] ?? '');
+                if ($existingEnc !== '') {
+                    try {
+                        $crypto = new CryptoService();
+                        $crypto->decryptString($existingEnc); // valida se é descriptogravável
+                    } catch (\RuntimeException $cryptoEx) {
+                        header('Content-Type: application/json');
+                        echo json_encode([
+                            'success' => false,
+                            'error' => 'A senha salva foi criptografada com uma chave diferente da atual. Digite a senha novamente para atualizá-la com a chave correta.',
+                            'error_type' => 'password_key_mismatch'
+                        ]);
+                        return;
+                    }
+                }
+            }
+
             if ($password === '********') {
                 $passwordEnc = (string)($existing['password_enc'] ?? '');
             } elseif ($password === '') {
@@ -229,8 +249,25 @@ class IntegracaoController extends Controller
             $config = $this->integracaoModel->getDecodedConfig($row);
             $password = '';
             if (!empty($config['password_enc'])) {
-                $crypto = new CryptoService();
-                $password = $crypto->decryptString((string) $config['password_enc']);
+                try {
+                    $crypto = new CryptoService();
+                    $password = $crypto->decryptString((string) $config['password_enc']);
+                } catch (\RuntimeException $cryptoEx) {
+                    // Senha salva com APP_KEY diferente da atual — precisa ser redigitada
+                    $this->logger->error('Senha SMTP incompatível com APP_KEY atual: ' . $cryptoEx->getMessage());
+                    AuditLogger::log('email_password_key_mismatch', [
+                        'usuario_id' => $usuarioId,
+                        'action' => 'Senha criptografada com chave diferente da atual — necessário redigitar'
+                    ]);
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => false,
+                        'error' => 'A senha salva foi criptografada com uma chave diferente da atual. Por segurança, digite a senha novamente e salve antes de testar.',
+                        'error_type' => 'password_key_mismatch',
+                        'timestamp' => date('Y-m-d H:i:s')
+                    ]);
+                    return;
+                }
             }
 
             $service = new MailService([

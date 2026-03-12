@@ -265,6 +265,29 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /* ── Alerta de senha incompatível (chave trocada) ─────────── */
+    function alertaSenhaIncompativel(contexto) {
+        const campoSenha = document.getElementById('password');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Senha desatualizada',
+            html: '<p>A senha foi salva com uma <strong>chave de criptografia diferente</strong> da atual.</p>' +
+                  '<p>Por segurança, <strong>digite a Senha de App do Google novamente</strong> no campo Senha e clique em <em>Salvar Alterações</em>.</p>',
+            confirmButtonText: 'Entendido, vou redigitar',
+            confirmButtonColor: '#0d6efd'
+        }).then(() => {
+            // Limpa o campo e foca nele
+            campoSenha.value = '';
+            campoSenha.placeholder = 'Digite a Senha de App do Google (16 caracteres)';
+            campoSenha.focus();
+            // Destaca o campo visualmente
+            campoSenha.classList.add('border-warning');
+            campoSenha.addEventListener('input', function () {
+                campoSenha.classList.remove('border-warning');
+            }, { once: true });
+        });
+    }
+
     /* ── Salvar configuração ──────────────────────────────────── */
     const form = document.getElementById('formEmailConfig');
     form.addEventListener('submit', function (e) {
@@ -281,6 +304,8 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 if (data.success) {
                     Swal.fire({ icon: 'success', title: 'Sucesso', text: data.message, timer: 2000, showConfirmButton: false });
+                } else if (data.error_type === 'password_key_mismatch') {
+                    alertaSenhaIncompativel('save');
                 } else {
                     throw new Error(data.error || 'Erro ao salvar configuração');
                 }
@@ -306,8 +331,15 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 if (data.success) {
                     Swal.fire({ icon: 'success', title: 'Enviado!', text: data.message });
+                } else if (data.error_type === 'password_key_mismatch') {
+                    alertaSenhaIncompativel('test');
                 } else {
-                    throw new Error(data.error || 'Falha ao enviar e-mail');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Falha no envio',
+                        html: '<p>' + (data.error || 'Falha ao enviar e-mail') + '</p>' +
+                              (data.error_type ? '<p class="text-muted small mb-0">Código: ' + data.error_type + '</p>' : '')
+                    });
                 }
             })
             .catch(error => {
