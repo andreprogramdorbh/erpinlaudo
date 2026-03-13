@@ -285,7 +285,7 @@ class IntegracaoController extends Controller
             
             // Tentar envio com tratamento detalhado de erros
             try {
-                $service->sendText((string) $user->email, $subject, $body);
+                $service->send((string) $user->email, $subject, $body);
             } catch (\Throwable $e) {
                 // Log detalhado da falha com contexto seguro
                 AuditLogger::log('email_test_failure', [
