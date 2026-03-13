@@ -238,16 +238,12 @@ class UsuariosController extends Controller
                 exit();
             }
 
-            // Atualiza dados
-            $stmt = $this->userModel->pdo->prepare(
-                "UPDATE users SET name = :name, email = :email, role = :role, status = :status, updated_at = NOW() WHERE id = :id"
-            );
-            $success = $stmt->execute([
-                ':name' => $nome,
-                ':email' => $email,
-                ':role' => $role,
-                ':status' => $status,
-                ':id' => $id
+            // Atualiza dados via método encapsulado no modelo
+            $success = $this->userModel->update($id, [
+                'name'   => $nome,
+                'email'  => $email,
+                'role'   => $role,
+                'status' => $status,
             ]);
 
             if ($success) {
