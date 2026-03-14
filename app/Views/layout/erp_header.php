@@ -452,6 +452,22 @@
               <span class="link-text">FORNECEDORES</span>
             </a>
           </li>
+          <li class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/medicos') !== false || strpos($_SERVER['REQUEST_URI'], '/especialidades') !== false || strpos($_SERVER['REQUEST_URI'], '/escalas') !== false || strpos($_SERVER['REQUEST_URI'], '/exames-tabela') !== false) ? 'open active' : ''; ?>">
+            <a href="/medicos" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Corpo Clinico">
+              <i class="fas fa-user-doctor"></i>
+              <span class="link-text">CORPO CLINICO</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/medicos"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/medicos') !== false ? 'active' : ''; ?>">MEDICOS</a></li>
+              <li><a href="/especialidades"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/especialidades') !== false ? 'active' : ''; ?>">ESPECIALIDADES</a></li>
+              <li><a href="/escalas"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/escalas') !== false ? 'active' : ''; ?>">ESCALAS</a></li>
+              <li><a href="/exames-tabela"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/exames-tabela') !== false ? 'active' : ''; ?>">TABELA DE EXAMES</a></li>
+            </ul>
+          </li>
 
           <div class="nav-label">Operacional</div>
           <li class="nav-item has-submenu">

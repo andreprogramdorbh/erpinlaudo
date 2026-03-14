@@ -144,6 +144,22 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/financeiro/fornecedores/delete/{id}", "FornecedoresController@delete");
     });
 
+    // Corpo Clinico
+    Router::get("/medicos", "MedicosController@index");
+    Router::get("/medicos/create", "MedicosController@create");
+    Router::post("/medicos/store", "MedicosController@store");
+    Router::get("/medicos/edit/{id}", "MedicosController@edit");
+    Router::post("/medicos/update/{id}", "MedicosController@update");
+
+    Router::get("/especialidades", "EspecialidadesController@index");
+    Router::get("/especialidades/create", "EspecialidadesController@create");
+    Router::post("/especialidades/store", "EspecialidadesController@store");
+
+    Router::get("/escalas", "CorpoClinicoController@escalas");
+
+    Router::get("/exames-tabela", "CorpoClinicoController@examesTabela");
+    Router::post("/exames-tabela/store", "CorpoClinicoController@storeExameTabela");
+
     // Contas a Pagar
     Router::group(["middleware" => ["Permission:view_contas_pagar"]], function () {
         Router::get("/financeiro/pagar", "ContasPagarController@index");
