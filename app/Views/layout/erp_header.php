@@ -446,6 +446,12 @@
               <span class="link-text">CLIENTES</span>
             </a>
           </li>
+          <li class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], '/fornecedores') !== false || strpos($_SERVER['REQUEST_URI'], '/financeiro/fornecedores') !== false) ? 'active' : ''; ?>">
+            <a href="/fornecedores" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Fornecedores">
+              <i class="fas fa-truck"></i>
+              <span class="link-text">FORNECEDORES</span>
+            </a>
+          </li>
 
           <div class="nav-label">Operacional</div>
           <li class="nav-item has-submenu">
@@ -463,9 +469,6 @@
               <li><a href="/financeiro/plano-contas"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/financeiro/plano-contas') !== false ? 'active' : ''; ?>">PLANO
                   DE CONTAS</a></li>
-              <li><a href="/financeiro/fornecedores"
-                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/financeiro/fornecedores') !== false ? 'active' : ''; ?>">FORNECEDORES</a>
-              </li>
             </ul>
           </li>
 

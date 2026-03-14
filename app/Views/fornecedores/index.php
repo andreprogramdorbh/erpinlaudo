@@ -7,7 +7,7 @@ $actions = [];
 if (Auth::can('create_fornecedores')) {
     $actions[] = [
         'text' => 'Novo Fornecedor',
-        'link' => '/financeiro/fornecedores/create',
+        'link' => '/fornecedores/create',
         'icon' => 'fas fa-plus',
         'class' => 'btn-primary'
     ];
@@ -18,7 +18,7 @@ UI::sectionHeader('Fornecedores', 'Cadastre e gerencie seus fornecedores', $acti
 
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-4">
-        <form method="GET" action="/financeiro/fornecedores" class="row g-3 align-items-end">
+        <form method="GET" action="/fornecedores" class="row g-3 align-items-end">
             <div class="col-md-7">
                 <label class="form-label small fw-bold text-muted">Pesquisar</label>
                 <div class="input-group">
@@ -55,7 +55,7 @@ UI::sectionHeader('Fornecedores', 'Cadastre e gerencie seus fornecedores', $acti
             $acoes = '';
 
             if (Auth::can('edit_fornecedores')) {
-                $acoes .= '<a href="/financeiro/fornecedores/edit/' . (int)$f->id . '" class="text-primary me-2" title="Editar"><i class="fas fa-edit"></i></a>';
+                $acoes .= '<a href="/fornecedores/edit/' . (int)$f->id . '" class="text-primary me-2" title="Editar"><i class="fas fa-edit"></i></a>';
             }
 
             if (Auth::can('delete_fornecedores')) {
@@ -91,7 +91,7 @@ function confirmDelete(id) {
     if (confirm('Deseja realmente excluir este fornecedor?')) {
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = '/financeiro/fornecedores/delete/' + id;
+        form.action = '/fornecedores/delete/' + id;
         document.body.appendChild(form);
         form.submit();
     }

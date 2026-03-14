@@ -11,6 +11,8 @@ use App\Models\Fornecedor;
 
 class FornecedoresController extends Controller
 {
+    private const BASE_ROUTE = '/fornecedores';
+
     private Fornecedor $model;
     private Logger $logger;
 
@@ -36,7 +38,7 @@ class FornecedoresController extends Controller
                 '_layout' => 'erp',
                 'title' => 'Fornecedores',
                 'breadcrumb' => [
-                    'Financeiro' => '/financeiro/pagar',
+                    'Cadastros' => '#',
                     0 => 'Fornecedores',
                 ],
                 'fornecedores' => $fornecedores,
@@ -54,6 +56,11 @@ class FornecedoresController extends Controller
         View::render('fornecedores/form-enterprise', [
             '_layout' => 'erp',
             'title' => 'Novo Fornecedor',
+            'breadcrumb' => [
+                'Cadastros' => '#',
+                'Fornecedores' => self::BASE_ROUTE,
+                0 => 'Novo Fornecedor',
+            ],
             'fornecedor' => null,
             'tab' => 'geral',
         ]);
@@ -66,7 +73,7 @@ class FornecedoresController extends Controller
 
             $nome = trim($_POST['nome'] ?? '');
             if ($nome === '') {
-                header('Location: /financeiro/fornecedores/create?error=missing_fields');
+                header('Location: ' . self::BASE_ROUTE . '/create?error=missing_fields');
                 exit();
             }
 
@@ -86,13 +93,13 @@ class FornecedoresController extends Controller
             $id = $this->model->create($dados);
             if ($id) {
                 AuditLogger::log('create_fornecedor', ['id' => $id, 'nome' => $nome]);
-                header("Location: /financeiro/fornecedores/edit/{$id}?success=created");
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?success=created");
             } else {
-                header('Location: /financeiro/fornecedores/create?error=db_failure');
+                header('Location: ' . self::BASE_ROUTE . '/create?error=db_failure');
             }
         } catch (\Exception $e) {
             $this->logger->error('Erro ao criar fornecedor: ' . $e->getMessage());
-            header('Location: /financeiro/fornecedores/create?error=fatal');
+            header('Location: ' . self::BASE_ROUTE . '/create?error=fatal');
         }
         exit();
     }
@@ -103,13 +110,18 @@ class FornecedoresController extends Controller
         $fornecedor = $this->model->findById((int)$id);
 
         if (!$fornecedor || (int)$fornecedor->usuario_id !== (int)$usuarioId) {
-            header('Location: /financeiro/fornecedores?error=not_found');
+            header('Location: ' . self::BASE_ROUTE . '?error=not_found');
             exit();
         }
 
         View::render('fornecedores/form-enterprise', [
             '_layout' => 'erp',
             'title' => 'Editar Fornecedor',
+            'breadcrumb' => [
+                'Cadastros' => '#',
+                'Fornecedores' => self::BASE_ROUTE,
+                0 => 'Editar Fornecedor',
+            ],
             'fornecedor' => $fornecedor,
             'tab' => $_GET['tab'] ?? 'geral',
         ]);
@@ -122,13 +134,13 @@ class FornecedoresController extends Controller
             $fornecedor = $this->model->findById((int)$id);
 
             if (!$fornecedor || (int)$fornecedor->usuario_id !== (int)$usuarioId) {
-                header('Location: /financeiro/fornecedores?error=unauthorized');
+                header('Location: ' . self::BASE_ROUTE . '?error=unauthorized');
                 exit();
             }
 
             $nome = trim($_POST['nome'] ?? '');
             if ($nome === '') {
-                header("Location: /financeiro/fornecedores/edit/{$id}?error=missing_fields");
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=missing_fields");
                 exit();
             }
 
@@ -146,13 +158,13 @@ class FornecedoresController extends Controller
 
             if ($this->model->update((int)$id, $dados)) {
                 AuditLogger::log('update_fornecedor', ['id' => (int)$id, 'nome' => $nome]);
-                header("Location: /financeiro/fornecedores/edit/{$id}?success=updated");
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?success=updated");
             } else {
-                header("Location: /financeiro/fornecedores/edit/{$id}?error=db_failure");
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=db_failure");
             }
         } catch (\Exception $e) {
             $this->logger->error('Erro ao atualizar fornecedor: ' . $e->getMessage());
-            header("Location: /financeiro/fornecedores/edit/{$id}?error=fatal");
+            header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=fatal");
         }
         exit();
     }
@@ -164,19 +176,19 @@ class FornecedoresController extends Controller
             $fornecedor = $this->model->findById((int)$id);
 
             if (!$fornecedor || (int)$fornecedor->usuario_id !== (int)$usuarioId) {
-                header('Location: /financeiro/fornecedores?error=unauthorized');
+                header('Location: ' . self::BASE_ROUTE . '?error=unauthorized');
                 exit();
             }
 
             if ($this->model->delete((int)$id)) {
                 AuditLogger::log('delete_fornecedor', ['id' => (int)$id, 'nome' => $fornecedor->nome ?? null]);
-                header('Location: /financeiro/fornecedores?success=deleted');
+                header('Location: ' . self::BASE_ROUTE . '?success=deleted');
             } else {
-                header('Location: /financeiro/fornecedores?error=db_failure');
+                header('Location: ' . self::BASE_ROUTE . '?error=db_failure');
             }
         } catch (\Exception $e) {
             $this->logger->error('Erro ao deletar fornecedor: ' . $e->getMessage());
-            header('Location: /financeiro/fornecedores?error=fatal');
+            header('Location: ' . self::BASE_ROUTE . '?error=fatal');
         }
         exit();
     }

@@ -16,7 +16,7 @@ $formConfig = [
 
     'actions' => [
         [
-            'url' => '/financeiro/fornecedores',
+            'url' => '/fornecedores',
             'label' => 'Voltar',
             'icon' => 'fas fa-arrow-left',
             'color' => 'light'
@@ -37,7 +37,7 @@ $formConfig = [
         [
             'type' => 'button',
             'label' => 'Cancelar',
-            'url' => '/financeiro/fornecedores',
+            'url' => '/fornecedores',
             'color' => 'light',
             'large' => true
         ],

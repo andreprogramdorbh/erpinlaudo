@@ -1,6 +1,6 @@
 <?php
 
-$action = $isEdit ? '/financeiro/fornecedores/update/' . ($fornecedor->id ?? '') : '/financeiro/fornecedores';
+$action = $isEdit ? '/fornecedores/update/' . ($fornecedor->id ?? '') : '/fornecedores';
 ?>
 
 <form id="fornecedorFormGeral" action="<?php echo $action; ?>" method="POST" class="enterprise-form-main">

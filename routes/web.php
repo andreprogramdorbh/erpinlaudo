@@ -121,20 +121,26 @@ Router::group(["middleware" => ["Auth"]], function () {
 
     // Fornecedores
     Router::group(["middleware" => ["Permission:view_fornecedores"]], function () {
+        Router::get("/fornecedores", "FornecedoresController@index");
         Router::get("/financeiro/fornecedores", "FornecedoresController@index");
     });
 
     Router::group(["middleware" => ["Permission:create_fornecedores"]], function () {
+        Router::get("/fornecedores/create", "FornecedoresController@create");
+        Router::post("/fornecedores", "FornecedoresController@store");
         Router::get("/financeiro/fornecedores/create", "FornecedoresController@create");
         Router::post("/financeiro/fornecedores", "FornecedoresController@store");
     });
 
     Router::group(["middleware" => ["Permission:edit_fornecedores"]], function () {
+        Router::get("/fornecedores/edit/{id}", "FornecedoresController@edit");
+        Router::post("/fornecedores/update/{id}", "FornecedoresController@update");
         Router::get("/financeiro/fornecedores/edit/{id}", "FornecedoresController@edit");
         Router::post("/financeiro/fornecedores/update/{id}", "FornecedoresController@update");
     });
 
     Router::group(["middleware" => ["Permission:delete_fornecedores"]], function () {
+        Router::post("/fornecedores/delete/{id}", "FornecedoresController@delete");
         Router::post("/financeiro/fornecedores/delete/{id}", "FornecedoresController@delete");
     });
 
