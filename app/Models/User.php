@@ -66,6 +66,32 @@ class User extends Model
     }
 
     /**
+     * Atualiza os dados de um usuário (nome, e-mail, role, status).
+     *
+     * @param int    $id     ID do usuário a atualizar.
+     * @param array  $data   Campos a atualizar: name, email, role, status.
+     * @return bool  True em caso de sucesso, false em caso de falha.
+     */
+    public function update(int $id, array $data): bool
+    {
+        $sql = "UPDATE {$this->table}
+                SET name = :name,
+                    email = :email,
+                    role = :role,
+                    status = :status,
+                    updated_at = NOW()
+                WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([
+            ':name'   => $data['name'],
+            ':email'  => $data['email'],
+            ':role'   => $data['role'],
+            ':status' => $data['status'],
+            ':id'     => $id,
+        ]);
+    }
+
+    /**
      * Retorna todos os usuários do sistema
      */
     public function findAll(): array
