@@ -74,21 +74,62 @@ class User extends Model
      */
     public function update(int $id, array $data): bool
     {
-        $sql = "UPDATE {$this->table}
-                SET name = :name,
-                    email = :email,
-                    role = :role,
-                    status = :status,
-                    updated_at = NOW()
-                WHERE id = :id";
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([
-            ':name'   => $data['name'],
-            ':email'  => $data['email'],
-            ':role'   => $data['role'],
-            ':status' => $data['status'],
-            ':id'     => $id,
-        ]);
+        try {
+            // Verifica se a coluna status existe na tabela users
+            $checkCol = $this->pdo->query("SHOW COLUMNS FROM {$this->table} LIKE 'status'");
+            $statusExists = $checkCol && $checkCol->rowCount() > 0;
+
+            if ($statusExists) {
+                $sql = "UPDATE {$this->table}
+                        SET name = :name,
+                            email = :email,
+                            role = :role,
+                            status = :status,
+                            updated_at = NOW()
+                        WHERE id = :id";
+                $params = [
+                    ':name'   => $data['name'],
+                    ':email'  => $data['email'],
+                    ':role'   => $data['role'],
+                    ':status' => $data['status'] ?? 'ativo',
+                    ':id'     => $id,
+                ];
+            } else {
+                // Coluna status não existe ainda — atualiza sem ela
+                $sql = "UPDATE {$this->table}
+                        SET name = :name,
+                            email = :email,
+                            role = :role,
+                            updated_at = NOW()
+                        WHERE id = :id";
+                $params = [
+                    ':name'  => $data['name'],
+                    ':email' => $data['email'],
+                    ':role'  => $data['role'],
+                    ':id'    => $id,
+                ];
+
+                // Tenta adicionar a coluna automaticamente
+                try {
+                    $this->pdo->exec("ALTER TABLE {$this->table} ADD COLUMN status ENUM('ativo','inativo') NOT NULL DEFAULT 'ativo' AFTER role");
+                } catch (\PDOException $alterEx) {
+                    // Ignora se já existir (race condition)
+                    error_log('[User::update] ALTER TABLE status: ' . $alterEx->getMessage());
+                }
+            }
+
+            $stmt = $this->pdo->prepare($sql);
+            $result = $stmt->execute($params);
+
+            if (!$result) {
+                error_log('[User::update] PDO execute failed for user_id=' . $id . ' | errorInfo=' . json_encode($stmt->errorInfo()));
+            }
+
+            return $result;
+        } catch (\PDOException $e) {
+            error_log('[User::update] PDOException for user_id=' . $id . ': ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
