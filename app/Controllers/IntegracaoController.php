@@ -15,7 +15,8 @@ use App\Services\AsaasService;
 use App\Services\CryptoService;
 use App\Services\MailService;
 use App\Services\ContaReceberRecorrenciaService;
-
+use App\Models\EmailAlerta;
+use App\Services\EmailAlertaService;
 class IntegracaoController extends Controller
 {
     private Integracao $integracaoModel;
@@ -1109,6 +1110,217 @@ class IntegracaoController extends Controller
             'timestamp' => date('Y-m-d H:i:s'),
             'server'    => $_SERVER['HTTP_HOST'] ?? 'unknown',
             'message'   => 'Webhook Asaas ativo e pronto para receber eventos.',
+        ]);
+    }
+
+    // =========================================================================
+    // ALERTAS DE E-MAIL
+    // =========================================================================
+
+    /**
+     * GET /integracao/email — sobrescreve para passar alertas à view
+     * (método email() já existe; este método é chamado pelo controller
+     *  via rota separada /integracao/email/alertas)
+     */
+    public function emailAlertas(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Content-Type: application/json');
+            http_response_code(403);
+            echo json_encode(['error' => 'unauthorized']);
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+        $model     = new EmailAlerta();
+        $alertas   = $model->findAllByUsuario($usuarioId);
+
+        // Agrupa por módulo
+        $agrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => []];
+        foreach ($alertas as $a) {
+            $agrupados[$a->modulo][] = $a;
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'alertas' => $agrupados]);
+    }
+
+    /**
+     * POST /integracao/email/alertas/toggle
+     * Ativa ou desativa um alerta.
+     */
+    public function emailAlertasToggle(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!Auth::can('manage_settings')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'unauthorized']);
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+        $id        = (int) ($_POST['id'] ?? 0);
+        $ativo     = (bool) ($_POST['ativo'] ?? false);
+
+        if (!$id) {
+            http_response_code(400);
+            echo json_encode(['error' => 'ID inválido']);
+            exit();
+        }
+
+        $model   = new EmailAlerta();
+        $success = $model->toggleAtivo($id, $usuarioId, $ativo);
+
+        AuditLogger::log('email_alerta_toggle', [
+            'user_id'   => $usuarioId,
+            'alerta_id' => $id,
+            'ativo'     => $ativo,
+            'success'   => $success,
+        ]);
+
+        echo json_encode(['success' => $success]);
+    }
+
+    /**
+     * POST /integracao/email/alertas/salvar
+     * Cria ou atualiza a configuração de um alerta.
+     */
+    public function emailAlertasSalvar(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!Auth::can('manage_settings')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'unauthorized']);
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+
+        $data = [
+            'codigo'            => trim($_POST['codigo'] ?? ''),
+            'modulo'            => trim($_POST['modulo'] ?? ''),
+            'nome'              => trim($_POST['nome'] ?? ''),
+            'descricao'         => trim($_POST['descricao'] ?? ''),
+            'antecedencia_dias' => (int) ($_POST['antecedencia_dias'] ?? 3),
+            'frequencia'        => trim($_POST['frequencia'] ?? 'unico'),
+            'hora_disparo'      => trim($_POST['hora_disparo'] ?? '08:00:00'),
+            'destinatarios'     => $_POST['destinatarios'] ?? '["admin"]',
+            'cc'                => $_POST['cc'] ?? null,
+            'assunto_template'  => trim($_POST['assunto_template'] ?? ''),
+            'corpo_template'    => trim($_POST['corpo_template'] ?? ''),
+            'ativo'             => isset($_POST['ativo']) ? (int) $_POST['ativo'] : 1,
+        ];
+
+        if (empty($data['codigo']) || empty($data['modulo']) || empty($data['nome'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Campos obrigatórios ausentes']);
+            exit();
+        }
+
+        $model   = new EmailAlerta();
+        $success = $model->salvar($usuarioId, $data);
+
+        AuditLogger::log('email_alerta_salvar', [
+            'user_id' => $usuarioId,
+            'codigo'  => $data['codigo'],
+            'success' => $success,
+        ]);
+
+        echo json_encode(['success' => $success]);
+    }
+
+    /**
+     * POST /integracao/email/alertas/disparar
+     * Dispara manualmente um alerta (para testes).
+     */
+    public function emailAlertasDisparar(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!Auth::can('manage_settings')) {
+            http_response_code(403);
+            echo json_encode(['error' => 'unauthorized']);
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+        $alertaId  = (int) ($_POST['alerta_id'] ?? 0);
+
+        if (!$alertaId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'ID inválido']);
+            exit();
+        }
+
+        $model  = new EmailAlerta();
+        $alerta = $model->findById($alertaId);
+
+        if (!$alerta) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Alerta não encontrado']);
+            exit();
+        }
+
+        try {
+            $service   = new EmailAlertaService($usuarioId);
+            $resultado = $service->processarAlerta($alerta);
+
+            AuditLogger::log('email_alerta_disparo_manual', [
+                'user_id'   => $usuarioId,
+                'alerta_id' => $alertaId,
+                'resultado' => $resultado,
+            ]);
+
+            echo json_encode(['success' => true, 'resultado' => $resultado]);
+        } catch (\Throwable $e) {
+            AuditLogger::log('email_alerta_disparo_erro', [
+                'user_id'   => $usuarioId,
+                'alerta_id' => $alertaId,
+                'error'     => $e->getMessage(),
+            ]);
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * GET /integracao/email — atualiza o método email() para incluir alertas na view
+     * Sobrescreve o email() original para passar também os alertas agrupados.
+     */
+    public function emailComAlertas(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Location: /dashboard?error=unauthorized');
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+        $row       = $this->integracaoModel->findByNomeAndUsuarioId('email', $usuarioId);
+        $config    = $row ? $this->integracaoModel->getDecodedConfig($row) : [];
+
+        $model   = new EmailAlerta();
+        $alertas = $model->findAllByUsuario($usuarioId);
+
+        $alertasAgrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => []];
+        foreach ($alertas as $a) {
+            if (isset($alertasAgrupados[$a->modulo])) {
+                $alertasAgrupados[$a->modulo][] = $a;
+            }
+        }
+
+        View::render('integracoes/email', [
+            'title'            => 'Configuração E-mail',
+            'config'           => $config,
+            'crypto_configured' => CryptoService::isConfigured(),
+            'alertas'          => $alertasAgrupados,
+            'breadcrumb'       => [
+                'Configurações' => '/configuracoes',
+                'Integrações'  => '#',
+                'E-mail'        => '/integracao/email'
+            ],
+            '_layout' => 'erp'
         ]);
     }
 }

@@ -244,10 +244,13 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/integracao/asaas/save", "IntegracaoController@saveAsaas");
         Router::post("/integracao/asaas/test", "IntegracaoController@testAsaas");
 
-        Router::get("/integracao/email", "IntegracaoController@email");
+        Router::get("/integracao/email", "IntegracaoController@emailComAlertas");
         Router::post("/integracao/email/save", "IntegracaoController@saveEmail");
         Router::post("/integracao/email/test", "IntegracaoController@testEmail");
         Router::post("/integracao/email/gerar-chave", "IntegracaoController@gerarChaveEmail");
+        Router::post("/integracao/email/alertas/toggle", "IntegracaoController@emailAlertasToggle");
+        Router::post("/integracao/email/alertas/salvar", "IntegracaoController@emailAlertasSalvar");
+        Router::post("/integracao/email/alertas/disparar", "IntegracaoController@emailAlertasDisparar");
 
         // Integração Bot WhatsApp
         Router::get("/integracao/whatsapp",               "IntegracaoWhatsappController@index");
