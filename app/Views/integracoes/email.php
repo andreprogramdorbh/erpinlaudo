@@ -599,6 +599,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const submitBtn = this.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvando...';
+        formData.append('csrf_token', '<?php echo htmlspecialchars($_SESSION["csrf_token"] ?? ""); ?>');
         fetch('/integracao/email/save', { method: 'POST', body: formData })
             .then(r => r.json())
             .then(data => {
@@ -624,7 +625,10 @@ document.addEventListener('DOMContentLoaded', function () {
             this.disabled = true;
             const originalHtml = this.innerHTML;
             this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
-            fetch('/integracao/email/test', { method: 'POST' })
+            const csrfToken = '<?php echo htmlspecialchars($_SESSION["csrf_token"] ?? ""); ?>';
+            const fd = new FormData();
+            fd.append('csrf_token', csrfToken);
+            fetch('/integracao/email/test', { method: 'POST', body: fd })
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {

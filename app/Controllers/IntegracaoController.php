@@ -281,12 +281,41 @@ class IntegracaoController extends Controller
                 'from_name' => $config['from_name'] ?? 'ERP InLaudo',
             ]);
 
-            $subject = 'Teste de E-mail - ERP InLaudo';
-            $body = "Este é um e-mail de teste do ERP InLaudo.\n\nSe você recebeu esta mensagem, a configuração está correta.";
-            
+            $subject = 'Teste de E-mail — ERP InLaudo';
+            $bodyHtml = '
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Teste de E-mail</title></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+      <tr><td style="background:#1a56db;padding:24px 32px;">
+        <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">ERP InLaudo</h1>
+      </td></tr>
+      <tr><td style="padding:32px;color:#333;font-size:15px;line-height:1.6;">
+        <h2 style="color:#1a56db;margin-top:0;">&#10003; Configuração de E-mail Validada</h2>
+        <p>Este é um e-mail de teste enviado pelo <strong>ERP InLaudo</strong>.</p>
+        <p>Se você recebeu esta mensagem, a configuração SMTP está correta e o sistema está pronto para enviar notificações.</p>
+        <table style="border-collapse:collapse;margin:16px 0;width:100%;">
+          <tr style="background:#f8f9fa;"><td style="padding:8px 12px;font-weight:600;color:#555;">Servidor</td><td style="padding:8px 12px;">' . htmlspecialchars((string)($config['host'] ?? '')) . '</td></tr>
+          <tr><td style="padding:8px 12px;font-weight:600;color:#555;">Porta</td><td style="padding:8px 12px;">' . htmlspecialchars((string)($config['port'] ?? '')) . '</td></tr>
+          <tr style="background:#f8f9fa;"><td style="padding:8px 12px;font-weight:600;color:#555;">Protocolo</td><td style="padding:8px 12px;">' . strtoupper(htmlspecialchars((string)($config['protocol'] ?? ''))) . '</td></tr>
+          <tr><td style="padding:8px 12px;font-weight:600;color:#555;">Remetente</td><td style="padding:8px 12px;">' . htmlspecialchars((string)($config['from_email'] ?? '')) . '</td></tr>
+          <tr style="background:#f8f9fa;"><td style="padding:8px 12px;font-weight:600;color:#555;">Data/Hora</td><td style="padding:8px 12px;">' . date('d/m/Y H:i:s') . '</td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="background:#f8f9fa;padding:16px 32px;border-top:1px solid #e9ecef;">
+        <p style="margin:0;color:#888;font-size:12px;text-align:center;">Este e-mail foi enviado automaticamente pelo ERP InLaudo. Não responda.</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>';
+
             // Tentar envio com tratamento detalhado de erros
             try {
-                $service->send((string) $user->email, $subject, $body);
+                $service->send((string) $user->email, $subject, $bodyHtml, true, $user->name ?? null);
             } catch (\Throwable $e) {
                 // Log detalhado da falha com contexto seguro
                 AuditLogger::log('email_test_failure', [
@@ -1300,14 +1329,19 @@ class IntegracaoController extends Controller
         $row       = $this->integracaoModel->findByNomeAndUsuarioId('email', $usuarioId);
         $config    = $row ? $this->integracaoModel->getDecodedConfig($row) : [];
 
-        $model   = new EmailAlerta();
-        $alertas = $model->findAllByUsuario($usuarioId);
-
+        // Carrega alertas com tolerância à ausência da tabela (migration pendente)
         $alertasAgrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => []];
-        foreach ($alertas as $a) {
-            if (isset($alertasAgrupados[$a->modulo])) {
-                $alertasAgrupados[$a->modulo][] = $a;
+        try {
+            $model   = new EmailAlerta();
+            $alertas = $model->findAllByUsuario($usuarioId);
+            foreach ($alertas as $a) {
+                if (isset($alertasAgrupados[$a->modulo])) {
+                    $alertasAgrupados[$a->modulo][] = $a;
+                }
             }
+        } catch (\Throwable $e) {
+            // Tabela email_alertas ainda não existe — migration pendente
+            $this->logger->warning('Tabela email_alertas indisponível: ' . $e->getMessage());
         }
 
         View::render('integracoes/email', [
