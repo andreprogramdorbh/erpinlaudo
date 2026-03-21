@@ -663,6 +663,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fd.append('id', id);
             fd.append('ativo', ativo);
 
+            const self = this;
             fetch('/integracao/email/alertas/toggle', { method: 'POST', body: fd })
                 .then(r => r.json())
                 .then(data => {
@@ -674,14 +675,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         document.querySelectorAll('.toggle-alerta:checked').forEach(() => total++);
                         if (badge) { badge.textContent = total; badge.style.display = total > 0 ? '' : 'none'; }
                     } else {
-                        this.checked = !this.checked; // reverte
+                        self.checked = !self.checked; // reverte
                         Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível alterar o status.' });
                     }
-                }.bind(this))
+                })
                 .catch(() => {
-                    this.checked = !this.checked;
+                    self.checked = !self.checked;
                     Swal.fire({ icon: 'error', title: 'Erro', text: 'Falha na requisição.' });
-                }.bind(this));
+                });
         });
     });
 
