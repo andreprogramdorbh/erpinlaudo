@@ -3,12 +3,10 @@
 namespace App\Services;
 
 use App\Models\EmailAlerta;
-use App\Models\ContaPagar;
-use App\Models\ContaReceber;
-use App\Models\CrmLead;
-use App\Models\CrmOportunidade;
 use App\Models\User;
+use App\Core\Database;
 use App\Core\Audit\AuditLogger;
+use PDO;
 
 /**
  * EmailAlertaService
@@ -20,12 +18,14 @@ class EmailAlertaService
     private EmailAlerta $alertaModel;
     private MailService $mailService;
     private int $usuarioId;
+    private PDO $pdo;
 
     public function __construct(int $usuarioId)
     {
         $this->usuarioId   = $usuarioId;
         $this->alertaModel = new EmailAlerta();
         $this->mailService = new MailService();
+        $this->pdo         = Database::getInstance();
     }
 
     // -------------------------------------------------------------------------
@@ -52,7 +52,7 @@ class EmailAlertaService
 
     public function processarModulo(string $modulo): array
     {
-        $alertas = $this->alertaModel->findAtivosParaDisparo($modulo, $this->usuarioId);
+        $alertas   = $this->alertaModel->findAtivosParaDisparo($modulo, $this->usuarioId);
         $resultado = ['enviados' => 0, 'falhas' => 0, 'ignorados' => 0];
 
         foreach ($alertas as $alerta) {
@@ -118,81 +118,186 @@ class EmailAlertaService
     }
 
     // -------------------------------------------------------------------------
-    // Busca de registros por código de alerta
+    // Busca de registros por código de alerta (queries PDO diretas)
     // -------------------------------------------------------------------------
 
     private function buscarRegistros(object $alerta): array
     {
-        $dias = (int) $alerta->antecedencia_dias;
+        $dias = (int) ($alerta->antecedencia_dias ?? 0);
         $uid  = $this->usuarioId;
 
         switch ($alerta->codigo) {
 
-            // Contas a Receber vencendo em N dias
+            // ── Contas a Receber vencendo em N dias ──────────────────────────
             case 'financeiro_receber_vencer_3d':
-                return (new ContaReceber())->findAll([
-                    'usuario_id' => $uid,
-                    'status'     => 'aberta',
-                    'vencimento_de' => date('Y-m-d', strtotime("+{$dias} days")),
-                    'vencimento_ate' => date('Y-m-d', strtotime("+{$dias} days")),
-                ]);
+                $dataAlvo = date('Y-m-d', strtotime("+{$dias} days"));
+                $stmt = $this->pdo->prepare(
+                    "SELECT cr.*, c.razao_social AS cliente_nome
+                     FROM contas_receber cr
+                     LEFT JOIN clientes c ON c.id = cr.cliente_id
+                     WHERE cr.usuario_id = :uid
+                       AND cr.status = 'aberta'
+                       AND cr.data_vencimento = :data"
+                );
+                $stmt->execute([':uid' => $uid, ':data' => $dataAlvo]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Contas a Receber em atraso
+            // ── Contas a Receber em atraso ────────────────────────────────────
             case 'financeiro_receber_atraso':
-                return (new ContaReceber())->findAll([
-                    'usuario_id'  => $uid,
-                    'status'      => 'aberta',
-                    'vencimento_ate' => date('Y-m-d', strtotime('-1 day')),
-                ]);
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT cr.*, c.razao_social AS cliente_nome
+                     FROM contas_receber cr
+                     LEFT JOIN clientes c ON c.id = cr.cliente_id
+                     WHERE cr.usuario_id = :uid
+                       AND cr.status = 'aberta'
+                       AND cr.data_vencimento < :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Contas a Pagar vencendo em N dias
+            // ── Contas a Pagar vencendo em N dias ────────────────────────────
             case 'financeiro_pagar_vencer_3d':
-                return (new ContaPagar())->findAll([
-                    'usuario_id' => $uid,
-                    'status'     => 'aberta',
-                    'vencimento_de' => date('Y-m-d', strtotime("+{$dias} days")),
-                    'vencimento_ate' => date('Y-m-d', strtotime("+{$dias} days")),
-                ]);
+                $dataAlvo = date('Y-m-d', strtotime("+{$dias} days"));
+                $stmt = $this->pdo->prepare(
+                    "SELECT cp.*, f.nome AS fornecedor_nome
+                     FROM contas_pagar cp
+                     LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
+                     WHERE cp.usuario_id = :uid
+                       AND cp.status = 'aberta'
+                       AND cp.data_vencimento = :data"
+                );
+                $stmt->execute([':uid' => $uid, ':data' => $dataAlvo]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Contas a Pagar em atraso
+            // ── Contas a Pagar em atraso ──────────────────────────────────────
             case 'financeiro_pagar_atraso':
-                return (new ContaPagar())->findAll([
-                    'usuario_id'  => $uid,
-                    'status'      => 'aberta',
-                    'vencimento_ate' => date('Y-m-d', strtotime('-1 day')),
-                ]);
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT cp.*, f.nome AS fornecedor_nome
+                     FROM contas_pagar cp
+                     LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
+                     WHERE cp.usuario_id = :uid
+                       AND cp.status = 'aberta'
+                       AND cp.data_vencimento < :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Leads sem contato há 7+ dias
+            // ── Resumo Financeiro Diário ──────────────────────────────────────
+            case 'financeiro_resumo_diario':
+                // Retorna um único objeto-resumo para o template
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT
+                        (SELECT COUNT(*) FROM contas_receber WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS receber_atrasadas,
+                        (SELECT COALESCE(SUM(valor),0) FROM contas_receber WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS receber_valor_atrasado,
+                        (SELECT COUNT(*) FROM contas_pagar WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS pagar_atrasadas,
+                        (SELECT COALESCE(SUM(valor),0) FROM contas_pagar WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS pagar_valor_atrasado,
+                        (SELECT COUNT(*) FROM contas_receber WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento BETWEEN :hoje AND DATE_ADD(:hoje, INTERVAL 7 DAY)) AS receber_proximos_7d,
+                        (SELECT COUNT(*) FROM contas_pagar WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento BETWEEN :hoje AND DATE_ADD(:hoje, INTERVAL 7 DAY)) AS pagar_proximos_7d"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                $row = $stmt->fetch(PDO::FETCH_OBJ);
+                return $row ? [$row] : [];
+
+            // ── Nota Fiscal Emitida hoje ──────────────────────────────────────
+            case 'faturamento_fatura_emitida':
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT nf.*, nf.numero_nf AS numero_fatura, c.razao_social AS cliente_nome
+                     FROM notas_fiscais nf
+                     LEFT JOIN clientes c ON c.id = nf.cliente_id
+                     WHERE nf.usuario_id = :uid
+                       AND nf.status = 'emitida'
+                       AND nf.data_emissao = :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
+
+            // ── Contas a Receber (faturamento) vencendo em N dias ─────────────
+            // Nota: o módulo de faturamento usa contas_receber como base de cobranças
+            case 'faturamento_fatura_vencer_2d':
+                $dataAlvo = date('Y-m-d', strtotime("+{$dias} days"));
+                $stmt = $this->pdo->prepare(
+                    "SELECT cr.*, c.razao_social AS cliente_nome, cr.id AS numero_fatura
+                     FROM contas_receber cr
+                     LEFT JOIN clientes c ON c.id = cr.cliente_id
+                     WHERE cr.usuario_id = :uid
+                       AND cr.status = 'aberta'
+                       AND cr.data_vencimento = :data"
+                );
+                $stmt->execute([':uid' => $uid, ':data' => $dataAlvo]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
+
+            // ── Contas a Receber (faturamento) em atraso ──────────────────────
+            case 'faturamento_fatura_atraso':
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT cr.*, c.razao_social AS cliente_nome, cr.id AS numero_fatura
+                     FROM contas_receber cr
+                     LEFT JOIN clientes c ON c.id = cr.cliente_id
+                     WHERE cr.usuario_id = :uid
+                       AND cr.status = 'aberta'
+                       AND cr.data_vencimento < :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
+
+            // ── Lead sem contato há 7+ dias ───────────────────────────────────
             case 'crm_lead_sem_contato':
-                return (new CrmLead())->findAll([
-                    'usuario_id' => $uid,
-                    'status_lead' => ['novo', 'em_contato', 'qualificado'],
-                    'proximo_contato_ate' => date('Y-m-d', strtotime('-7 days')),
-                ]);
+                $limite = date('Y-m-d', strtotime('-7 days'));
+                $stmt = $this->pdo->prepare(
+                    "SELECT l.*
+                     FROM crm_leads l
+                     WHERE l.usuario_id = :uid
+                       AND l.status_lead IN ('novo', 'em_contato', 'qualificado')
+                       AND (l.data_proximo_contato IS NULL OR l.data_proximo_contato <= :limite)"
+                );
+                $stmt->execute([':uid' => $uid, ':limite' => $limite]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Leads com próximo contato hoje
+            // ── Lead com próximo contato hoje ─────────────────────────────────
             case 'crm_lead_proximo_contato_hoje':
-                return (new CrmLead())->findAll([
-                    'usuario_id'          => $uid,
-                    'data_proximo_contato' => date('Y-m-d'),
-                ]);
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT l.*
+                     FROM crm_leads l
+                     WHERE l.usuario_id = :uid
+                       AND l.data_proximo_contato = :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Oportunidades vencendo em N dias
+            // ── Oportunidade vencendo em N dias ───────────────────────────────
             case 'crm_oportunidade_vencer_3d':
-                return (new CrmOportunidade())->findAll([
-                    'usuario_id'           => $uid,
-                    'status_oportunidade'  => 'aberta',
-                    'fechamento_de'        => date('Y-m-d', strtotime("+{$dias} days")),
-                    'fechamento_ate'       => date('Y-m-d', strtotime("+{$dias} days")),
-                ]);
+                $dataAlvo = date('Y-m-d', strtotime("+{$dias} days"));
+                $stmt = $this->pdo->prepare(
+                    "SELECT o.*, COALESCE(l.nome_lead, c.razao_social) AS nome_contato
+                     FROM crm_oportunidades o
+                     LEFT JOIN crm_leads l ON l.id = o.lead_id
+                     LEFT JOIN clientes  c ON c.id = o.cliente_id
+                     WHERE o.usuario_id = :uid
+                       AND o.status_oportunidade = 'aberta'
+                       AND o.data_fechamento_prevista = :data"
+                );
+                $stmt->execute([':uid' => $uid, ':data' => $dataAlvo]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
-            // Oportunidades com fechamento vencido
+            // ── Oportunidade com fechamento vencido ───────────────────────────
             case 'crm_oportunidade_vencida':
-                return (new CrmOportunidade())->findAll([
-                    'usuario_id'          => $uid,
-                    'status_oportunidade' => 'aberta',
-                    'fechamento_ate'      => date('Y-m-d', strtotime('-1 day')),
-                ]);
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT o.*, COALESCE(l.nome_lead, c.razao_social) AS nome_contato
+                     FROM crm_oportunidades o
+                     LEFT JOIN crm_leads l ON l.id = o.lead_id
+                     LEFT JOIN clientes  c ON c.id = o.cliente_id
+                     WHERE o.usuario_id = :uid
+                       AND o.status_oportunidade = 'aberta'
+                       AND o.data_fechamento_prevista < :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
 
             default:
                 return [];
@@ -311,9 +416,19 @@ class EmailAlertaService
             ? date('d/m/Y', strtotime($registro->data_proximo_contato)) : '—';
 
         // CRM — Oportunidade
-        $vars['{oportunidade}']  = $registro->titulo ?? $registro->nome_lead ?? '';
+        $vars['{oportunidade}']  = $registro->titulo_oportunidade ?? $registro->nome_contato ?? '';
         $vars['{probabilidade}'] = $registro->probabilidade_sucesso ?? '';
         $vars['{etapa}']         = $registro->etapa_funil ?? '';
+
+        // Resumo financeiro diário
+        $vars['{receber_atrasadas}']      = $registro->receber_atrasadas ?? '';
+        $vars['{receber_valor_atrasado}'] = isset($registro->receber_valor_atrasado)
+            ? number_format((float) $registro->receber_valor_atrasado, 2, ',', '.') : '';
+        $vars['{pagar_atrasadas}']        = $registro->pagar_atrasadas ?? '';
+        $vars['{pagar_valor_atrasado}']   = isset($registro->pagar_valor_atrasado)
+            ? number_format((float) $registro->pagar_valor_atrasado, 2, ',', '.') : '';
+        $vars['{receber_proximos_7d}']    = $registro->receber_proximos_7d ?? '';
+        $vars['{pagar_proximos_7d}']      = $registro->pagar_proximos_7d ?? '';
 
         // Vendedor
         if (!empty($registro->usuario_id)) {

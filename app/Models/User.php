@@ -141,4 +141,21 @@ class User extends Model
         $stmt->execute();
         return $stmt->fetchAll() ?: [];
     }
+
+    /**
+     * Retorna usuários com um ou mais roles específicos.
+     * Usado pelo EmailAlertaService para resolver destinatários 'admin'/'financeiro'.
+     *
+     * @param string|array $roles  Ex: 'admin' ou ['admin', 'superadmin']
+     */
+    public function findByRole(string|array $roles): array
+    {
+        $roles        = (array) $roles;
+        $placeholders = implode(',', array_fill(0, count($roles), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table} WHERE role IN ({$placeholders}) ORDER BY name ASC"
+        );
+        $stmt->execute($roles);
+        return $stmt->fetchAll(PDO::FETCH_OBJ) ?: [];
+    }
 }
