@@ -96,6 +96,14 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/clientes/delete/{id}", "ClientesController@delete");
     });
 
+    // ─── CNES Global ─────────────────────────────────────────────────────────
+    Router::get("/cnes",                                  "CnesController@index");
+    Router::get("/cnes/buscar",                           "CnesController@buscar");
+    Router::get("/cnes/{cnes}",                           "CnesController@show");
+    Router::post("/cnes/{cnes}/importar-cliente",         "CnesController@importarComoCliente");
+    Router::post("/cnes/equipamento/{id}/atualizar",      "CnesController@atualizarEquipamento");
+    Router::post("/cnes/profissional/{id}/atualizar",     "CnesController@atualizarProfissional");
+
     // Financeiro
     Router::group(["middleware" => ["Permission:view_finance"]], function () {
     });

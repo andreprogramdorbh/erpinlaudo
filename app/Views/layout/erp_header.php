@@ -440,11 +440,23 @@
           </li>
 
           <div class="nav-label">Cadastros</div>
-          <li class="nav-item <?php echo strpos($_SERVER['REQUEST_URI'], 'clientes') !== false ? 'active' : ''; ?>">
+          <li class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/clientes') !== false || strpos($_SERVER['REQUEST_URI'], '/cnes') !== false) ? 'open active' : ''; ?>">
             <a href="/clientes" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Clientes">
               <i class="fas fa-users"></i>
               <span class="link-text">CLIENTES</span>
             </a>
+            <ul class="submenu">
+              <li>
+                <a href="/clientes" class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/clientes') !== false) ? 'active' : ''; ?>">
+                  <i class="fas fa-address-book me-2"></i> Todos os Clientes
+                </a>
+              </li>
+              <li>
+                <a href="/cnes" class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/cnes') !== false) ? 'active' : ''; ?>">
+                  <i class="fas fa-hospital me-2"></i> CNES Global
+                </a>
+              </li>
+            </ul>
           </li>
           <li class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], '/fornecedores') !== false || strpos($_SERVER['REQUEST_URI'], '/financeiro/fornecedores') !== false) ? 'active' : ''; ?>">
             <a href="/fornecedores" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Fornecedores">
