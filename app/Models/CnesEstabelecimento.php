@@ -143,4 +143,12 @@ class CnesEstabelecimento extends Model
     {
         return $this->contarTotal() > 0;
     }
+
+    /**
+     * Expõe o PDO para uso direto no controller (queries específicas).
+     */
+    public function getPdo(): \PDO
+    {
+        return $this->pdo;
+    }
 }

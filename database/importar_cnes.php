@@ -21,10 +21,25 @@
 
 declare(strict_types=1);
 
-// ── Configuração ──────────────────────────────────────────────────────────────
-$configFile = __DIR__ . '/../app/Config/database.php';
+// ── Configuração ────────────────────────────────────────────────────────────────────────────────
+// Carregar .env antes do config
+$rootDir = dirname(__DIR__);
+$envFile = $rootDir . '/.env';
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (strpos(trim($line), '#') === 0 || strpos($line, '=') === false) continue;
+        [$k, $v] = explode('=', $line, 2);
+        $k = trim($k); $v = trim($v, " \t\n\r\0\x0B\"'");
+        putenv("$k=$v"); $_ENV[$k] = $v;
+    }
+}
+$configFile = $rootDir . '/config/database.php';
 if (!file_exists($configFile)) {
-    die("ERRO: Arquivo de configuração não encontrado: {$configFile}\n");
+    // Fallback para app/Config/database.php
+    $configFile = $rootDir . '/app/Config/database.php';
+}
+if (!file_exists($configFile)) {
+    die("ERRO: Arquivo de configuração não encontrado. Verifique o .env\n");
 }
 $dbConfig = require $configFile;
 
@@ -138,30 +153,46 @@ if ($step === 'all' || $step === 'estab') {
     if (!$arquivo || !file_exists($arquivo)) {
         echo "  [AVISO] tbEstabelecimento*.csv não encontrado. Pulando.\n";
     } else {
+        // Detectar competência pelo nome do arquivo
+        preg_match('/(\d{6})\.csv$/', basename($arquivo), $mComp);
+        $competencia = $mComp[1] ?? date('Ym');
+
         $sql = "INSERT INTO cnes_estabelecimentos
-                (co_unidade, co_cnes, nu_cnpj, nu_cnpj_mantenedora, tp_pfpj,
+                (co_unidade, co_cnes, nu_cnpj, nu_cnpj_mantenedora,
                  no_razao_social, no_fantasia, no_fantasia_abrev, tp_unidade,
+                 co_tipo_unidade, co_tipo_estabelecimento,
+                 co_atividade, co_clientela, tp_gestao,
                  no_logradouro, nu_endereco, no_complemento, no_bairro, co_cep,
                  co_municipio_gestor, co_estado_gestor, nu_telefone, nu_fax,
                  no_email, no_url, nu_latitude, nu_longitude,
-                 co_natureza_jur, tp_gestao, co_atividade, co_clientela,
-                 co_turno_atendimento, st_conexao_internet, tp_estab_sempre_aberto,
-                 nu_cpf_diretor, reg_diretor, dt_atualizacao)
+                 co_natureza_juridica, st_conexao_internet,
+                 co_cpf_diretor_clinico, reg_diretor_clinico,
+                 co_motivo_desabilitacao, dt_atualizacao, competencia)
                 VALUES
-                (:co_unidade, :co_cnes, :nu_cnpj, :nu_cnpj_mantenedora, :tp_pfpj,
+                (:co_unidade, :co_cnes, :nu_cnpj, :nu_cnpj_mantenedora,
                  :no_razao_social, :no_fantasia, :no_fantasia_abrev, :tp_unidade,
+                 :co_tipo_unidade, :co_tipo_estabelecimento,
+                 :co_atividade, :co_clientela, :tp_gestao,
                  :no_logradouro, :nu_endereco, :no_complemento, :no_bairro, :co_cep,
                  :co_municipio_gestor, :co_estado_gestor, :nu_telefone, :nu_fax,
                  :no_email, :no_url, :nu_latitude, :nu_longitude,
-                 :co_natureza_jur, :tp_gestao, :co_atividade, :co_clientela,
-                 :co_turno_atendimento, :st_conexao_internet, :tp_estab_sempre_aberto,
-                 :nu_cpf_diretor, :reg_diretor, :dt_atualizacao)
+                 :co_natureza_juridica, :st_conexao_internet,
+                 :co_cpf_diretor_clinico, :reg_diretor_clinico,
+                 :co_motivo_desabilitacao, :dt_atualizacao, :competencia)
                 ON DUPLICATE KEY UPDATE
-                  no_razao_social = VALUES(no_razao_social),
-                  no_fantasia     = VALUES(no_fantasia),
-                  nu_telefone     = VALUES(nu_telefone),
-                  no_email        = VALUES(no_email),
-                  dt_atualizacao  = VALUES(dt_atualizacao)";
+                  no_razao_social         = VALUES(no_razao_social),
+                  no_fantasia             = VALUES(no_fantasia),
+                  co_tipo_unidade         = VALUES(co_tipo_unidade),
+                  co_tipo_estabelecimento = VALUES(co_tipo_estabelecimento),
+                  no_logradouro           = VALUES(no_logradouro),
+                  co_estado_gestor        = VALUES(co_estado_gestor),
+                  co_municipio_gestor     = VALUES(co_municipio_gestor),
+                  nu_telefone             = VALUES(nu_telefone),
+                  no_email                = VALUES(no_email),
+                  co_motivo_desabilitacao = VALUES(co_motivo_desabilitacao),
+                  dt_atualizacao          = VALUES(dt_atualizacao),
+                  competencia             = VALUES(competencia),
+                  updated_at              = NOW()";
 
         $stmt    = $pdo->prepare($sql);
         $count   = 0;
@@ -179,11 +210,15 @@ if ($step === 'all' || $step === 'estab') {
                 ':co_cnes'                => col($row, 'co_cnes'),
                 ':nu_cnpj'                => col($row, 'nu_cnpj'),
                 ':nu_cnpj_mantenedora'    => col($row, 'nu_cnpj_mantenedora'),
-                ':tp_pfpj'                => col($row, 'tp_pfpj'),
                 ':no_razao_social'        => col($row, 'no_razao_social') ?? 'SEM NOME',
                 ':no_fantasia'            => col($row, 'no_fantasia'),
                 ':no_fantasia_abrev'      => col($row, 'no_fantasia_abrev'),
                 ':tp_unidade'             => col($row, 'tp_unidade'),
+                ':co_tipo_unidade'        => col($row, 'co_tipo_unidade'),
+                ':co_tipo_estabelecimento'=> col($row, 'co_tipo_estabelecimento'),
+                ':co_atividade'           => col($row, 'co_atividade'),
+                ':co_clientela'           => col($row, 'co_clientela'),
+                ':tp_gestao'              => col($row, 'tp_gestao'),
                 ':no_logradouro'          => col($row, 'no_logradouro'),
                 ':nu_endereco'            => col($row, 'nu_endereco'),
                 ':no_complemento'         => col($row, 'no_complemento'),
@@ -197,16 +232,13 @@ if ($step === 'all' || $step === 'estab') {
                 ':no_url'                 => col($row, 'no_url'),
                 ':nu_latitude'            => col($row, 'nu_latitude'),
                 ':nu_longitude'           => col($row, 'nu_longitude'),
-                ':co_natureza_jur'        => col($row, 'co_natureza_jur'),
-                ':tp_gestao'              => col($row, 'tp_gestao'),
-                ':co_atividade'           => col($row, 'co_atividade'),
-                ':co_clientela'           => col($row, 'co_clientela'),
-                ':co_turno_atendimento'   => col($row, 'co_turno_atendimento'),
+                ':co_natureza_juridica'   => col($row, 'co_natureza_jur'),
                 ':st_conexao_internet'    => col($row, 'st_conexao_internet'),
-                ':tp_estab_sempre_aberto' => col($row, 'tp_estab_sempre_aberto'),
-                ':nu_cpf_diretor'         => col($row, 'co_cpfdiretorcln'),
-                ':reg_diretor'            => col($row, 'reg_diretorcln'),
+                ':co_cpf_diretor_clinico' => col($row, 'co_cpfdiretorcln'),
+                ':reg_diretor_clinico'    => col($row, 'reg_diretorcln'),
+                ':co_motivo_desabilitacao'=> col($row, 'co_motivo_desab'),
                 ':dt_atualizacao'         => col($row, "to_char(dt_atualizacao,'dd/mm/yyyy')"),
+                ':competencia'            => $competencia,
             ]);
             $count++;
             if ($count % 500 === 0) {

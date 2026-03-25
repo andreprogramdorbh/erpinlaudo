@@ -98,6 +98,9 @@ Router::group(["middleware" => ["Auth"]], function () {
 
     // ─── CNES Global ─────────────────────────────────────────────────────────
     Router::get("/cnes",                                  "CnesController@index");
+    Router::get("/cnes/importar",                         "CnesController@importarForm");
+    Router::post("/cnes/importar/upload",                 "CnesController@importarUpload");
+    Router::get("/cnes/importar/status",                  "CnesController@importarStatus");
     Router::get("/cnes/buscar",                           "CnesController@buscar");
     Router::get("/cnes/{cnes}",                           "CnesController@show");
     Router::post("/cnes/{cnes}/importar-cliente",         "CnesController@importarComoCliente");
