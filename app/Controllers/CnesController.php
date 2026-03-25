@@ -466,7 +466,8 @@ class CnesController extends Controller
 
     // ────────────────────────────────────────────────────────────────────────────────
     // API — BUSCA RÁPIDA (autocomplete)
-    // ────────────────────────────────────────────────────────────────────────────────/**
+    // ────────────────────────────────────────────────────────────────────────────────
+    /**
      * GET /cnes/buscar?q=termo&uf=SP
      * Retorna JSON para autocomplete.
      */
@@ -485,16 +486,18 @@ class CnesController extends Controller
                 1,
                 20
             );
-            $lista = array_map(fn($e) => [
-                'id'           => $e->id,
-                'co_cnes'      => $e->co_cnes,
-                'razao_social' => $e->no_razao_social,
-                'fantasia'     => $e->no_fantasia,
-                'uf'           => $e->co_estado_gestor,
-                'municipio'    => $e->co_municipio_gestor,
-                'cnpj'         => $e->nu_cnpj,
-                'cliente_id'   => $e->cliente_id,
-            ], $resultado['registros']);
+            $lista = array_map(function($e) {
+                return [
+                    'id'           => $e->id,
+                    'co_cnes'      => $e->co_cnes,
+                    'razao_social' => $e->no_razao_social,
+                    'fantasia'     => $e->no_fantasia,
+                    'uf'           => $e->co_estado_gestor,
+                    'municipio'    => $e->co_municipio_gestor,
+                    'cnpj'         => $e->nu_cnpj,
+                    'cliente_id'   => $e->cliente_id,
+                ];
+            }, $resultado['registros']);
             echo json_encode($lista);
         } catch (\Throwable $e) {
             http_response_code(500);
