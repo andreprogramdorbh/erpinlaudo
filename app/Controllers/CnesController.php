@@ -9,6 +9,7 @@ use App\Models\CnesEstabelecimento;
 use App\Models\CnesEquipamento;
 use App\Models\CnesProfissional;
 use App\Models\Cliente;
+use App\Services\CnesImportService;
 
 /**
  * Controller do módulo CNES Global.
@@ -336,12 +337,18 @@ class CnesController extends Controller
 
     /**
      * POST /cnes/importar/upload
-     * Recebe o ZIP da base CNES, extrai e executa o script de importação.
-     * Suporta importação inicial e atualização mensal (UPSERT).
+     * Recebe o ZIP da base CNES e processa a importação via CnesImportService.
+     * Usa INSERT em lotes — compatível com MariaDB Hostinger (sem LOAD DATA INFILE).
+     * Grava progresso em storage/cnes_import_progress.json para polling do browser.
      */
     public function importarUpload(): void
     {
         header('Content-Type: application/json');
+
+        // Aumentar limites para arquivos grandes
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
         try {
             // Verificar se é admin
             $usuario = Auth::user();
@@ -353,9 +360,17 @@ class CnesController extends Controller
 
             // Verificar upload
             if (!isset($_FILES['arquivo_zip']) || $_FILES['arquivo_zip']['error'] !== UPLOAD_ERR_OK) {
-                $erros = [1=>'Arquivo muito grande (php.ini)', 2=>'Arquivo muito grande (form)', 3=>'Upload incompleto', 4=>'Nenhum arquivo enviado'];
-                $erro  = $erros[$_FILES['arquivo_zip']['error'] ?? 4] ?? 'Erro desconhecido no upload';
-                echo json_encode(['success' => false, 'error' => $erro]);
+                $erros = [
+                    1 => 'Arquivo muito grande (limite php.ini: upload_max_filesize)',
+                    2 => 'Arquivo muito grande (limite do formulário)',
+                    3 => 'Upload incompleto — tente novamente',
+                    4 => 'Nenhum arquivo enviado',
+                    6 => 'Pasta temporária não encontrada no servidor',
+                    7 => 'Falha ao gravar arquivo no disco',
+                ];
+                $errCode = $_FILES['arquivo_zip']['error'] ?? 4;
+                $errMsg  = $erros[$errCode] ?? 'Erro desconhecido no upload (código ' . $errCode . ')';
+                echo json_encode(['success' => false, 'error' => $errMsg]);
                 return;
             }
 
@@ -366,141 +381,83 @@ class CnesController extends Controller
                 return;
             }
 
-            // Criar diretório temporário para extracção
-            $tmpDir = sys_get_temp_dir() . '/cnes_import_' . time();
-            mkdir($tmpDir, 0755, true);
-
-            // Mover ZIP para tmp
-            $zipPath = $tmpDir . '/base_cnes.zip';
-            move_uploaded_file($arquivo['tmp_name'], $zipPath);
-
-            // Extrair ZIP
-            $zip = new \ZipArchive();
-            if ($zip->open($zipPath) !== true) {
-                // Tentar com 7zip se ZipArchive falhar
-                $output = shell_exec("7z e " . escapeshellarg($zipPath) . " -o" . escapeshellarg($tmpDir) . " *.csv -y 2>&1");
-                if (!$output || !glob($tmpDir . '/*.csv')) {
-                    echo json_encode(['success' => false, 'error' => 'Não foi possível extrair o ZIP. Verifique se o arquivo é válido.']);
-                    return;
-                }
-            } else {
-                $zip->extractTo($tmpDir);
-                $zip->close();
-            }
-
-            // Verificar se os CSVs principais existem
-            $csvEstab = glob($tmpDir . '/tbEstabelecimento*.csv');
-            if (!$csvEstab) {
-                // Tentar em subdiretório
-                $csvEstab = glob($tmpDir . '/**/tbEstabelecimento*.csv');
-                if ($csvEstab) {
-                    $tmpDir = dirname($csvEstab[0]);
-                }
-            }
-
-            if (!$csvEstab) {
-                echo json_encode(['success' => false, 'error' => 'Arquivo tbEstabelecimento*.csv não encontrado no ZIP. Verifique se é a base CNES correta.']);
+            // Salvar ZIP no storage permanente (não no /tmp que pode ser limpado)
+            $storageDir = dirname(__DIR__, 2) . '/storage';
+            $zipPath    = $storageDir . '/cnes_upload_' . date('YmdHis') . '.zip';
+            if (!move_uploaded_file($arquivo['tmp_name'], $zipPath)) {
+                echo json_encode(['success' => false, 'error' => 'Falha ao salvar o arquivo no servidor. Verifique as permissões de escrita em /storage.']);
                 return;
             }
 
-            // Filtros opcionais
-            $uf          = strtoupper(trim($_POST['uf'] ?? ''));
+            // Detectar competência pelo nome do arquivo (ex: BASE_DE_DADOS_CNES_202602.ZIP)
+            preg_match('/(\d{6})/', $arquivo['name'], $mComp);
+            $competencia  = $mComp[1] ?? date('Ym');
+            $uf           = strtoupper(trim($_POST['uf'] ?? ''));
             $apenasImagem = !empty($_POST['apenas_imagem']);
 
-            // Executar script de importação em background
-            $scriptPath = dirname(__DIR__, 2) . '/database/importar_cnes.php';
-            $phpBin     = PHP_BINARY ?: 'php';
-            $cmd        = sprintf(
-                '%s %s --dir=%s %s %s > %s/import.log 2>&1 &',
-                escapeshellarg($phpBin),
-                escapeshellarg($scriptPath),
-                escapeshellarg($tmpDir),
-                $uf ? '--uf=' . escapeshellarg($uf) : '',
-                $apenasImagem ? '--apenas-imagem' : '',
-                escapeshellarg($tmpDir)
-            );
-
-            // Registrar importação como 'processando'
-            $pdo = $this->estabModel->getPdo();
-            // Detectar competência pelo nome do arquivo
-            preg_match('/(\d{6})\.csv$/', basename($csvEstab[0]), $mComp);
-            $competencia = $mComp[1] ?? date('Ym');
-
-            try {
-                $pdo->prepare("INSERT INTO cnes_importacoes (competencia, status, usuario_id, log) VALUES (?, 'processando', ?, ?) ON DUPLICATE KEY UPDATE status='processando', iniciado_em=NOW(), log=NULL, usuario_id=?")
-                    ->execute([$competencia, $usuario->id, "Iniciado em " . date('d/m/Y H:i:s'), $usuario->id]);
-            } catch (\Throwable $e) {
-                // Tabela pode não existir ainda
-            }
-
-            // Salvar caminho do tmp para o processo em background usar
-            file_put_contents($tmpDir . '/config.json', json_encode([
-                'dir'          => $tmpDir,
+            // Processar importação via CnesImportService
+            $service = new CnesImportService();
+            $service->importarZip($zipPath, [
                 'uf'           => $uf,
                 'apenas_imagem'=> $apenasImagem,
                 'competencia'  => $competencia,
-                'usuario_id'   => $usuario->id,
-            ]));
+            ]);
 
-            exec($cmd);
+            // Limpar ZIP após importação
+            @unlink($zipPath);
+
+            $progresso = $service->lerProgresso();
 
             echo json_encode([
-                'success'     => true,
-                'competencia' => $competencia,
-                'message'     => "Importação iniciada para competência {$competencia}. Acompanhe o progresso abaixo.",
-                'log_url'     => '/cnes/importar/status?competencia=' . $competencia,
+                'success'      => true,
+                'competencia'  => $competencia,
+                'total_estab'  => $progresso['estab'] ?? 0,
+                'total_equip'  => $progresso['equip'] ?? 0,
+                'total_prof'   => $progresso['prof']  ?? 0,
+                'message'      => 'Importação concluída com sucesso!',
             ]);
+
         } catch (\Throwable $e) {
             $this->logger->error('CnesController::importarUpload - ' . $e->getMessage());
+            // Gravar erro no arquivo de progresso para o polling detectar
+            $progressFile = dirname(__DIR__, 2) . '/storage/cnes_import_progress.json';
+            file_put_contents($progressFile, json_encode([
+                'status' => 'erro',
+                'etapa'  => 'Erro: ' . $e->getMessage(),
+                'pct'    => 0,
+                'erros'  => [$e->getMessage()],
+            ]));
             http_response_code(500);
             echo json_encode(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()]);
         }
     }
 
     /**
-     * GET /cnes/importar/status?competencia=202602
-     * Retorna o status atual da importação (polling AJAX).
+     * GET /cnes/importar/status
+     * Retorna o progresso atual da importação via arquivo JSON (polling AJAX).
+     * Também retorna contagens do banco para exibição em tempo real.
      */
     public function importarStatus(): void
     {
         header('Content-Type: application/json');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
         try {
-            $competencia = trim($_GET['competencia'] ?? '');
-            $pdo = $this->estabModel->getPdo();
+            $service   = new CnesImportService();
+            $progresso = $service->lerProgresso();
 
-            if ($competencia) {
-                $stmt = $pdo->prepare("SELECT * FROM cnes_importacoes WHERE competencia = ?");
-                $stmt->execute([$competencia]);
-            } else {
-                $stmt = $pdo->query("SELECT * FROM cnes_importacoes ORDER BY iniciado_em DESC LIMIT 1");
+            // Adicionar contagens do banco se disponível
+            try {
+                $pdo = $this->estabModel->getPdo();
+                $progresso['db_estab'] = (int)$pdo->query("SELECT COUNT(*) FROM cnes_estabelecimentos")->fetchColumn();
+                $progresso['db_equip'] = (int)$pdo->query("SELECT COUNT(*) FROM cnes_equipamentos")->fetchColumn();
+                $progresso['db_prof']  = (int)$pdo->query("SELECT COUNT(*) FROM cnes_profissionais")->fetchColumn();
+            } catch (\Throwable $e) {
+                $progresso['db_estab'] = 0;
+                $progresso['db_equip'] = 0;
+                $progresso['db_prof']  = 0;
             }
 
-            $importacao = $stmt->fetch(\PDO::FETCH_OBJ);
-
-            if (!$importacao) {
-                echo json_encode(['status' => 'nao_iniciado', 'message' => 'Nenhuma importação encontrada.']);
-                return;
-            }
-
-            // Contar registros atuais
-            $totalEstab = (int)$pdo->query("SELECT COUNT(*) FROM cnes_estabelecimentos")->fetchColumn();
-
-            echo json_encode([
-                'status'       => $importacao->status,
-                'competencia'  => $importacao->competencia,
-                'total_estab'  => $importacao->total_estab ?: $totalEstab,
-                'total_equip'  => $importacao->total_equip,
-                'total_prof'   => $importacao->total_prof,
-                'log'          => $importacao->log,
-                'iniciado_em'  => $importacao->iniciado_em,
-                'concluido_em' => $importacao->concluido_em,
-                'message'      => match($importacao->status) {
-                    'processando' => 'Importação em andamento... (' . number_format($totalEstab) . ' estabelecimentos até agora)',
-                    'concluido'   => 'Importação concluída com sucesso!',
-                    'erro'        => 'Erro durante a importação.',
-                    default       => 'Status desconhecido',
-                },
-            ]);
+            echo json_encode($progresso);
         } catch (\Throwable $e) {
             http_response_code(500);
             echo json_encode(['status' => 'erro', 'error' => $e->getMessage()]);

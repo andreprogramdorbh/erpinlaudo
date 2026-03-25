@@ -417,15 +417,32 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function verificarStatus() {
-        const url = '/cnes/importar/status' + (competenciaAtual ? '?competencia=' + competenciaAtual : '');
-        fetch(url)
+        fetch('/cnes/importar/status', { cache: 'no-store' })
         .then(r => r.json())
         .then(data => {
-            // Atualizar contadores
-            document.getElementById('cntEstab').textContent = Number(data.total_estab || 0).toLocaleString('pt-BR');
-            document.getElementById('cntEquip').textContent = Number(data.total_equip || 0).toLocaleString('pt-BR');
-            document.getElementById('cntProf').textContent  = Number(data.total_prof  || 0).toLocaleString('pt-BR');
-            document.getElementById('progressMsg').textContent = data.message || '';
+            // Atualizar contadores com campos do CnesImportService
+            const estab = data.estab || data.db_estab || data.total_estab || 0;
+            const equip = data.equip || data.db_equip || data.total_equip || 0;
+            const prof  = data.prof  || data.db_prof  || data.total_prof  || 0;
+
+            document.getElementById('cntEstab').textContent = Number(estab).toLocaleString('pt-BR');
+            document.getElementById('cntEquip').textContent = Number(equip).toLocaleString('pt-BR');
+            document.getElementById('cntProf').textContent  = Number(prof).toLocaleString('pt-BR');
+
+            // Mensagem da etapa atual
+            const msg = data.etapa || data.message || '';
+            document.getElementById('progressMsg').textContent = msg;
+
+            // Barra de progresso com percentual real
+            const pct = data.pct || 0;
+            if (pct > 0) {
+                document.getElementById('progressBar').style.width = Math.min(pct, 99) + '%';
+            } else {
+                // Animação indeterminada
+                const bar = document.getElementById('progressBar');
+                const w = parseFloat(bar.style.width || '0');
+                bar.style.width = Math.min(w + 1.5, 90) + '%';
+            }
 
             const badge = document.getElementById('progressBadge');
 
@@ -440,8 +457,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 Swal.fire({
                     icon: 'success',
                     title: 'Importação concluída!',
-                    text: 'A base CNES foi importada com sucesso.',
-                    confirmButtonText: 'Ver listagem',
+                    html: `<strong>${Number(estab).toLocaleString('pt-BR')}</strong> estabelecimentos, <strong>${Number(equip).toLocaleString('pt-BR')}</strong> equipamentos e <strong>${Number(prof).toLocaleString('pt-BR')}</strong> profissionais importados.`,
+                    confirmButtonText: 'Ver listagem CNES',
                 }).then(() => window.location.href = '/cnes');
             } else if (data.status === 'erro') {
                 clearInterval(pollingInterval);
@@ -450,16 +467,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('progressTitle').textContent = 'Erro na importação';
                 btnImportar.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Tentar Novamente';
                 btnImportar.disabled = false;
-                Swal.fire('Erro na importação', data.log || 'Verifique o log do servidor.', 'error');
-            } else {
-                // Animação de progresso indeterminado
-                const bar = document.getElementById('progressBar');
-                const w = parseFloat(bar.style.width || '0');
-                bar.style.width = Math.min(w + 2, 90) + '%';
+                const erros = data.erros ? data.erros.join('<br>') : (data.etapa || 'Verifique o log do servidor.');
+                Swal.fire('Erro na importação', erros, 'error');
             }
         })
         .catch(() => {
-            // Silencioso — pode ser timeout temporário
+            // Silencioso — pode ser timeout temporário durante processamento
         });
     }
 
