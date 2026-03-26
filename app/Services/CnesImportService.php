@@ -238,10 +238,10 @@ class CnesImportService
                  :co_estado, :co_municipio,
                  :nu_telefone, :nu_fax, :no_email, :no_url,
                  :nu_lat, :nu_lon,
-                 :co_nat_jur, :co_nat_jur,
+                 :co_nat_jur, :co_nat_jur2,
                  :st_conexao,
-                 :nu_cpf_dir, :nu_cpf_dir,
-                 :reg_dir, :reg_dir,
+                 :nu_cpf_dir, :co_cpf_dir_cln,
+                 :reg_dir, :reg_dir_cln,
                  :co_motivo, :dt_atu, :competencia,
                  NOW(), NOW())
                 ON DUPLICATE KEY UPDATE
@@ -333,9 +333,12 @@ class CnesImportService
                 ':nu_lat'           => $this->col($row, 'NU_LATITUDE') ?: null,
                 ':nu_lon'           => $this->col($row, 'NU_LONGITUDE') ?: null,
                 ':co_nat_jur'       => $this->col($row, 'CO_NATUREZA_JUR'),
+                ':co_nat_jur2'      => $this->col($row, 'CO_NATUREZA_JUR'),
                 ':st_conexao'       => $this->col($row, 'ST_CONEXAO_INTERNET'),
                 ':nu_cpf_dir'       => $this->col($row, 'CO_CPFDIRETORCLN'),
+                ':co_cpf_dir_cln'   => $this->col($row, 'CO_CPFDIRETORCLN'),
                 ':reg_dir'          => $this->col($row, 'REG_DIRETORCLN'),
+                ':reg_dir_cln'      => $this->col($row, 'REG_DIRETORCLN'),
                 ':co_motivo'        => $this->col($row, 'CO_MOTIVO_DESAB') ?: null,
                 ':dt_atu'           => $dtAtu,
                 ':competencia'      => $competencia,
@@ -541,8 +544,8 @@ class CnesImportService
                  dt_atualizacao, competencia, created_at, updated_at)
                 VALUES
                 (:co_cnes, :co_unidade, :co_prof, :no_prof,
-                 :co_cbo, :co_conselho, :nu_registro, :nu_registro,
-                 :sg_uf, :sg_uf,
+                 :co_cbo, :co_conselho, :nu_registro, :nu_registro2,
+                 :sg_uf, :sg_uf2,
                  :tp_sus, :ind_vinc,
                  :ch_amb, :ch_outros,
                  :dt_atu, :competencia, NOW(), NOW())
@@ -595,7 +598,9 @@ class CnesImportService
                 ':co_cbo'     => $this->col($row, 'CO_CBO'),
                 ':co_conselho'=> $this->col($row, 'CO_CONSELHO_CLASSE'),
                 ':nu_registro'=> $this->col($row, 'NU_REGISTRO'),
+                ':nu_registro2'=> $this->col($row, 'NU_REGISTRO'),
                 ':sg_uf'      => $this->col($row, 'SG_UF_CRM'),
+                ':sg_uf2'     => $this->col($row, 'SG_UF_CRM'),
                 ':tp_sus'     => $this->col($row, 'TP_SUS_NAO_SUS'),
                 ':ind_vinc'   => $this->col($row, 'IND_VINCULACAO'),
                 ':ch_amb'     => (int)($this->col($row, 'QT_CARGA_HORARIA_AMBULATORIAL') ?? 0),
