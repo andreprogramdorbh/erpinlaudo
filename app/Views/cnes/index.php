@@ -10,6 +10,27 @@ UI::sectionHeader(
 );
 
 $ufsDisponiveis = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+// Mapeamento código IBGE → sigla UF (campo co_estado_gestor do CSV CNES)
+$ibgeParaUf = [
+    '11'=>'RO','12'=>'AC','13'=>'AM','14'=>'RR','15'=>'PA','16'=>'AP','17'=>'TO',
+    '21'=>'MA','22'=>'PI','23'=>'CE','24'=>'RN','25'=>'PB','26'=>'PE','27'=>'AL','28'=>'SE','29'=>'BA',
+    '31'=>'MG','32'=>'ES','33'=>'RJ','35'=>'SP',
+    '41'=>'PR','42'=>'SC','43'=>'RS',
+    '50'=>'MS','51'=>'MT','52'=>'GO','53'=>'DF',
+];
+
+// Natureza jurídica → Público ou Privado
+// Códigos IBGE de natureza jurídica: 1xxx = Administração Pública, 2xxx+ = Privado
+function cnesNaturezaTipo(?string $co): string {
+    if (!$co) return '';
+    $n = (int)$co;
+    // Faixa 1000-1999 = Administração Pública (Federal, Estadual, Municipal)
+    if ($n >= 1000 && $n <= 1999) return 'publico';
+    // Faixa 1100-1244 = Federal; 1203-1244 = Estadual; 1244-1260 = Municipal
+    // Também: 1023, 1031, 1040, 1058, 1066, 1074, 1082, 1104, 1112, 1120, 1139, 1147, 1155, 1163, 1171, 1180, 1198, 1201, 1210, 1228, 1236, 1244, 1252, 1260, 1279, 1287, 1295
+    return 'privado';
+}
 ?>
 
 <?php if (!empty($erro)): ?>
@@ -283,8 +304,16 @@ $ufsDisponiveis = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','
                 <label class="form-label small fw-bold text-muted">Estado (UF)</label>
                 <select name="uf" class="form-select">
                     <option value="">Todos</option>
-                    <?php foreach ($ufsDisponiveis as $uf): ?>
-                        <option value="<?php echo $uf; ?>" <?php echo ($filtros['uf'] ?? '') === $uf ? 'selected' : ''; ?>>
+                    <?php
+                    // O banco armazena código IBGE (ex: 33) ou sigla (ex: RJ) dependendo da versão do CSV
+                    // Montamos opções com ambos os formatos para compatibilidade
+                    $ufAtual = $filtros['uf'] ?? '';
+                    $ibgeInverso = array_flip($ibgeParaUf); // sigla => codigo
+                    foreach ($ufsDisponiveis as $uf):
+                        $codigoIbge = $ibgeInverso[$uf] ?? $uf;
+                        $selecionado = ($ufAtual === $uf || $ufAtual === $codigoIbge) ? 'selected' : '';
+                    ?>
+                        <option value="<?php echo $uf; ?>" <?php echo $selecionado; ?>>
                             <?php echo $uf; ?>
                         </option>
                     <?php endforeach; ?>
@@ -362,19 +391,39 @@ $ufsDisponiveis = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-4">Estabelecimento</th>
-                        <th>CNES</th>
+                        <th class="ps-3" style="width:70px">CNES</th>
+                        <th>Estabelecimento</th>
                         <th>CNPJ</th>
-                        <th>UF</th>
+                        <th style="width:55px">UF</th>
+                        <th style="width:80px">Tipo</th>
                         <th>Telefone</th>
-                        <th class="text-center">Status</th>
-                        <th class="text-center">Ações</th>
+                        <th class="text-center" style="width:90px">Status</th>
+                        <th class="text-center" style="width:90px">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($resultado['registros'] as $estab): ?>
+                    <?php foreach ($resultado['registros'] as $estab):
+                        // Converter código IBGE para sigla UF
+                        $coEstado = trim((string)($estab->co_estado_gestor ?? ''));
+                        $sgUf = $ibgeParaUf[$coEstado] ?? ($coEstado ?: null);
+
+                        // Aplicar máscara no CNPJ: XX.XXX.XXX/XXXX-XX
+                        $cnpjRaw = preg_replace('/\D/', '', (string)($estab->nu_cnpj ?? ''));
+                        $cnpjFormatado = strlen($cnpjRaw) === 14
+                            ? substr($cnpjRaw,0,2).'.'.substr($cnpjRaw,2,3).'.'.substr($cnpjRaw,5,3).'/'.substr($cnpjRaw,8,4).'-'.substr($cnpjRaw,12,2)
+                            : ($estab->nu_cnpj ? htmlspecialchars($estab->nu_cnpj) : '—');
+
+                        // Determinar Público / Privado
+                        $coNat = trim((string)($estab->co_natureza_jur ?? $estab->co_natureza_juridica ?? ''));
+                        $tipoNat = cnesNaturezaTipo($coNat);
+                    ?>
                     <tr>
-                        <td class="ps-4">
+                        <td class="ps-3">
+                            <span class="badge bg-primary-subtle text-primary fw-semibold">
+                                <?php echo htmlspecialchars($estab->co_cnes); ?>
+                            </span>
+                        </td>
+                        <td>
                             <div class="fw-semibold text-dark">
                                 <?php echo htmlspecialchars($estab->no_razao_social); ?>
                             </div>
@@ -384,19 +433,29 @@ $ufsDisponiveis = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','
                             </small>
                             <?php endif; ?>
                         </td>
-                        <td>
-                            <span class="badge bg-primary-subtle text-primary fw-semibold">
-                                <?php echo htmlspecialchars($estab->co_cnes); ?>
-                            </span>
-                        </td>
-                        <td class="text-muted small">
-                            <?php echo htmlspecialchars($estab->nu_cnpj ?? '—'); ?>
+                        <td class="text-muted small font-monospace">
+                            <?php echo $cnpjFormatado; ?>
                         </td>
                         <td>
-                            <?php if ($estab->co_estado_gestor): ?>
-                            <span class="badge bg-secondary-subtle text-secondary">
-                                <?php echo htmlspecialchars($estab->co_estado_gestor); ?>
+                            <?php if ($sgUf): ?>
+                            <span class="badge bg-secondary-subtle text-secondary fw-semibold">
+                                <?php echo htmlspecialchars($sgUf); ?>
                             </span>
+                            <?php else: ?>
+                            <span class="text-muted small">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($tipoNat === 'publico'): ?>
+                            <span class="badge bg-info-subtle text-info" title="Código: <?php echo htmlspecialchars($coNat); ?>">
+                                <i class="fas fa-landmark me-1"></i>Público
+                            </span>
+                            <?php elseif ($tipoNat === 'privado'): ?>
+                            <span class="badge bg-warning-subtle text-warning" title="Código: <?php echo htmlspecialchars($coNat); ?>">
+                                <i class="fas fa-building me-1"></i>Privado
+                            </span>
+                            <?php else: ?>
+                            <span class="text-muted small">—</span>
                             <?php endif; ?>
                         </td>
                         <td class="text-muted small">
