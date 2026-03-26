@@ -755,4 +755,81 @@ class CnesImportService
         $cmd = sprintf('rm -rf %s', escapeshellarg($dir));
         exec($cmd);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Importação a partir de diretório com CSVs já extraídos
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Importa a base CNES a partir de um diretório com CSVs já extraídos.
+     * Ideal para quando os arquivos já estão no servidor (ex: /tmp/cnes_base/).
+     *
+     * @param string $dir     Caminho absoluto do diretório com os CSVs
+     * @param array  $opcoes  ['uf' => 'MG', 'apenas_imagem' => false, 'competencia' => '202602']
+     */
+    public function importarDiretorio(string $dir, array $opcoes = []): void
+    {
+        $uf           = strtoupper(trim($opcoes['uf'] ?? ''));
+        $apenasImagem = (bool)($opcoes['apenas_imagem'] ?? false);
+        $competencia  = $opcoes['competencia'] ?? date('Ym');
+
+        if (!is_dir($dir)) {
+            throw new \RuntimeException("Diretório não encontrado: {$dir}");
+        }
+
+        $csvs = glob($dir . '/*.csv');
+        if (empty($csvs)) {
+            throw new \RuntimeException("Nenhum arquivo CSV encontrado em: {$dir}");
+        }
+
+        try {
+            $this->gravaProgresso([
+                'status'      => 'importando',
+                'etapa'       => 'Iniciando importação dos CSVs do servidor...',
+                'pct'         => 2,
+                'estab'       => 0,
+                'equip'       => 0,
+                'prof'        => 0,
+                'erros'       => [],
+                'iniciado_em' => date('Y-m-d H:i:s'),
+                'dir'         => $dir,
+                'total_csvs'  => count($csvs),
+            ]);
+
+            $importId = $this->registrarImportacao($competencia);
+
+            // Etapa 1: Estabelecimentos
+            $this->gravaProgresso(['etapa' => 'Importando estabelecimentos...', 'pct' => 5]);
+            $totalEstab = $this->importarEstabelecimentos($dir, $uf, $competencia, $importId);
+
+            // Etapa 2: Equipamentos
+            $this->gravaProgresso(['etapa' => 'Importando equipamentos...', 'pct' => 60, 'estab' => $totalEstab]);
+            $totalEquip = $this->importarEquipamentos($dir, $uf, $apenasImagem, $competencia, $importId);
+
+            // Etapa 3: Profissionais
+            $this->gravaProgresso(['etapa' => 'Importando profissionais...', 'pct' => 75, 'equip' => $totalEquip]);
+            $totalProf = $this->importarProfissionais($dir, $uf, $competencia, $importId);
+
+            // Finalizar
+            $this->finalizarImportacao($importId, $totalEstab, $totalEquip, $totalProf);
+            $this->gravaProgresso([
+                'status'       => 'concluido',
+                'etapa'        => 'Importação concluída com sucesso!',
+                'pct'          => 100,
+                'estab'        => $totalEstab,
+                'equip'        => $totalEquip,
+                'prof'         => $totalProf,
+                'concluido_em' => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            $this->gravaProgresso([
+                'status' => 'erro',
+                'etapa'  => 'Erro: ' . $e->getMessage(),
+                'pct'    => 0,
+                'erros'  => [$e->getMessage()],
+            ]);
+            throw $e;
+        }
+        // Não limpar o diretório — os arquivos pertencem ao servidor
+    }
 }

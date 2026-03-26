@@ -465,6 +465,123 @@ class CnesController extends Controller
     }
 
     // ────────────────────────────────────────────────────────────────────────────────
+    // Importação direta do servidor (CSVs em /tmp/cnes_base/)
+    // ────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /cnes/importar/servidor
+     * Importa os CSVs já extraídos no servidor (sem upload de ZIP).
+     * Detecta automaticamente o diretório /tmp/cnes_base/ ou usa o path informado.
+     */
+    public function importarDoServidor(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $body         = json_decode(file_get_contents('php://input'), true) ?? [];
+            $uf           = strtoupper(trim($body['uf'] ?? $_POST['uf'] ?? ''));
+            $apenasImagem = (bool)($body['apenas_imagem'] ?? $_POST['apenas_imagem'] ?? false);
+            $competencia  = trim($body['competencia'] ?? $_POST['competencia'] ?? date('Ym'));
+
+            // Diretórios candidatos onde os CSVs podem estar
+            $candidatos = [
+                $body['dir'] ?? '',
+                '/tmp/cnes_base',
+                dirname(__DIR__, 2) . '/tmp/cnes_base',
+                '/home2/inlaud99/erp.inlaudo.com.br/tmp/cnes_base',
+                sys_get_temp_dir() . '/cnes_base',
+            ];
+
+            $dirEncontrado = null;
+            foreach ($candidatos as $candidato) {
+                if ($candidato && is_dir($candidato) && !empty(glob($candidato . '/*.csv'))) {
+                    $dirEncontrado = $candidato;
+                    break;
+                }
+            }
+
+            if (!$dirEncontrado) {
+                echo json_encode([
+                    'success' => false,
+                    'error'   => 'Nenhum diretório com CSVs CNES encontrado. Verifique se os arquivos estão em /tmp/cnes_base/',
+                    'candidatos_verificados' => array_filter($candidatos),
+                ]);
+                return;
+            }
+
+            // Iniciar importação em background usando ignore_user_abort
+            ignore_user_abort(true);
+            set_time_limit(0);
+            ini_set('memory_limit', '512M');
+
+            // Responder imediatamente ao browser
+            echo json_encode([
+                'success'  => true,
+                'message'  => 'Importação iniciada! Acompanhe o progresso abaixo.',
+                'dir'      => $dirEncontrado,
+                'uf'       => $uf ?: 'Todos os estados',
+                'csvs'     => count(glob($dirEncontrado . '/*.csv')),
+            ]);
+
+            // Fechar conexão HTTP para o browser receber a resposta imediatamente
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                ob_end_flush();
+                flush();
+            }
+
+            // Processar importação após fechar a conexão HTTP
+            $service = new \App\Services\CnesImportService();
+            $service->importarDiretorio($dirEncontrado, [
+                'uf'           => $uf,
+                'apenas_imagem'=> $apenasImagem,
+                'competencia'  => $competencia,
+            ]);
+
+        } catch (\Throwable $e) {
+            $this->logger->error('CnesController::importarDoServidor - ' . $e->getMessage());
+            // Se ainda não enviou resposta, enviar erro
+            if (!headers_sent()) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+        }
+    }
+
+    /**
+     * GET /cnes/importar/detectar
+     * Detecta se há CSVs disponíveis no servidor e retorna informações.
+     */
+    public function detectarCsvs(): void
+    {
+        header('Content-Type: application/json');
+        $candidatos = [
+            '/tmp/cnes_base',
+            dirname(__DIR__, 2) . '/tmp/cnes_base',
+            '/home2/inlaud99/erp.inlaudo.com.br/tmp/cnes_base',
+            sys_get_temp_dir() . '/cnes_base',
+        ];
+
+        $resultado = [];
+        foreach ($candidatos as $dir) {
+            if (is_dir($dir)) {
+                $csvs = glob($dir . '/*.csv');
+                $resultado[] = [
+                    'dir'       => $dir,
+                    'existe'    => true,
+                    'total_csv' => count($csvs),
+                    'csvs'      => array_map('basename', $csvs),
+                    'tem_estab' => !empty(glob($dir . '/tbEstabelecimento*.csv')),
+                ];
+            } else {
+                $resultado[] = ['dir' => $dir, 'existe' => false, 'total_csv' => 0];
+            }
+        }
+
+        echo json_encode(['candidatos' => $resultado]);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────────
     // API — BUSCA RÁPIDA (autocomplete)
     // ────────────────────────────────────────────────────────────────────────────────
     /**

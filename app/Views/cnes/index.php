@@ -21,34 +21,249 @@ $ufsDisponiveis = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','
 
 <?php if (!$baseImportada): ?>
 <!-- Estado: base não importada -->
-<div class="card border-0 shadow-sm">
-    <div class="card-body text-center py-5">
-        <div class="mb-4">
-            <i class="fas fa-hospital fa-4x text-muted opacity-50"></i>
-        </div>
-        <h4 class="fw-bold text-dark mb-2">Base CNES não importada</h4>
-        <p class="text-muted mb-4 mx-auto" style="max-width:520px">
-            A base de dados CNES (Cadastro Nacional de Estabelecimentos de Saúde) ainda não foi
-            importada para este sistema. Siga as instruções abaixo para realizar a importação.
-        </p>
-        <div class="card border-0 bg-light text-start mx-auto" style="max-width:600px">
-            <div class="card-body p-4">
-                <h6 class="fw-bold mb-3"><i class="fas fa-terminal me-2 text-primary"></i>Como importar</h6>
-                <ol class="mb-0 small text-muted">
-                    <li class="mb-2">Acesse o servidor via SSH ou Terminal do hPanel</li>
-                    <li class="mb-2">Execute a migration SQL:<br>
-                        <code class="d-block bg-white border rounded p-2 mt-1">mysql -u usuario -p banco &lt; database/migrations/2026-03-25_cnes_global.sql</code>
-                    </li>
-                    <li class="mb-2">Extraia o ZIP da base CNES para um diretório (ex: <code>/tmp/cnes_base/</code>)</li>
-                    <li class="mb-2">Execute o script de importação:<br>
-                        <code class="d-block bg-white border rounded p-2 mt-1">php database/importar_cnes.php --dir=/tmp/cnes_base --uf=MG</code>
-                    </li>
-                    <li>Recarregue esta página após a importação.</li>
-                </ol>
+<div class="card border-0 shadow-sm mb-4" id="card-importacao">
+    <div class="card-body p-4">
+
+        <!-- Cabeçalho -->
+        <div class="d-flex align-items-center mb-4">
+            <div class="rounded-3 bg-primary bg-opacity-10 p-3 me-3">
+                <i class="fas fa-database text-primary fa-2x"></i>
+            </div>
+            <div>
+                <h5 class="fw-bold mb-1">Importar Base CNES</h5>
+                <p class="text-muted small mb-0">Cadastro Nacional de Estabelecimentos de Saúde — DATASUS/CNES</p>
             </div>
         </div>
+
+        <!-- Detecção automática -->
+        <div id="bloco-deteccao" class="mb-4">
+            <div class="alert alert-info d-flex align-items-center" id="msg-detectando">
+                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                Verificando arquivos CNES no servidor...
+            </div>
+            <div id="msg-detectado" class="d-none"></div>
+        </div>
+
+        <!-- Opções de importação -->
+        <div id="bloco-opcoes" class="d-none">
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Filtrar por UF <span class="text-muted fw-normal">(opcional)</span></label>
+                    <select id="import-uf" class="form-select">
+                        <option value="">Todos os estados</option>
+                        <?php foreach ($ufsDisponiveis as $uf): ?>
+                            <option value="<?php echo $uf; ?>"><?php echo $uf; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Competência</label>
+                    <input type="text" id="import-competencia" class="form-control" value="<?php echo date('Ym'); ?>" placeholder="202602">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="import-apenas-imagem">
+                        <label class="form-check-label small" for="import-apenas-imagem">
+                            Apenas Diagnóstico por Imagem
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botões de ação -->
+            <div class="d-flex gap-2 flex-wrap">
+                <button id="btn-importar-servidor" class="btn btn-primary btn-lg">
+                    <i class="fas fa-play me-2"></i>Iniciar Importação do Servidor
+                </button>
+                <a href="/cnes/importar" class="btn btn-outline-secondary btn-lg">
+                    <i class="fas fa-upload me-2"></i>Upload de ZIP
+                </a>
+            </div>
+        </div>
+
+        <!-- Sem CSVs encontrados -->
+        <div id="bloco-sem-csv" class="d-none">
+            <div class="alert alert-warning">
+                <i class="fas fa-triangle-exclamation me-2"></i>
+                <strong>Nenhum arquivo CSV encontrado no servidor.</strong>
+                Os arquivos CNES precisam estar extraídos em <code>/tmp/cnes_base/</code>.
+            </div>
+            <div class="d-flex gap-2">
+                <a href="/cnes/importar" class="btn btn-primary">
+                    <i class="fas fa-upload me-2"></i>Fazer Upload do ZIP
+                </a>
+            </div>
+        </div>
+
+        <!-- Progresso da importação -->
+        <div id="bloco-progresso" class="d-none mt-4">
+            <hr>
+            <h6 class="fw-bold mb-3"><i class="fas fa-spinner fa-spin me-2 text-primary"></i>Importação em andamento</h6>
+            <div class="mb-2 d-flex justify-content-between small text-muted">
+                <span id="prog-etapa">Iniciando...</span>
+                <span id="prog-pct">0%</span>
+            </div>
+            <div class="progress mb-3" style="height:12px">
+                <div id="prog-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                     role="progressbar" style="width:0%"></div>
+            </div>
+            <div class="row g-3 text-center">
+                <div class="col-4">
+                    <div class="card border-0 bg-light p-3">
+                        <div class="fw-bold fs-5 text-primary" id="prog-estab">0</div>
+                        <div class="small text-muted">Estabelecimentos</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="card border-0 bg-light p-3">
+                        <div class="fw-bold fs-5 text-success" id="prog-equip">0</div>
+                        <div class="small text-muted">Equipamentos</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="card border-0 bg-light p-3">
+                        <div class="fw-bold fs-5 text-info" id="prog-prof">0</div>
+                        <div class="small text-muted">Profissionais</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Concluído -->
+        <div id="bloco-concluido" class="d-none mt-4">
+            <div class="alert alert-success d-flex align-items-center">
+                <i class="fas fa-check-circle fa-2x me-3"></i>
+                <div>
+                    <strong>Importação concluída com sucesso!</strong><br>
+                    <span id="msg-concluido"></span>
+                </div>
+            </div>
+            <a href="/cnes" class="btn btn-primary">
+                <i class="fas fa-list me-2"></i>Ver Base CNES
+            </a>
+        </div>
+
+        <!-- Erro -->
+        <div id="bloco-erro" class="d-none mt-4">
+            <div class="alert alert-danger">
+                <i class="fas fa-times-circle me-2"></i>
+                <strong>Erro na importação:</strong> <span id="msg-erro"></span>
+            </div>
+            <button class="btn btn-outline-danger" onclick="location.reload()">
+                <i class="fas fa-redo me-2"></i>Tentar novamente
+            </button>
+        </div>
+
     </div>
 </div>
+
+<script>
+(function() {
+    var pollingInterval = null;
+
+    // Detectar CSVs no servidor ao carregar a página
+    fetch('/cnes/importar/detectar')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('msg-detectando').classList.add('d-none');
+            var encontrado = null;
+            if (data.candidatos) {
+                for (var i = 0; i < data.candidatos.length; i++) {
+                    if (data.candidatos[i].existe && data.candidatos[i].total_csv > 0) {
+                        encontrado = data.candidatos[i];
+                        break;
+                    }
+                }
+            }
+            if (encontrado) {
+                var html = '<div class="alert alert-success d-flex align-items-center">' +
+                    '<i class="fas fa-check-circle fa-lg me-3 text-success"></i>' +
+                    '<div><strong>' + encontrado.total_csv + ' arquivos CSV encontrados</strong><br>' +
+                    '<code class="small">' + encontrado.dir + '</code>' +
+                    (encontrado.tem_estab ? ' &nbsp;<span class="badge bg-success">tbEstabelecimento ✓</span>' : '') +
+                    '</div></div>';
+                document.getElementById('msg-detectado').innerHTML = html;
+                document.getElementById('msg-detectado').classList.remove('d-none');
+                document.getElementById('bloco-opcoes').classList.remove('d-none');
+            } else {
+                document.getElementById('bloco-sem-csv').classList.remove('d-none');
+            }
+        })
+        .catch(function() {
+            document.getElementById('msg-detectando').classList.add('d-none');
+            document.getElementById('bloco-sem-csv').classList.remove('d-none');
+        });
+
+    // Botão de importação do servidor
+    document.getElementById('btn-importar-servidor').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Iniciando...';
+
+        var uf           = document.getElementById('import-uf').value;
+        var competencia  = document.getElementById('import-competencia').value;
+        var apenasImagem = document.getElementById('import-apenas-imagem').checked;
+
+        fetch('/cnes/importar/servidor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uf: uf, competencia: competencia, apenas_imagem: apenasImagem })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                document.getElementById('bloco-opcoes').classList.add('d-none');
+                document.getElementById('bloco-deteccao').classList.add('d-none');
+                document.getElementById('bloco-progresso').classList.remove('d-none');
+                iniciarPolling();
+            } else {
+                document.getElementById('msg-erro').textContent = data.error || 'Erro desconhecido';
+                document.getElementById('bloco-erro').classList.remove('d-none');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play me-2"></i>Iniciar Importação do Servidor';
+            }
+        })
+        .catch(function(err) {
+            document.getElementById('msg-erro').textContent = err.message;
+            document.getElementById('bloco-erro').classList.remove('d-none');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play me-2"></i>Iniciar Importação do Servidor';
+        });
+    });
+
+    function iniciarPolling() {
+        pollingInterval = setInterval(function() {
+            fetch('/cnes/importar/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var pct = data.pct || 0;
+                    document.getElementById('prog-bar').style.width = pct + '%';
+                    document.getElementById('prog-pct').textContent = pct + '%';
+                    document.getElementById('prog-etapa').textContent = data.etapa || '';
+                    document.getElementById('prog-estab').textContent = (data.estab || data.db_estab || 0).toLocaleString('pt-BR');
+                    document.getElementById('prog-equip').textContent = (data.equip || data.db_equip || 0).toLocaleString('pt-BR');
+                    document.getElementById('prog-prof').textContent  = (data.prof  || data.db_prof  || 0).toLocaleString('pt-BR');
+
+                    if (data.status === 'concluido') {
+                        clearInterval(pollingInterval);
+                        document.getElementById('bloco-progresso').classList.add('d-none');
+                        document.getElementById('bloco-concluido').classList.remove('d-none');
+                        document.getElementById('msg-concluido').textContent =
+                            (data.estab || 0).toLocaleString('pt-BR') + ' estabelecimentos, ' +
+                            (data.equip || 0).toLocaleString('pt-BR') + ' equipamentos, ' +
+                            (data.prof  || 0).toLocaleString('pt-BR') + ' profissionais importados.';
+                    } else if (data.status === 'erro') {
+                        clearInterval(pollingInterval);
+                        document.getElementById('bloco-progresso').classList.add('d-none');
+                        document.getElementById('msg-erro').textContent = data.etapa || 'Erro desconhecido';
+                        document.getElementById('bloco-erro').classList.remove('d-none');
+                    }
+                })
+                .catch(function() {});
+        }, 5000);
+    }
+})();
+</script>
 <?php else: ?>
 
 <!-- Filtros -->
