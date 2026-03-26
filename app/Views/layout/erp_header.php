@@ -477,7 +477,7 @@
               <li><a href="/escalas"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/escalas') !== false ? 'active' : ''; ?>">ESCALAS</a></li>
               <li><a href="/exames-tabela"
-                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/exames-tabela') !== false ? 'active' : ''; ?>">TABELA DE EXAMES</a></li>
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/exames-tabela') !== false ? 'active' : ''; ?>">SERVIÇOS / EXAMES</a></li>
             </ul>
           </li>
 

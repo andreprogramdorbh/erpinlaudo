@@ -172,6 +172,12 @@ Router::group(["middleware" => ["Auth"]], function () {
 
     Router::get("/exames-tabela", "CorpoClinicoController@examesTabela");
     Router::post("/exames-tabela/store", "CorpoClinicoController@storeExameTabela");
+    Router::post("/exames-tabela/{id}/update", "CorpoClinicoController@updateExameTabela");
+    Router::post("/exames-tabela/{id}/delete", "CorpoClinicoController@deleteExameTabela");
+    Router::get("/exames-tabela/{id}/config", "CorpoClinicoController@getConfigExame");
+    Router::post("/exames-tabela/{id}/save-precos", "CorpoClinicoController@savePrecos");
+    Router::post("/exames-tabela/{id}/save-secao", "CorpoClinicoController@saveSecao");
+    Router::post("/exames-tabela/{id}/save-tags", "CorpoClinicoController@saveTags");
 
     // Contas a Pagar
     Router::group(["middleware" => ["Permission:view_contas_pagar"]], function () {
