@@ -130,6 +130,9 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
       <i class="fas fa-shield-alt"></i> Permissoes
       <span class="badge bg-primary rounded-pill ms-1" style="font-size:.65rem"><?php echo count($userPerms); ?></span>
     </button>
+    <button class="prf-tab <?php echo $activeTab === 'layout_exames' ? 'active' : ''; ?>" onclick="switchTab('layout_exames', this)">
+      <i class="fas fa-file-medical-alt"></i> Layout de Exames
+    </button>
   </div>
 
   <div id="tab-geral" style="display:<?php echo $activeTab === 'geral' ? 'block' : 'none'; ?>">
@@ -284,9 +287,224 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
     </div>
   </div>
 
+  <!-- ============================================================ -->
+  <!-- ABA: LAYOUT DE EXAMES -->
+  <!-- ============================================================ -->
+  <div id="tab-layout_exames" style="display:<?php echo $activeTab === 'layout_exames' ? 'block' : 'none'; ?>">
+    <div class="prf-card">
+      <div class="prf-card-section">
+        <h2 class="prf-section-title"><i class="fas fa-file-medical-alt text-primary"></i> Padronização de Layout de Importação</h2>
+        <p class="text-muted small mb-4">Configure o mapeamento das colunas do arquivo exportado pelo seu PACS/RIS para que o sistema possa importar e calcular as apurações corretamente.</p>
+
+        <?php if (!empty($layouts_exame)): ?>
+        <div class="mb-4">
+          <h6 class="fw-bold mb-3">Layouts Cadastrados</h6>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Nome do Layout</th>
+                  <th>Separador</th>
+                  <th>Linha Cabeçalho</th>
+                  <th class="text-center">Colunas Mapeadas</th>
+                  <th>Status</th>
+                  <th class="text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+              <?php foreach ($layouts_exame as $lay): ?>
+                <tr>
+                  <td class="fw-semibold"><?php echo htmlspecialchars($lay->nome); ?></td>
+                  <td><code><?php echo htmlspecialchars($lay->separador ?? ';'); ?></code></td>
+                  <td class="text-center"><?php echo $lay->linha_cabecalho ?? 1; ?></td>
+                  <td class="text-center">
+                    <span class="badge bg-primary"><?php echo $lay->total_colunas ?? 0; ?></span>
+                  </td>
+                  <td>
+                    <?php if ($lay->ativo): ?>
+                      <span class="badge bg-success">Ativo</span>
+                    <?php else: ?>
+                      <span class="badge bg-secondary">Inativo</span>
+                    <?php endif; ?>
+                  </td>
+                  <td class="text-center">
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-primary" onclick="editarLayout(<?php echo $lay->id; ?>)" title="Editar">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger"
+                              onclick="if(confirm('Excluir este layout?')) window.location.href='/perfil/layout-exame/delete/<?php echo $lay->id; ?>'">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Formulário de cadastro/edição de layout -->
+        <div class="card border-0 bg-light p-4" id="form-layout-container">
+          <h6 class="fw-bold mb-3" id="form-layout-title"><i class="fas fa-plus me-2"></i>Novo Layout de Importação</h6>
+          <form method="POST" action="/perfil/layout-exame/store" id="form-layout">
+            <input type="hidden" name="layout_id" id="layout_id" value="">
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-5">
+                <label class="form-label fw-semibold">Nome do Layout <span class="text-danger">*</span></label>
+                <input type="text" name="nome" id="layout-nome" class="form-control"
+                       placeholder="Ex: Layout PACS Carestream" required>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label fw-semibold">Separador</label>
+                <select name="separador" id="layout-separador" class="form-select">
+                  <option value=";">Ponto e vírgula (;)</option>
+                  <option value=",">Vírgula (,)</option>
+                  <option value="\t">Tabulação (Tab)</option>
+                </select>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label fw-semibold">Linha Cabeçalho</label>
+                <input type="number" name="linha_cabecalho" id="layout-cabecalho" class="form-control" value="1" min="1" max="10">
+                <small class="text-muted">Linha onde estão os títulos</small>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-semibold">Status</label>
+                <select name="ativo" id="layout-ativo" class="form-select">
+                  <option value="1">Ativo (padrão para importação)</option>
+                  <option value="0">Inativo</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Mapeamento de colunas -->
+            <h6 class="fw-bold mb-3 mt-2">Mapeamento de Colunas</h6>
+            <p class="text-muted small mb-3">Informe o nome exato do cabeçalho no arquivo para cada campo do sistema. Campos com * são obrigatórios para a apuração.</p>
+
+            <div class="row g-3">
+              <?php
+              $camposSistema = [
+                  ['key' => 'col_medico',          'label' => 'Médico *',              'placeholder' => 'Ex: Medico, Doctor, Nome Médico',      'required' => true],
+                  ['key' => 'col_crm',             'label' => 'CRM',                   'placeholder' => 'Ex: CRM, CRM Médico',                   'required' => false],
+                  ['key' => 'col_modalidade',      'label' => 'Modalidade *',          'placeholder' => 'Ex: Modalidade, Modality',              'required' => true],
+                  ['key' => 'col_study_description','label' => 'Descrição do Exame *', 'placeholder' => 'Ex: Study Description, Exame',         'required' => true],
+                  ['key' => 'col_prioridade',      'label' => 'Prioridade *',          'placeholder' => 'Ex: Prioridade, Priority, Urgência',    'required' => true],
+                  ['key' => 'col_data_conclusao',  'label' => 'Data Conclusão *',      'placeholder' => 'Ex: Data Conclusão, Dt Conclusão',     'required' => true],
+                  ['key' => 'col_paciente',        'label' => 'Paciente',              'placeholder' => 'Ex: Paciente, Patient Name',            'required' => false],
+                  ['key' => 'col_paciente_id',     'label' => 'ID Paciente',           'placeholder' => 'Ex: Paciente ID, Patient ID',           'required' => false],
+                  ['key' => 'col_unidade',         'label' => 'Unidade/Origem',        'placeholder' => 'Ex: Unidade, Origem, Clinic',           'required' => false],
+                  ['key' => 'col_accession',       'label' => 'Accession Number',      'placeholder' => 'Ex: Accession number, Accession',      'required' => false],
+                  ['key' => 'col_convenio',        'label' => 'Convênio',              'placeholder' => 'Ex: Convenio, Convênio, Payer',         'required' => false],
+                  ['key' => 'col_valor_exame',     'label' => 'Valor do Exame',        'placeholder' => 'Ex: Valor do exame, Valor, Price',      'required' => false],
+                  ['key' => 'col_revisor',         'label' => 'Revisor',               'placeholder' => 'Ex: Revisor, Reviewer',                 'required' => false],
+                  ['key' => 'col_data_revisao',    'label' => 'Data Revisão',          'placeholder' => 'Ex: Data/Hora Revisão, Review Date',   'required' => false],
+              ];
+              foreach ($camposSistema as $campo):
+                  $valorAtual = '';
+                  if (!empty($layout_edicao)) {
+                      $valorAtual = $layout_edicao->{$campo['key']} ?? '';
+                  } elseif ($campo['key'] === 'col_medico') {
+                      $valorAtual = 'Medico';
+                  } elseif ($campo['key'] === 'col_modalidade') {
+                      $valorAtual = 'Modalidade';
+                  } elseif ($campo['key'] === 'col_study_description') {
+                      $valorAtual = 'Study Description';
+                  } elseif ($campo['key'] === 'col_prioridade') {
+                      $valorAtual = 'Prioridade';
+                  } elseif ($campo['key'] === 'col_data_conclusao') {
+                      $valorAtual = 'Data Conclusão';
+                  }
+              ?>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small"><?php echo $campo['label']; ?></label>
+                <input type="text" name="<?php echo $campo['key']; ?>" class="form-control form-control-sm"
+                       placeholder="<?php echo htmlspecialchars($campo['placeholder']); ?>"
+                       value="<?php echo htmlspecialchars($valorAtual); ?>"
+                       <?php echo $campo['required'] ? 'required' : ''; ?>>
+              </div>
+              <?php endforeach; ?>
+
+              <!-- Campo de valor urgência -->
+              <div class="col-12">
+                <div class="card border-warning border-opacity-50 p-3 mt-2">
+                  <h6 class="fw-bold small mb-2"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Identificação de Urgência</h6>
+                  <p class="text-muted small mb-2">Informe os valores que indicam urgência no campo de prioridade. Separe múltiplos valores por vírgula.</p>
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Valores que indicam Urgência</label>
+                      <input type="text" name="valores_urgencia" class="form-control form-control-sm"
+                             placeholder="Ex: URGENTE,U,URGENT,Urgência,Urgente"
+                             value="<?php echo htmlspecialchars($layout_edicao->valores_urgencia ?? 'URGENTE,U,URGENT,Urgência,Urgente'); ?>">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label small fw-semibold">Formato da Data de Conclusão</label>
+                      <select name="formato_data" class="form-select form-select-sm">
+                        <?php
+                        $fmts = ['d/m/Y H:i' => 'DD/MM/AAAA HH:MM', 'd/m/Y' => 'DD/MM/AAAA', 'Y-m-d H:i:s' => 'AAAA-MM-DD HH:MM:SS', 'Y-m-d' => 'AAAA-MM-DD', 'd-m-Y' => 'DD-MM-AAAA'];
+                        foreach ($fmts as $v => $l):
+                            $sel = ($layout_edicao->formato_data ?? 'd/m/Y H:i') === $v ? 'selected' : '';
+                        ?>
+                        <option value="<?php echo $v; ?>" <?php echo $sel; ?>><?php echo $l; ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-1"></i> Salvar Layout
+              </button>
+              <button type="button" class="btn btn-outline-secondary" onclick="resetFormLayout()">
+                <i class="fas fa-times me-1"></i> Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
+// ============================================================
+// Layout de Exames
+// ============================================================
+const layoutsData = <?php echo json_encode(array_values($layouts_exame ?? [])); ?>;
+
+function editarLayout(id) {
+  const lay = layoutsData.find(l => l.id == id);
+  if (!lay) return;
+  document.getElementById('layout_id').value       = lay.id;
+  document.getElementById('layout-nome').value     = lay.nome || '';
+  document.getElementById('layout-separador').value = lay.separador || ';';
+  document.getElementById('layout-cabecalho').value = lay.linha_cabecalho || 1;
+  document.getElementById('layout-ativo').value    = lay.ativo ? '1' : '0';
+  const campos = ['col_medico','col_crm','col_modalidade','col_study_description','col_prioridade',
+    'col_data_conclusao','col_paciente','col_paciente_id','col_unidade','col_accession',
+    'col_convenio','col_valor_exame','col_revisor','col_data_revisao','valores_urgencia'];
+  campos.forEach(c => {
+    const el = document.querySelector('[name="' + c + '"]');
+    if (el) el.value = lay[c] || '';
+  });
+  const fmtEl = document.querySelector('[name="formato_data"]');
+  if (fmtEl) fmtEl.value = lay.formato_data || 'd/m/Y H:i';
+  document.getElementById('form-layout-title').innerHTML = '<i class="fas fa-edit me-2"></i>Editar Layout: ' + lay.nome;
+  document.getElementById('form-layout-container').scrollIntoView({behavior:'smooth'});
+}
+
+function resetFormLayout() {
+  document.getElementById('form-layout').reset();
+  document.getElementById('layout_id').value = '';
+  document.getElementById('form-layout-title').innerHTML = '<i class="fas fa-plus me-2"></i>Novo Layout de Importação';
+}
+
 function switchTab(tab, btn) {
   document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
   document.getElementById('tab-' + tab).style.display = 'block';

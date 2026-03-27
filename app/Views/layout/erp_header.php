@@ -482,6 +482,12 @@
           </li>
 
           <div class="nav-label">Operacional</div>
+          <li class="nav-item <?php echo strpos($_SERVER['REQUEST_URI'], '/contratos') !== false ? 'active' : ''; ?>">
+            <a href="/contratos" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Contratos">
+              <i class="fas fa-file-contract"></i>
+              <span class="link-text">CONTRATOS</span>
+            </a>
+          </li>
           <li class="nav-item has-submenu">
             <a href="#" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Financeiro">
               <i class="fas fa-wallet"></i>
@@ -500,13 +506,19 @@
             </ul>
           </li>
 
-          <li
-            class="nav-item <?php echo (strpos($_SERVER['REQUEST_URI'], '/faturamento') !== false) ? 'active' : ''; ?>">
-            <a href="/faturamento/notas-fiscais" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right"
-              title="Faturamento">
+          <li class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/faturamento') !== false) ? 'open active' : ''; ?>">
+            <a href="#" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Faturamento">
               <i class="fas fa-file-invoice"></i>
               <span class="link-text">FATURAMENTO</span>
             </a>
+            <ul class="submenu">
+              <li><a href="/faturamento/notas-fiscais"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/faturamento/notas-fiscais') !== false ? 'active' : ''; ?>">NOTAS FISCAIS</a></li>
+              <li><a href="/faturamento/apuracao-prestador"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/faturamento/apuracao-prestador') !== false ? 'active' : ''; ?>">APURAÇÃO PRESTADOR</a></li>
+              <li><a href="/faturamento/apuracao-cliente"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/faturamento/apuracao-cliente') !== false ? 'active' : ''; ?>">APURAÇÃO CLIENTE</a></li>
+            </ul>
           </li>
 
           <div class="nav-label">CRM</div>

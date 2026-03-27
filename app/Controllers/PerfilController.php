@@ -7,6 +7,7 @@ use App\Core\View;
 use App\Core\Auth;
 use App\Core\Audit\AuditLogger;
 use App\Models\User;
+use App\Models\LayoutExame;
 
 class PerfilController extends Controller
 {
@@ -31,10 +32,14 @@ class PerfilController extends Controller
 
         $usuario = $this->userModel->findById((int) $sessionUser->id) ?: $sessionUser;
 
+        $layoutModel = new LayoutExame();
+        $layouts_exame = $layoutModel->allByUser((int)($sessionUser->id ?? 0));
         View::render('perfil/index', [
             'title' => 'Meu Perfil',
             'usuario' => $usuario,
-            'active_tab' => $_GET['tab'] ?? 'geral'
+            'active_tab' => $_GET['tab'] ?? 'geral',
+            'layouts_exame' => $layouts_exame,
+            'layout_edicao' => null
         ]);
     }
 
@@ -194,4 +199,71 @@ class PerfilController extends Controller
         }
         exit();
     }
+
+    /**
+     * Salva ou atualiza um layout de importacao de exames
+     */
+    public function layoutExameStore(): void
+    {
+        if (!Auth::check()) { header('Location: /login'); exit(); }
+        $userId = (int)(Auth::user()->id ?? 0);
+        $layoutModel = new LayoutExame();
+        $id = (int)($_POST['layout_id'] ?? 0);
+        $data = [
+            'usuario_id'            => $userId,
+            'nome'                  => trim($_POST['nome'] ?? ''),
+            'separador'             => $_POST['separador'] ?? ';',
+            'linha_cabecalho'       => (int)($_POST['linha_cabecalho'] ?? 1),
+            'ativo'                 => (int)($_POST['ativo'] ?? 1),
+            'col_medico'            => trim($_POST['col_medico'] ?? ''),
+            'col_crm'               => trim($_POST['col_crm'] ?? ''),
+            'col_modalidade'        => trim($_POST['col_modalidade'] ?? ''),
+            'col_study_description' => trim($_POST['col_study_description'] ?? ''),
+            'col_prioridade'        => trim($_POST['col_prioridade'] ?? ''),
+            'col_data_conclusao'    => trim($_POST['col_data_conclusao'] ?? ''),
+            'col_paciente'          => trim($_POST['col_paciente'] ?? ''),
+            'col_paciente_id'       => trim($_POST['col_paciente_id'] ?? ''),
+            'col_unidade'           => trim($_POST['col_unidade'] ?? ''),
+            'col_accession'         => trim($_POST['col_accession'] ?? ''),
+            'col_convenio'          => trim($_POST['col_convenio'] ?? ''),
+            'col_valor_exame'       => trim($_POST['col_valor_exame'] ?? ''),
+            'col_revisor'           => trim($_POST['col_revisor'] ?? ''),
+            'col_data_revisao'      => trim($_POST['col_data_revisao'] ?? ''),
+            'valores_urgencia'      => trim($_POST['valores_urgencia'] ?? 'URGENTE,U,URGENT'),
+            'formato_data'          => $_POST['formato_data'] ?? 'd/m/Y H:i',
+        ];
+        if (empty($data['nome'])) {
+            header('Location: /perfil?tab=layout_exames&error=nome_obrigatorio');
+            exit();
+        }
+        try {
+            if ($id > 0) {
+                $layoutModel->update($id, $userId, $data);
+            } else {
+                $layoutModel->insert($data);
+            }
+            header('Location: /perfil?tab=layout_exames&success=layout_salvo');
+        } catch (\Exception $e) {
+            error_log('[PerfilController::layoutExameStore] ' . $e->getMessage());
+            header('Location: /perfil?tab=layout_exames&error=exception');
+        }
+        exit();
+    }
+
+    /**
+     * Exclui um layout de importacao de exames
+     */
+    public function layoutExameDelete(): void
+    {
+        if (!Auth::check()) { header('Location: /login'); exit(); }
+        $userId = (int)(Auth::user()->id ?? 0);
+        $id     = (int)($this->param('id') ?? 0);
+        if ($id > 0) {
+            $layoutModel = new LayoutExame();
+            $layoutModel->delete($id, $userId);
+        }
+        header('Location: /perfil?tab=layout_exames&success=layout_excluido');
+        exit();
+    }
+
 }

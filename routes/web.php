@@ -317,7 +317,31 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/perfil", "PerfilController@index");
         Router::post("/perfil/update", "PerfilController@update");
         Router::post("/perfil/change-password", "PerfilController@changePassword");
+        // Layout de Exames (Padronização de Importação)
+        Router::post("/perfil/layout-exame/store", "PerfilController@layoutExameStore");
+        Router::get("/perfil/layout-exame/delete/{id}", "PerfilController@layoutExameDelete");
     });
+
+    // Contratos (Operacional)
+    Router::get("/contratos", "ContratosController@index");
+    Router::get("/contratos/create", "ContratosController@create");
+    Router::post("/contratos/store", "ContratosController@store");
+    Router::get("/contratos/edit/{id}", "ContratosController@edit");
+    Router::post("/contratos/update/{id}", "ContratosController@update");
+    Router::get("/contratos/delete/{id}", "ContratosController@delete");
+    Router::post("/contratos/upload-anexo", "ContratosController@uploadAnexo");
+    Router::get("/contratos/delete-anexo/{id}", "ContratosController@deleteAnexo");
+    Router::post("/contratos/nova-apuracao", "ContratosController@novaApuracao");
+    Router::post("/contratos/importar-apuracao", "ContratosController@importarApuracao");
+    Router::post("/contratos/executar-apuracao", "ContratosController@executarApuracao");
+
+    // Apuração — Faturamento
+    Router::get("/faturamento/apuracao-prestador", "ApuracaoController@prestador");
+    Router::get("/faturamento/apuracao-cliente", "ApuracaoController@cliente");
+    Router::get("/faturamento/apuracao-prestador/visualizar/{id}", "ApuracaoController@visualizar");
+    Router::get("/faturamento/apuracao-cliente/visualizar/{id}", "ApuracaoController@visualizar");
+    Router::get("/faturamento/apuracao/faturar/{id}", "ApuracaoController@faturar");
+    Router::get("/faturamento/apuracao/delete/{id}", "ApuracaoController@delete");
 
     // Configurações (inclui gestão de usuários)
     Router::group(["middleware" => ["Permission:manage_settings"]], function () {
