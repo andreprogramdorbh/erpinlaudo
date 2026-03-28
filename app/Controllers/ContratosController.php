@@ -49,6 +49,7 @@ class ContratosController extends Controller
             'title'     => 'Contratos',
             'contratos' => $contratos,
             'filtros'   => $filtros,
+            '_layout' => 'erp',
         ]);
     }
 
@@ -70,6 +71,7 @@ class ContratosController extends Controller
             'exames'   => $exames,
             'modalidades_contrato' => [],
             'active_tab' => 'dados',
+            '_layout' => 'erp',
         ]);
     }
 
@@ -152,6 +154,7 @@ class ContratosController extends Controller
             'modalidades_contrato' => $modalidades_contrato,
             'layouts'  => $layouts ?? [],
             'active_tab' => $_GET['tab'] ?? 'dados',
+            '_layout' => 'erp',
         ]);
     }
 

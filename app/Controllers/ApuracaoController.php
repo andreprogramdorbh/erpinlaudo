@@ -49,6 +49,7 @@ class ApuracaoController extends Controller
             'apuracoes' => $apuracoes,
             'medicos'   => $medicos,
             'filtros'   => $filtros,
+            '_layout' => 'erp',
         ]);
     }
 
@@ -76,6 +77,7 @@ class ApuracaoController extends Controller
             'apuracoes' => $apuracoes,
             'clientes'  => $clientes,
             'filtros'   => $filtros,
+            '_layout' => 'erp',
         ]);
     }
 
@@ -103,6 +105,7 @@ class ApuracaoController extends Controller
             'itens'        => $itens,
             'resumoModal'  => $resumoModal,
             'resumoMedico' => $resumoMedico,
+            '_layout' => 'erp',
         ]);
     }
 

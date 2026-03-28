@@ -37,6 +37,16 @@ if (strpos($currentPath, '/financeiro/contas-a-pagar') !== false) {
     // Adicionar script específico quando existir
 }
 
+// Contratos
+if (strpos($currentPath, '/contratos') !== false) {
+    $pageScripts[] = '/assets/js/contratos.js';
+}
+
+// Apuração Prestador / Cliente
+if (strpos($currentPath, '/faturamento/apuracao') !== false) {
+    $pageScripts[] = '/assets/js/apuracao.js';
+}
+
 // Carrega os scripts específicos
 foreach ($pageScripts as $script) {
     echo "<script src=\"{$script}\"></script>\n";
