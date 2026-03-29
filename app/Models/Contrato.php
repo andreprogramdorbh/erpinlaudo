@@ -123,7 +123,7 @@ class Contrato extends Model
     public function getModalidades(int $contratoId): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT cm.*, te.nome AS exame_nome
+            "SELECT cm.*, te.nome_exame AS exame_nome
              FROM contrato_modalidades cm
              LEFT JOIN tabela_exames te ON te.id = cm.exame_id
              WHERE cm.contrato_id = ?"

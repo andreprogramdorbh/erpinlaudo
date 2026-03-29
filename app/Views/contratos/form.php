@@ -207,7 +207,7 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                     <select name="modalidade_exame_id[]" class="form-select form-select-sm">
                                         <option value="">Qualquer exame</option>
                                         <?php foreach ($exames ?? [] as $ex): ?>
-                                            <option value="<?php echo $ex->id; ?>"><?php echo htmlspecialchars($ex->nome); ?></option>
+                                            <option value="<?php echo $ex->id; ?>"><?php echo htmlspecialchars($ex->nome_exame); ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
@@ -230,7 +230,7 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                     <select name="modalidade_exame_id[]" class="form-select form-select-sm">
                                         <option value="">Qualquer exame</option>
                                         <?php foreach ($exames ?? [] as $ex): ?>
-                                            <option value="<?php echo $ex->id; ?>" <?php echo ($mc->exame_id ?? 0) == $ex->id ? 'selected' : ''; ?>><?php echo htmlspecialchars($ex->nome); ?></option>
+                                            <option value="<?php echo $ex->id; ?>" <?php echo ($mc->exame_id ?? 0) == $ex->id ? 'selected' : ''; ?>><?php echo htmlspecialchars($ex->nome_exame); ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
@@ -561,7 +561,7 @@ function adicionarModalidade() {
     const examesOpts = <?php
         $opts = '<option value="">Qualquer exame</option>';
         foreach ($exames ?? [] as $ex) {
-            $opts .= '<option value="' . $ex->id . '">' . htmlspecialchars($ex->nome) . '</option>';
+            $opts .= '<option value="' . $ex->id . '">' . htmlspecialchars($ex->nome_exame) . '</option>';
         }
         echo json_encode($opts);
     ?>;

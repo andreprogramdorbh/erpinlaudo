@@ -422,7 +422,7 @@ class ContratosController extends Controller
 
                 if (!empty($examesPorModalidade[$modalidade])) {
                     foreach ($examesPorModalidade[$modalidade] as $ex) {
-                        $nomeEx = strtolower(trim($ex->nome ?? ''));
+                        $nomeEx = strtolower(trim($ex->nome_exame ?? ''));
                         $nomeSD = strtolower($studyDesc);
                         if ($nomeEx && $nomeSD && (str_contains($nomeSD, $nomeEx) || str_contains($nomeEx, $nomeSD))) {
                             $exameMatch = $ex; break;
