@@ -9,18 +9,21 @@ use App\Core\Audit\AuditLogger;
 use App\Models\CrmOportunidade;
 use App\Models\CrmLead;
 use App\Models\CrmInteracao;
+use App\Models\CrmOportunidadeModalidade;
 use App\Models\Cliente;
 
 class CrmOportunidadesController extends Controller
 {
     private CrmOportunidade $opModel;
     private CrmInteracao $interacaoModel;
+    private CrmOportunidadeModalidade $modModel;
     private Logger $logger;
 
     public function __construct()
     {
         $this->opModel        = new CrmOportunidade();
         $this->interacaoModel = new CrmInteracao();
+        $this->modModel       = new CrmOportunidadeModalidade();
         $this->logger         = new Logger();
     }
 
@@ -105,6 +108,9 @@ class CrmOportunidadesController extends Controller
             exit();
         }
 
+        // Salva linhas dinâmicas de modalidades
+        $this->salvarLinhasModalidades((int) $id);
+
         // Criação automática de cliente a partir do lead vinculado
         $clienteId = $this->sincronizarClienteDoLead((int) ($data['lead_id'] ?? 0), $uid);
         if ($clienteId) {
@@ -139,9 +145,10 @@ class CrmOportunidadesController extends Controller
             $interacoesLead = $this->interacaoModel->findByRelated('lead', (int) $op->lead_id);
         }
 
-        $leads = (new CrmLead())->findByUsuarioId($uid, []);
+        $leads             = (new CrmLead())->findByUsuarioId($uid, []);
+        $linhasModalidades = $this->modModel->findByOportunidadeId($id);
 
-        // Decodifica modalidades de interesse salvas
+        // Decodifica modalidades de interesse salvas (chips)
         $modalidadesAtivas = json_decode($op->modalidades_interesse ?? '[]', true) ?: [];
 
         View::render('crm/oportunidades/form', [
@@ -157,6 +164,7 @@ class CrmOportunidadesController extends Controller
             'statusList'         => CrmOportunidade::STATUS,
             'modalidades'        => CrmOportunidade::MODALIDADES,
             'modalidadesAtivas'  => $modalidadesAtivas,
+            'linhasModalidades'  => $linhasModalidades,
             'tiposContrato'      => CrmOportunidade::TIPOS_CONTRATO,
             'tiposInteracao'     => CrmInteracao::TIPOS,
             'iconesInteracao'    => CrmInteracao::ICONES,
@@ -190,6 +198,9 @@ class CrmOportunidadesController extends Controller
             header("Location: /crm/oportunidades/edit/{$id}?error=falha_atualizar");
             exit();
         }
+
+        // Atualiza linhas dinâmicas de modalidades
+        $this->salvarLinhasModalidades($id);
 
         // Sincroniza cliente ao atualizar (caso lead tenha sido vinculado/alterado)
         $clienteId = $this->sincronizarClienteDoLead((int) ($data['lead_id'] ?? $op->lead_id ?? 0), $uid);
@@ -423,6 +434,43 @@ class CrmOportunidadesController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Lê os arrays mod_modalidade[], mod_tipo_contrato[], mod_volume[], mod_observacao[]
+     * do POST e substitui todas as linhas da oportunidade.
+     */
+    private function salvarLinhasModalidades(int $opId): void
+    {
+        $modalidades  = $_POST['mod_modalidade']   ?? [];
+        $contratos    = $_POST['mod_tipo_contrato'] ?? [];
+        $volumes      = $_POST['mod_volume']        ?? [];
+        $observacoes  = $_POST['mod_observacao']    ?? [];
+
+        $linhas = [];
+        foreach ($modalidades as $i => $mod) {
+            if (empty($mod)) continue; // ignora linhas vazias
+            $linhas[] = [
+                'modalidade'         => $mod,
+                'tipo_contrato'      => $contratos[$i]   ?? null,
+                'volume_estimado_mes'=> $volumes[$i]     ?? null,
+                'observacao'         => $observacoes[$i] ?? null,
+            ];
+        }
+
+        try {
+            $this->modModel->replaceAll($opId, $linhas);
+            $this->logger->info('[CRM] Linhas de modalidades salvas', [
+                'op_id' => $opId,
+                'total' => count($linhas),
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[CRM] Falha ao salvar linhas de modalidades', [
+                'op_id' => $opId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 
     private function sanitizePost(): array

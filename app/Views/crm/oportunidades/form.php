@@ -58,6 +58,12 @@ $tiposIcones = [
 .mod-chip:hover{border-color:#059669;background:#f0fdf4}
 .mod-chip input{display:none}
 .mod-chip.checked{background:#059669;color:#fff;border-color:#059669}
+.mod-table-header{display:grid;grid-template-columns:1fr 1fr 120px 1fr 40px;gap:.5rem;padding:.5rem .75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:.5rem .5rem 0 0;font-size:.75rem;font-weight:600;color:#64748b;margin-top:.75rem}
+.mod-linha{border:1px solid #e2e8f0;border-top:none;background:#fff;transition:background .15s}
+.mod-linha:hover{background:#f0fdf4}
+.mod-linha:last-child{border-radius:0 0 .5rem .5rem}
+.mod-linha-inner{display:grid;grid-template-columns:1fr 1fr 120px 1fr 40px;gap:.5rem;padding:.5rem .75rem;align-items:center}
+.mod-linha-inner .form-select,.mod-linha-inner .form-control{font-size:.8125rem}
 </style>
 
 <div class="crm-form-wrap">
@@ -162,37 +168,84 @@ $tiposIcones = [
 
       <!-- Seção: Radiologia -->
       <section class="form-section">
-        <h2 class="form-section-title"><i class="fas fa-x-ray text-success"></i> Detalhes — Radiologia / Tecnologia</h2>
-        <div class="form-grid form-grid-3">
-          <div class="form-group">
-            <label class="form-label">Modalidade Principal</label>
-            <select name="modalidade_principal" class="form-select">
-              <option value="">Selecione...</option>
-              <?php foreach ($modalidades as $k => $v): ?>
-              <option value="<?php echo $k; ?>" <?php echo ($op->modalidade_principal ?? '') === $k ? 'selected' : ''; ?>><?php echo $v; ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Tipo de Contrato</label>
-            <select name="tipo_contrato" class="form-select">
-              <option value="">Selecione...</option>
-              <?php foreach ($tiposContrato as $k => $v): ?>
-              <option value="<?php echo $k; ?>" <?php echo ($op->tipo_contrato ?? '') === $k ? 'selected' : ''; ?>><?php echo $v; ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Volume Estimado/Mês (exames)</label>
-            <input type="number" name="volume_estimado_mes" class="form-control" min="0"
-                   value="<?php echo htmlspecialchars($op->volume_estimado_mes ?? ''); ?>">
-          </div>
+        <h2 class="form-section-title d-flex align-items-center justify-content-between">
+          <span><i class="fas fa-x-ray text-success"></i> Detalhes — Radiologia / Tecnologia</span>
+          <button type="button" class="btn btn-sm btn-success" onclick="addLinhaModalidade()" title="Adicionar modalidade">
+            <i class="fas fa-plus me-1"></i> Adicionar Modalidade
+          </button>
+        </h2>
+
+        <!-- Cabeçalho da tabela dinâmica -->
+        <div class="mod-table-header">
+          <span>Modalidade</span>
+          <span>Tipo de Contrato / Comercialização</span>
+          <span>Volume Est./Mês</span>
+          <span>Observação</span>
+          <span></span>
         </div>
 
-        <!-- Múltiplas Modalidades de Interesse -->
+        <!-- Container das linhas dinâmicas -->
+        <div id="mod-linhas-container">
+          <?php
+          $linhasExistentes = $linhasModalidades ?? [];
+          if (empty($linhasExistentes)):
+            // Linha inicial vazia
+          ?>
+          <div class="mod-linha" data-index="0">
+            <div class="mod-linha-inner">
+              <select name="mod_modalidade[]" class="form-select form-select-sm">
+                <option value="">Selecione...</option>
+                <?php foreach ($modalidades as $k => $v): ?>
+                <option value="<?php echo $k; ?>"><?php echo $v; ?></option>
+                <?php endforeach; ?>
+              </select>
+              <select name="mod_tipo_contrato[]" class="form-select form-select-sm">
+                <option value="">Selecione...</option>
+                <?php foreach ($tiposContrato as $k => $v): ?>
+                <option value="<?php echo $k; ?>"><?php echo $v; ?></option>
+                <?php endforeach; ?>
+                <option value="comercializacao_software">Comercialização de Software</option>
+              </select>
+              <input type="number" name="mod_volume[]" class="form-control form-control-sm" min="0" placeholder="Ex: 500">
+              <input type="text" name="mod_observacao[]" class="form-control form-control-sm" placeholder="Obs. opcional">
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerLinha(this)" title="Remover">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          <?php else: ?>
+          <?php foreach ($linhasExistentes as $i => $linha): ?>
+          <div class="mod-linha" data-index="<?php echo $i; ?>">
+            <div class="mod-linha-inner">
+              <select name="mod_modalidade[]" class="form-select form-select-sm">
+                <option value="">Selecione...</option>
+                <?php foreach ($modalidades as $k => $v): ?>
+                <option value="<?php echo $k; ?>" <?php echo ($linha->modalidade ?? '') === $k ? 'selected' : ''; ?>><?php echo $v; ?></option>
+                <?php endforeach; ?>
+              </select>
+              <select name="mod_tipo_contrato[]" class="form-select form-select-sm">
+                <option value="">Selecione...</option>
+                <?php foreach ($tiposContrato as $k => $v): ?>
+                <option value="<?php echo $k; ?>" <?php echo ($linha->tipo_contrato ?? '') === $k ? 'selected' : ''; ?>><?php echo $v; ?></option>
+                <?php endforeach; ?>
+                <option value="comercializacao_software" <?php echo ($linha->tipo_contrato ?? '') === 'comercializacao_software' ? 'selected' : ''; ?>>Comercialização de Software</option>
+              </select>
+              <input type="number" name="mod_volume[]" class="form-control form-control-sm" min="0"
+                     value="<?php echo htmlspecialchars($linha->volume_estimado_mes ?? ''); ?>" placeholder="Ex: 500">
+              <input type="text" name="mod_observacao[]" class="form-control form-control-sm"
+                     value="<?php echo htmlspecialchars($linha->observacao ?? ''); ?>" placeholder="Obs. opcional">
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerLinha(this)" title="Remover">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
+
+        <!-- Chips de interesse (visão rápida) -->
         <div class="form-group mt-3">
-          <label class="form-label">Todas as Modalidades / Soluções de Interesse</label>
-          <small class="text-muted d-block mb-2">Selecione todas as modalidades que o cliente tem interesse</small>
+          <label class="form-label text-muted" style="font-size:.8rem">Interesse geral (visão rápida)</label>
           <div class="mod-grid">
             <?php foreach ($modalidades as $k => $v): ?>
             <?php $checked = in_array($k, $modalidadesAtivas); ?>
@@ -403,6 +456,56 @@ function toggleModChip(checkbox) {
   } else {
     chip.classList.remove('checked');
   }
+}
+
+// ---- Linhas dinâmicas de modalidades ----
+const MOD_OPTIONS = <?php echo json_encode($modalidades); ?>;
+const CONTRATO_OPTIONS = <?php echo json_encode(array_merge($tiposContrato, ['comercializacao_software' => 'Comercialização de Software'])); ?>;
+
+let modIndex = document.querySelectorAll('.mod-linha').length;
+
+function buildSelect(name, options, selected) {
+  let html = `<select name="${name}" class="form-select form-select-sm"><option value="">Selecione...</option>`;
+  for (const [k, v] of Object.entries(options)) {
+    const sel = k === selected ? ' selected' : '';
+    html += `<option value="${k}"${sel}>${v}</option>`;
+  }
+  html += '</select>';
+  return html;
+}
+
+function addLinhaModalidade(data) {
+  const container = document.getElementById('mod-linhas-container');
+  const idx = modIndex++;
+  const div = document.createElement('div');
+  div.className = 'mod-linha';
+  div.dataset.index = idx;
+  div.innerHTML = `<div class="mod-linha-inner">
+    ${buildSelect('mod_modalidade[]', MOD_OPTIONS, data?.modalidade || '')}
+    ${buildSelect('mod_tipo_contrato[]', CONTRATO_OPTIONS, data?.tipo_contrato || '')}
+    <input type="number" name="mod_volume[]" class="form-control form-control-sm" min="0" placeholder="Ex: 500" value="${data?.volume || ''}">
+    <input type="text" name="mod_observacao[]" class="form-control form-control-sm" placeholder="Obs. opcional" value="${data?.obs || ''}">
+    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerLinha(this)" title="Remover"><i class="fas fa-trash"></i></button>
+  </div>`;
+  container.appendChild(div);
+  // Anima a entrada
+  div.style.opacity = '0';
+  requestAnimationFrame(() => { div.style.transition = 'opacity .2s'; div.style.opacity = '1'; });
+}
+
+function removerLinha(btn) {
+  const linha = btn.closest('.mod-linha');
+  const container = document.getElementById('mod-linhas-container');
+  // Mantém pelo menos 1 linha
+  if (container.querySelectorAll('.mod-linha').length <= 1) {
+    // Limpa os valores em vez de remover
+    linha.querySelectorAll('select').forEach(s => s.value = '');
+    linha.querySelectorAll('input').forEach(i => i.value = '');
+    return;
+  }
+  linha.style.transition = 'opacity .15s';
+  linha.style.opacity = '0';
+  setTimeout(() => linha.remove(), 150);
 }
 </script>
 
