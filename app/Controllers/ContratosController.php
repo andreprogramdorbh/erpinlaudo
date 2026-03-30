@@ -572,39 +572,90 @@ class ContratosController extends Controller
         return $this->lerXlsx($path, $mapeamento, $limit);
     }
 
+    /**
+     * Lê um arquivo XLSX usando PHP nativo (ZipArchive + SimpleXML).
+     * Não requer PhpSpreadsheet nem nenhuma dependência externa.
+     */
     private function lerXlsx(string $path, array $mapeamento, int $limit = 0): array
     {
-        if (!class_exists('\PhpOffice\PhpSpreadsheet\IOFactory')) {
-            require_once BASE_PATH . '/vendor/autoload.php';
+        if (!class_exists('ZipArchive')) {
+            return ['linhas' => [], 'total_linhas' => 0, 'erro' => 'ZipArchive não disponível no servidor'];
         }
-        $reader      = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($path);
-        $spreadsheet = $reader->load($path);
-        $ws          = $spreadsheet->getActiveSheet();
-        return $this->processarSheet($ws, $mapeamento, $limit);
+
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) {
+            return ['linhas' => [], 'total_linhas' => 0, 'erro' => 'Não foi possível abrir o arquivo XLSX'];
+        }
+
+        // Carregar strings compartilhadas (sharedStrings.xml)
+        $sharedStrings = [];
+        $ssXml = $zip->getFromName('xl/sharedStrings.xml');
+        if ($ssXml !== false) {
+            $ss = simplexml_load_string($ssXml);
+            if ($ss) {
+                foreach ($ss->si as $si) {
+                    // Concatenar todos os nós <t> dentro de <si> (rich text)
+                    $text = '';
+                    foreach ($si->r as $r) {
+                        $text .= (string) $r->t;
+                    }
+                    if ($text === '' && isset($si->t)) {
+                        $text = (string) $si->t;
+                    }
+                    $sharedStrings[] = $text;
+                }
+            }
+        }
+
+        // Carregar a primeira planilha
+        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        if ($sheetXml === false) {
+            return ['linhas' => [], 'total_linhas' => 0, 'erro' => 'Planilha não encontrada no arquivo XLSX'];
+        }
+
+        $sheet = simplexml_load_string($sheetXml);
+        if (!$sheet) {
+            return ['linhas' => [], 'total_linhas' => 0, 'erro' => 'Erro ao parsear XML da planilha'];
+        }
+
+        // Converter XML em array bidimensional [rowNum][colIndex] = valor
+        $grid = [];
+        $ns   = $sheet->getNamespaces(true);
+        $rows = $sheet->sheetData->row ?? [];
+
+        foreach ($rows as $rowNode) {
+            $rowNum = (int) $rowNode['r'];
+            foreach ($rowNode->c as $cell) {
+                $cellRef = (string) $cell['r'];                    // ex: "A1"
+                $colLet  = preg_replace('/[0-9]/', '', $cellRef);  // ex: "A"
+                $colIdx  = $this->colIndex($colLet);               // ex: 1
+                $type    = (string) ($cell['t'] ?? '');
+                $rawVal  = isset($cell->v) ? (string) $cell->v : '';
+
+                if ($type === 's') {
+                    // Shared string
+                    $val = $sharedStrings[(int) $rawVal] ?? '';
+                } elseif ($type === 'str' || $type === 'inlineStr') {
+                    $val = isset($cell->is->t) ? (string) $cell->is->t : $rawVal;
+                } else {
+                    $val = $rawVal;
+                }
+
+                $grid[$rowNum][$colIdx] = $val;
+            }
+        }
+
+        return $this->processarGrid($grid, $mapeamento, $limit);
     }
 
-    private function lerCsv(string $path, array $mapeamento, int $limit = 0): array
-    {
-        $linhas      = [];
-        $handle      = fopen($path, 'r');
-        if (!$handle) return ['linhas' => [], 'total_linhas' => 0];
-        $linhaInicio = (int) ($mapeamento['linha_inicio'] ?? 2);
-        $row = 0; $count = 0;
-        while (($data = fgetcsv($handle, 2000, ';')) !== false) {
-            $row++;
-            if ($row < $linhaInicio) continue;
-            $linhas[] = $this->mapearLinhaCsv($data, $mapeamento, $row);
-            $count++;
-            if ($limit > 0 && $count >= $limit) break;
-        }
-        fclose($handle);
-        return ['linhas' => $linhas, 'total_linhas' => $count];
-    }
-
-    private function processarSheet($ws, array $mapeamento, int $limit = 0): array
+    /**
+     * Processa o grid bidimensional extraído do XLSX nativo.
+     */
+    private function processarGrid(array $grid, array $mapeamento, int $limit = 0): array
     {
         $linhaInicio = (int) ($mapeamento['linha_inicio'] ?? 2);
-        $maxRow      = $ws->getHighestRow();
         $linhas      = [];
         $count       = 0;
 
@@ -633,18 +684,23 @@ class ContratosController extends Controller
             'valor_exame'       => $this->colIndex($mapeamento['col_valor_exame'] ?? 'V'),
         ];
 
+        $maxRow = empty($grid) ? 0 : max(array_keys($grid));
+
         for ($row = $linhaInicio; $row <= $maxRow; $row++) {
-            $seq = $ws->getCellByColumnAndRow($colMap['seq'], $row)->getValue();
-            if (empty($seq) && $seq !== '0') continue;
+            if (!isset($grid[$row])) continue;
+            $seq = $grid[$row][$colMap['seq']] ?? '';
+            if ($seq === '' || $seq === null) continue;
 
             $linha = ['linha_original' => $row];
             foreach ($colMap as $campo => $colIdx) {
-                $val = $ws->getCellByColumnAndRow($colIdx, $row)->getValue();
-                if (in_array($campo, ['data_revisao', 'data_estudo', 'data_conclusao']) && is_numeric($val) && $val > 0) {
-                    try {
-                        $val = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($val)->format('Y-m-d H:i:s');
-                    } catch (\Exception $e) { /* mantém */ }
+                $val = $grid[$row][$colIdx] ?? null;
+
+                // Converter serial de data do Excel para string legível
+                if (in_array($campo, ['data_revisao', 'data_estudo', 'data_conclusao'])
+                    && is_numeric($val) && (float) $val > 1000) {
+                    $val = $this->excelSerialToDate((float) $val);
                 }
+
                 $linha[$campo] = $val;
             }
             $linhas[] = $linha;
@@ -654,6 +710,37 @@ class ContratosController extends Controller
 
         return ['linhas' => $linhas, 'total_linhas' => $limit > 0 ? $count : ($maxRow - $linhaInicio + 1)];
     }
+
+    /**
+     * Converte serial numérico de data do Excel para string 'Y-m-d H:i:s'.
+     * Fórmula: dias desde 1900-01-01 (com bug de 1900 como bissexto).
+     */
+    private function excelSerialToDate(float $serial): string
+    {
+        // Excel conta 1900-01-01 como dia 1, com bug do dia 60 (1900-02-29 inexistente)
+        $unixTimestamp = ($serial - 25569) * 86400;
+        return gmdate('Y-m-d H:i:s', (int) $unixTimestamp);
+    }
+
+    private function lerCsv(string $path, array $mapeamento, int $limit = 0): array
+    {
+        $linhas      = [];
+        $handle      = fopen($path, 'r');
+        if (!$handle) return ['linhas' => [], 'total_linhas' => 0];
+        $linhaInicio = (int) ($mapeamento['linha_inicio'] ?? 2);
+        $row = 0; $count = 0;
+        while (($data = fgetcsv($handle, 2000, ';')) !== false) {
+            $row++;
+            if ($row < $linhaInicio) continue;
+            $linhas[] = $this->mapearLinhaCsv($data, $mapeamento, $row);
+            $count++;
+            if ($limit > 0 && $count >= $limit) break;
+        }
+        fclose($handle);
+        return ['linhas' => $linhas, 'total_linhas' => $count];
+    }
+
+    // processarSheet() foi substituído por processarGrid() acima (leitura nativa XLSX)
 
     private function mapearLinhaCsv(array $data, array $mapeamento, int $row): array
     {
