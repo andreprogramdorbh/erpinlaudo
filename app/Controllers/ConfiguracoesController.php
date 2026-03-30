@@ -12,6 +12,8 @@ use App\Models\ConfigNfs;
 use App\Models\Integracao;
 use App\Services\MailService;
 use App\Services\CryptoService;
+use App\Services\CnesImportService;
+use App\Core\Database;
 
 class ConfiguracoesController extends Controller
 {
@@ -19,6 +21,7 @@ class ConfiguracoesController extends Controller
     private PasswordResetToken $passwordResetModel;
     private ConfigNfs $configNfsModel;
     private Integracao $integracaoModel;
+    private CnesImportService $cnesImportService;
 
     public function __construct()
     {
@@ -26,6 +29,7 @@ class ConfiguracoesController extends Controller
         $this->passwordResetModel = new PasswordResetToken();
         $this->configNfsModel     = new ConfigNfs();
         $this->integracaoModel    = new Integracao();
+        $this->cnesImportService  = new CnesImportService();
     }
 
     // ================================================================
@@ -88,12 +92,33 @@ class ConfiguracoesController extends Controller
         $usuarios   = Auth::can('manage_users') ? $this->userModel->findAll() : [];
         $configNfs  = $this->configNfsModel->findByUsuarioId((int) Auth::user()->id);
 
+        // Dados CNES para a aba de importação
+        $cnesHistorico  = [];
+        $cnesTotalEstab = 0;
+        $cnesTotalEquip = 0;
+        $cnesTotalProf  = 0;
+        try {
+            $pdo = Database::getInstance();
+            $stmt = $pdo->query("SELECT * FROM cnes_importacoes ORDER BY iniciado_em DESC LIMIT 12");
+            $cnesHistorico = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        } catch (\Throwable $e) {}
+        try {
+            $pdo = Database::getInstance();
+            $cnesTotalEstab = (int)$pdo->query("SELECT COUNT(*) FROM cnes_estabelecimentos")->fetchColumn();
+            $cnesTotalEquip = (int)$pdo->query("SELECT COUNT(*) FROM cnes_equipamentos")->fetchColumn();
+            $cnesTotalProf  = (int)$pdo->query("SELECT COUNT(*) FROM cnes_profissionais")->fetchColumn();
+        } catch (\Throwable $e) {}
+
         View::render('configuracoes/index', [
-            'title'       => 'Configurações',
-            'activeTab'   => $activeTab,
-            'usuarios'    => $usuarios,
-            'currentUser' => Auth::user(),
-            'configNfs'   => $configNfs,
+            'title'          => 'Configurações',
+            'activeTab'      => $activeTab,
+            'usuarios'       => $usuarios,
+            'currentUser'    => Auth::user(),
+            'configNfs'      => $configNfs,
+            'cnesHistorico'  => $cnesHistorico,
+            'cnesTotalEstab' => $cnesTotalEstab,
+            'cnesTotalEquip' => $cnesTotalEquip,
+            'cnesTotalProf'  => $cnesTotalProf,
         ]);
     }
 

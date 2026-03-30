@@ -96,7 +96,7 @@ function cnesNaturezaTipo(?string $co): string {
                 <button id="btn-importar-servidor" class="btn btn-primary btn-lg">
                     <i class="fas fa-play me-2"></i>Iniciar Importação do Servidor
                 </button>
-                <a href="/cnes/importar" class="btn btn-outline-secondary btn-lg">
+                <a href="/configuracoes?tab=cnes" class="btn btn-outline-secondary btn-lg">
                     <i class="fas fa-upload me-2"></i>Upload de ZIP
                 </a>
             </div>
@@ -110,7 +110,7 @@ function cnesNaturezaTipo(?string $co): string {
                 Os arquivos CNES precisam estar extraídos em <code>/tmp/cnes_base/</code>.
             </div>
             <div class="d-flex gap-2">
-                <a href="/cnes/importar" class="btn btn-primary">
+                <a href="/configuracoes?tab=cnes" class="btn btn-primary">
                     <i class="fas fa-upload me-2"></i>Fazer Upload do ZIP
                 </a>
             </div>

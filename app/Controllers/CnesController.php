@@ -313,35 +313,11 @@ class CnesController extends Controller
      */
     public function importarForm(): void
     {
-        try {
-            // Buscar histórico de importações
-            $pdo = $this->estabModel->getPdo();
-            $historico = [];
-            try {
-                $stmt = $pdo->query("SELECT * FROM cnes_importacoes ORDER BY iniciado_em DESC LIMIT 12");
-                $historico = $stmt->fetchAll(\PDO::FETCH_OBJ);
-            } catch (\Throwable $e) {
-                // Tabela ainda não existe
-            }
-
-            $totalEstab = 0;
-            try {
-                $totalEstab = (int)$pdo->query("SELECT COUNT(*) FROM cnes_estabelecimentos")->fetchColumn();
-            } catch (\Throwable $e) {}
-
-            View::render('cnes/importar', [
-                'title'      => 'Importar Base CNES',
-                'breadcrumb' => ['Clientes' => '/clientes', 'CNES Global' => '/cnes', 0 => 'Importar'],
-                '_layout'    => 'erp',
-                'historico'  => $historico,
-                'totalEstab' => $totalEstab,
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('CnesController::importarForm - ' . $e->getMessage());
-            header('Location: /cnes');
-            exit();
-        }
+        // Importação CNES movida para /configuracoes?tab=cnes
+        header('Location: /configuracoes?tab=cnes', true, 301);
+        exit();
     }
+
 
     /**
      * POST /cnes/importar/upload

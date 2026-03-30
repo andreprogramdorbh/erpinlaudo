@@ -109,6 +109,12 @@ $roleLabels = [
     <button class="cfg-tab <?php echo $activeTab === 'notas-fiscais' ? 'active' : ''; ?>" onclick="switchTab('notas-fiscais', this)">
       <i class="fas fa-file-invoice"></i> Notas Fiscais
     </button>
+    <button class="cfg-tab <?php echo $activeTab === 'cnes' ? 'active' : ''; ?>" onclick="switchTab('cnes', this)">
+      <i class="fas fa-hospital"></i> CNES
+      <?php if (($cnesTotalEstab ?? 0) > 0): ?>
+      <span class="badge rounded-pill ms-1" style="background:#2d9b5e;color:#fff;font-size:.62rem"><?php echo number_format($cnesTotalEstab ?? 0); ?></span>
+      <?php endif; ?>
+    </button>
     <?php endif; ?>
   </div>
 
@@ -518,6 +524,370 @@ $roleLabels = [
   </div>
   <?php endif; ?>
 
+
+  <!-- ===== ABA: CNES ===== -->
+  <?php if (Auth::can('manage_settings')): ?>
+  <?php
+    $cnesHistorico  = $cnesHistorico  ?? [];
+    $cnesTotalEstab = $cnesTotalEstab ?? 0;
+    $cnesTotalEquip = $cnesTotalEquip ?? 0;
+    $cnesTotalProf  = $cnesTotalProf  ?? 0;
+    $ufs = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+  ?>
+  <div id="tab-cnes" style="display:<?php echo $activeTab === 'cnes' ? 'block' : 'none'; ?>">
+
+    <!-- Hero CNES -->
+    <div style="background:linear-gradient(135deg,#1a6b3c 0%,#2d9b5e 100%);border-radius:12px;padding:1.75rem 2rem;color:#fff;margin-bottom:1.5rem;position:relative;overflow:hidden">
+      <div style="position:absolute;right:1.5rem;top:50%;transform:translateY(-50%);font-size:5rem;opacity:.1">&#127973;</div>
+      <h2 style="font-size:1.35rem;font-weight:700;margin:0 0 .3rem"><i class="fas fa-hospital me-2"></i>Importação da Base CNES</h2>
+      <p style="margin:0;opacity:.9;font-size:.9rem">Cadastro Nacional de Estabelecimentos de Saúde &mdash; DATASUS/CNES<br>Gerencie a importação e atualização mensal da base completa.</p>
+    </div>
+
+    <!-- Stats atuais -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="cfg-card" style="border-left:4px solid #2d9b5e">
+          <div class="cfg-section" style="padding:1rem 1.25rem">
+            <div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748b">Estabelecimentos</div>
+            <div style="font-size:1.75rem;font-weight:700;color:#2d9b5e"><?php echo number_format($cnesTotalEstab); ?></div>
+            <?php if ($cnesTotalEstab > 0): ?>
+            <a href="/cnes" class="btn btn-sm btn-outline-success mt-1" style="font-size:.75rem">
+              <i class="fas fa-list me-1"></i>Ver listagem
+            </a>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="cfg-card" style="border-left:4px solid #1976d2">
+          <div class="cfg-section" style="padding:1rem 1.25rem">
+            <div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748b">Equipamentos</div>
+            <div style="font-size:1.75rem;font-weight:700;color:#1976d2"><?php echo number_format($cnesTotalEquip); ?></div>
+            <?php if ($cnesTotalEstab > 0 && $cnesTotalEquip === 0): ?>
+            <span style="font-size:.72rem;color:#dc2626"><i class="fas fa-exclamation-triangle me-1"></i>Tabela vazia</span>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="cfg-card" style="border-left:4px solid #f59e0b">
+          <div class="cfg-section" style="padding:1rem 1.25rem">
+            <div style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748b">Profissionais</div>
+            <div style="font-size:1.75rem;font-weight:700;color:#f59e0b"><?php echo number_format($cnesTotalProf); ?></div>
+            <?php if ($cnesTotalEstab > 0 && $cnesTotalProf === 0): ?>
+            <span style="font-size:.72rem;color:#dc2626"><i class="fas fa-exclamation-triangle me-1"></i>Tabela vazia</span>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerta dados incompletos -->
+    <?php if ($cnesTotalEstab > 0 && ($cnesTotalEquip === 0 || $cnesTotalProf === 0)): ?>
+    <div class="cfg-alert" style="background:#fff3cd;color:#856404;border:1px solid #ffc107;margin-bottom:1.25rem">
+      <i class="fas fa-exclamation-triangle"></i>
+      <div>
+        <strong>Dados incompletos detectados!</strong>
+        <?php if ($cnesTotalEquip === 0): ?> &nbsp;<span style="color:#dc3545">Equipamentos: 0 registros.</span><?php endif; ?>
+        <?php if ($cnesTotalProf === 0): ?> &nbsp;<span style="color:#dc3545">Profissionais: 0 registros.</span><?php endif; ?>
+        &nbsp;Use a <strong>Reimportação Parcial</strong> abaixo para corrigir sem reimportar os estabelecimentos.
+      </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="row g-4">
+
+      <!-- Coluna principal -->
+      <div class="col-lg-8">
+
+        <!-- Info box: como obter o ZIP -->
+        <div style="background:#e3f2fd;border-left:4px solid #1976d2;border-radius:0 8px 8px 0;padding:1rem 1.2rem;margin-bottom:1.25rem">
+          <h5 style="color:#1565c0;margin:0 0 .4rem;font-size:.9rem"><i class="fas fa-download me-1"></i> Como obter o arquivo ZIP</h5>
+          <p style="margin:0;font-size:.85rem;color:#333">Acesse <a href="https://cnes.datasus.gov.br/pages/downloads/arquivosBaseDados.jsp" target="_blank">cnes.datasus.gov.br &rarr; Downloads &rarr; Base de Dados</a> e baixe o arquivo <code style="background:#bbdefb;padding:.1rem .4rem;border-radius:4px">BASE_DE_DADOS_CNES_AAAAMM.ZIP</code>. A base é atualizada mensalmente pelo DATASUS.</p>
+        </div>
+
+        <!-- Card: Upload e Importação Completa -->
+        <div class="cfg-card mb-4">
+          <div class="cfg-card-header">
+            <h2 class="cfg-card-title"><i class="fas fa-cloud-upload-alt" style="color:#2d9b5e"></i> Upload da Base CNES</h2>
+            <span class="badge" style="background:#2d9b5e;color:#fff;font-size:.72rem;padding:.3rem .7rem;border-radius:20px">Importação Completa</span>
+          </div>
+          <div class="cfg-section">
+
+            <form id="cnesFormImportar" enctype="multipart/form-data">
+
+              <!-- Drop zone -->
+              <div id="cnesDropZone" onclick="document.getElementById('cnesArquivoZip').click()"
+                   style="border:2.5px dashed #c8e6c9;border-radius:10px;background:#f9fffe;padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:all .2s">
+                <div style="font-size:2.5rem;margin-bottom:.75rem">&#128230;</div>
+                <h3 style="color:#1a6b3c;margin:0 0 .4rem;font-size:1.05rem">Arraste o arquivo ZIP aqui</h3>
+                <p style="color:#666;font-size:.85rem;margin:0">ou clique para selecionar &mdash; BASE_DE_DADOS_CNES_AAAAMM.ZIP</p>
+                <p style="margin:.5rem 0 0;color:#94a3b8;font-size:.78rem">Tamanho máximo: 2 GB</p>
+              </div>
+              <input type="file" id="cnesArquivoZip" name="arquivo_zip" accept=".zip" style="display:none">
+
+              <!-- Arquivo selecionado -->
+              <div id="cnesArqSel" class="cfg-alert cfg-alert-success mt-3" style="display:none">
+                <i class="fas fa-file-archive"></i>
+                <span id="cnesNomeArq"></span>
+                <span class="text-muted ms-2" id="cnesTamanhoArq"></span>
+              </div>
+
+              <!-- Opções -->
+              <div class="row g-3 mt-2">
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold" style="font-size:.85rem">Filtrar por UF <span class="text-muted">(opcional)</span></label>
+                  <select name="uf" class="form-select form-select-sm">
+                    <option value="">Todos os estados</option>
+                    <?php foreach ($ufs as $uf): ?>
+                    <option value="<?= $uf ?>"><?= $uf ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                  <div class="form-text" style="font-size:.75rem">Importar apenas um estado acelera o processo.</div>
+                </div>
+                <div class="col-md-8 d-flex align-items-end">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="apenas_imagem" id="cnesApenasImagem" value="1">
+                    <label class="form-check-label" for="cnesApenasImagem" style="font-size:.85rem">
+                      <strong>Apenas Diagnóstico por Imagem</strong>
+                      <div class="form-text" style="font-size:.75rem">Importa somente estabelecimentos com equipamentos de imagem (Raio-X, TC, RM, US, etc.)</div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Botão -->
+              <div class="mt-3">
+                <button type="submit" class="btn btn-success px-4" id="cnesBtnImportar" disabled>
+                  <i class="fas fa-cloud-upload-alt me-2"></i>Iniciar Importação Completa
+                </button>
+                <span class="text-muted ms-3" style="font-size:.82rem">Executa em segundo plano (5&ndash;30 min).</span>
+              </div>
+            </form>
+
+            <!-- Card de progresso -->
+            <div id="cnesProgressCard" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:1.25rem;margin-top:1.25rem">
+              <div class="d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0" id="cnesProgressTitle">Importando base CNES...</h6>
+                <span id="cnesProgressBadge" style="display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .8rem;border-radius:50px;font-size:.78rem;font-weight:600;background:#fff3e0;color:#e65100">
+                  <span class="spinner-border spinner-border-sm"></span> Processando
+                </span>
+              </div>
+              <div style="background:#d1fae5;border-radius:50px;height:10px;overflow:hidden;margin:.75rem 0">
+                <div id="cnesProgressBar" style="height:100%;background:linear-gradient(90deg,#2d9b5e,#4caf50);border-radius:50px;transition:width .5s;width:0%"></div>
+              </div>
+              <div class="row text-center g-2">
+                <div class="col-4">
+                  <div class="fw-bold text-success" id="cnesCntEstab">0</div>
+                  <div class="text-muted" style="font-size:.75rem">Estabelecimentos</div>
+                </div>
+                <div class="col-4">
+                  <div class="fw-bold" style="color:#1976d2" id="cnesCntEquip">0</div>
+                  <div class="text-muted" style="font-size:.75rem">Equipamentos</div>
+                </div>
+                <div class="col-4">
+                  <div class="fw-bold" style="color:#f59e0b" id="cnesCntProf">0</div>
+                  <div class="text-muted" style="font-size:.75rem">Profissionais</div>
+                </div>
+              </div>
+              <div class="mt-2 text-muted" style="font-size:.82rem" id="cnesProgressMsg"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Card: Diagnóstico & Reimportação Parcial -->
+        <div class="cfg-card mb-4" style="border-top:3px solid #1976d2">
+          <div class="cfg-card-header" style="background:linear-gradient(135deg,#1565c0,#1976d2);color:#fff">
+            <h2 class="cfg-card-title" style="color:#fff"><i class="fas fa-search-plus me-2"></i>Diagnóstico de ZIP &amp; Reimportação Parcial</h2>
+            <span style="font-size:.78rem;opacity:.85">Verifique o conteúdo do ZIP e reimporte apenas equip./profissionais</span>
+          </div>
+          <div class="cfg-section">
+
+            <!-- Passo 1: Diagnóstico -->
+            <h3 class="cfg-section-title" style="font-size:.9rem"><i class="fas fa-search me-1 text-primary"></i> Passo 1 &mdash; Diagnosticar o ZIP</h3>
+            <div id="cnesDiagDropZone" onclick="document.getElementById('cnesDiagArquivoZip').click()"
+                 style="border:2px dashed #90caf9;border-radius:10px;background:#f3f8ff;padding:1.5rem;text-align:center;cursor:pointer;transition:all .2s">
+              <i class="fas fa-file-archive fa-2x" style="color:#1976d2;margin-bottom:.5rem"></i>
+              <div class="fw-semibold" style="font-size:.9rem">Clique ou arraste o ZIP para diagnóstico</div>
+              <div class="text-muted" style="font-size:.8rem">Não importa nada &mdash; apenas analisa o conteúdo</div>
+            </div>
+            <input type="file" id="cnesDiagArquivoZip" accept=".zip" style="display:none">
+            <div id="cnesDiagArqSel" class="mt-2" style="display:none">
+              <span class="badge bg-primary"><i class="fas fa-file-archive me-1"></i><span id="cnesDiagNomeArq"></span></span>
+              <button class="btn btn-sm btn-primary ms-2" id="cnesBtnDiagnosticar">
+                <i class="fas fa-search me-1"></i>Analisar ZIP
+              </button>
+            </div>
+
+            <!-- Resultado do diagnóstico -->
+            <div id="cnesDiagResultado" style="display:none;margin-top:1rem">
+              <hr style="margin:.75rem 0">
+              <h3 class="cfg-section-title" style="font-size:.9rem"><i class="fas fa-list-check me-1"></i> Arquivos encontrados no ZIP</h3>
+              <div id="cnesDiagListaArquivos"></div>
+
+              <!-- Passo 2: Reimportar -->
+              <div id="cnesDiagPasso2" style="display:none;margin-top:1rem">
+                <hr style="margin:.75rem 0">
+                <h3 class="cfg-section-title" style="font-size:.9rem;color:#2d9b5e"><i class="fas fa-sync-alt me-1"></i> Passo 2 &mdash; Reimportar</h3>
+                <div class="row g-2 mb-3">
+                  <div class="col-md-4">
+                    <label class="form-label fw-semibold" style="font-size:.82rem">Filtrar por UF</label>
+                    <select id="cnesDiagUf" class="form-select form-select-sm">
+                      <option value="">Todos os estados</option>
+                      <?php foreach ($ufs as $uf): ?>
+                      <option value="<?= $uf ?>"><?= $uf ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-md-8 d-flex align-items-end gap-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="cnesDiagImportarEquip" checked>
+                      <label class="form-check-label" for="cnesDiagImportarEquip" style="font-size:.85rem">Importar Equipamentos</label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="cnesDiagImportarProf" checked>
+                      <label class="form-check-label" for="cnesDiagImportarProf" style="font-size:.85rem">Importar Profissionais</label>
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-success" id="cnesBtnReimportar">
+                  <i class="fas fa-sync-alt me-2"></i>Reimportar Equipamentos/Profissionais
+                </button>
+                <span class="text-muted ms-2" style="font-size:.8rem">Os estabelecimentos já importados não serão alterados.</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Card: Histórico de Importações -->
+        <?php if (!empty($cnesHistorico)): ?>
+        <div class="cfg-card">
+          <div class="cfg-card-header">
+            <h2 class="cfg-card-title"><i class="fas fa-history text-secondary"></i> Histórico de Importações</h2>
+          </div>
+          <div class="table-responsive">
+            <table class="user-table">
+              <thead>
+                <tr>
+                  <th class="ps-3">Competência</th>
+                  <th>Status</th>
+                  <th>Estabelecimentos</th>
+                  <th>Equipamentos</th>
+                  <th>Profissionais</th>
+                  <th>Iniciado em</th>
+                  <th>Concluído em</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($cnesHistorico as $h): ?>
+                <?php
+                  $comp = $h->competencia ?? '';
+                  if (strlen($comp) === 6) {
+                    $meses = ['01'=>'Jan','02'=>'Fev','03'=>'Mar','04'=>'Abr','05'=>'Mai','06'=>'Jun',
+                              '07'=>'Jul','08'=>'Ago','09'=>'Set','10'=>'Out','11'=>'Nov','12'=>'Dez'];
+                    $m = substr($comp, 4, 2); $a = substr($comp, 0, 4);
+                    $compFmt = ($meses[$m] ?? $m) . '/' . $a;
+                  } else { $compFmt = htmlspecialchars($comp); }
+                ?>
+                <tr>
+                  <td class="ps-3 fw-semibold"><?= $compFmt ?></td>
+                  <td>
+                    <?php if ($h->status === 'concluido'): ?>
+                      <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .65rem;border-radius:50px;font-size:.75rem;font-weight:600;background:#d1fae5;color:#065f46">
+                        <i class="fas fa-check-circle"></i> Concluído
+                      </span>
+                    <?php elseif ($h->status === 'processando'): ?>
+                      <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .65rem;border-radius:50px;font-size:.75rem;font-weight:600;background:#fff3e0;color:#e65100">
+                        <span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span> Processando
+                      </span>
+                    <?php else: ?>
+                      <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .65rem;border-radius:50px;font-size:.75rem;font-weight:600;background:#fee2e2;color:#991b1b">
+                        <i class="fas fa-times-circle"></i> Erro
+                      </span>
+                    <?php endif; ?>
+                  </td>
+                  <td><?= number_format((int)($h->total_estab ?? 0)) ?></td>
+                  <td><?= number_format((int)($h->total_equip ?? 0)) ?></td>
+                  <td><?= number_format((int)($h->total_prof ?? 0)) ?></td>
+                  <td><?= $h->iniciado_em ? date('d/m/Y H:i', strtotime($h->iniciado_em)) : '—' ?></td>
+                  <td><?= $h->concluido_em ? date('d/m/Y H:i', strtotime($h->concluido_em)) : '—' ?></td>
+                </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <?php endif; ?>
+
+      </div>
+
+      <!-- Coluna lateral -->
+      <div class="col-lg-4">
+
+        <!-- Importação via SSH -->
+        <div class="cfg-card mb-4">
+          <div class="cfg-card-header">
+            <h2 class="cfg-card-title"><i class="fas fa-terminal text-secondary"></i> Importação via SSH</h2>
+          </div>
+          <div class="cfg-section">
+            <p class="text-muted" style="font-size:.85rem">Para servidores com limite de upload, use o SSH:</p>
+            <ol style="font-size:.82rem;padding-left:1.2rem">
+              <li class="mb-2">Execute a migration SQL:<br>
+                <code style="font-size:.75rem;background:#f5f5f5;padding:.2rem .4rem;border-radius:4px;display:block;margin-top:.3rem">mysql -u user -p banco &lt; database/migrations/2026-03-25_cnes_global.sql</code>
+              </li>
+              <li class="mb-2">Extraia o ZIP:<br>
+                <code style="font-size:.75rem;background:#f5f5f5;padding:.2rem .4rem;border-radius:4px;display:block;margin-top:.3rem">unzip BASE_CNES.ZIP -d /tmp/cnes_base/</code>
+              </li>
+              <li class="mb-2">Execute o script:<br>
+                <code style="font-size:.75rem;background:#f5f5f5;padding:.2rem .4rem;border-radius:4px;display:block;margin-top:.3rem">php database/importar_cnes.php --dir=/tmp/cnes_base --uf=MG</code>
+              </li>
+            </ol>
+            <p class="text-muted" style="font-size:.78rem">
+              <i class="fas fa-info-circle me-1"></i>
+              Omita <code>--uf</code> para importar todos os estados (~605 mil estabelecimentos).
+            </p>
+          </div>
+        </div>
+
+        <!-- Atualização Mensal -->
+        <div class="cfg-card mb-4">
+          <div class="cfg-card-header">
+            <h2 class="cfg-card-title"><i class="fas fa-calendar-check text-secondary"></i> Atualização Mensal</h2>
+          </div>
+          <div class="cfg-section">
+            <p style="font-size:.85rem;color:#555">O DATASUS publica a base CNES toda <strong>primeira semana de cada mês</strong>. Para automatizar via cron:</p>
+            <code style="font-size:.73rem;background:#f5f5f5;padding:.5rem;border-radius:6px;display:block;line-height:1.6">
+              # Cron: todo dia 10 às 3h<br>
+              0 3 10 * * php /caminho/database/importar_cnes.php --dir=/tmp/cnes_base --uf=MG
+            </code>
+            <p class="mt-2 text-muted" style="font-size:.78rem">
+              O script usa <code>INSERT ... ON DUPLICATE KEY UPDATE</code>, então re-executar é seguro &mdash; apenas atualiza registros existentes.
+            </p>
+          </div>
+        </div>
+
+        <!-- Link para listagem CNES -->
+        <div class="cfg-card">
+          <div class="cfg-section" style="text-align:center;padding:1.5rem">
+            <div style="font-size:2.5rem;margin-bottom:.5rem">&#127973;</div>
+            <div class="fw-bold" style="font-size:1.1rem;color:#1e293b"><?php echo number_format($cnesTotalEstab); ?></div>
+            <div class="text-muted" style="font-size:.82rem">estabelecimentos na base atual</div>
+            <?php if ($cnesTotalEstab > 0): ?>
+            <a href="/cnes" class="btn btn-outline-success btn-sm mt-3">
+              <i class="fas fa-list me-1"></i>Ver listagem CNES
+            </a>
+            <?php endif; ?>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+  <?php endif; ?>
+
 </div>
 
 <!-- Form oculto para reset de senha -->
@@ -615,6 +985,356 @@ function toggleStatus(userId, btn) {
     })
     .catch(() => alert('Erro de conexão.'));
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// ABA CNES — Upload, Diagnóstico e Reimportação Parcial
+// ═══════════════════════════════════════════════════════════════════════
+(function () {
+  // Elementos de upload
+  const dropZone    = document.getElementById('cnesDropZone');
+  const fileInput   = document.getElementById('cnesArquivoZip');
+  const btnImportar = document.getElementById('cnesBtnImportar');
+  const arqSel      = document.getElementById('cnesArqSel');
+  const nomeArq     = document.getElementById('cnesNomeArq');
+  const tamanhoArq  = document.getElementById('cnesTamanhoArq');
+  const form        = document.getElementById('cnesFormImportar');
+  const progressCard = document.getElementById('cnesProgressCard');
+  let pollingInterval = null;
+
+  if (!dropZone || !fileInput) return; // aba não está no DOM
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1073741824).toFixed(2) + ' GB';
+  }
+
+  function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Drag & Drop upload principal ──────────────────────────────────────
+  ['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => {
+    ev.preventDefault();
+    dropZone.style.borderColor = '#2d9b5e';
+    dropZone.style.background  = '#e8f5e9';
+  }));
+  ['dragleave','drop'].forEach(e => dropZone.addEventListener(e, ev => {
+    ev.preventDefault();
+    dropZone.style.borderColor = '#c8e6c9';
+    dropZone.style.background  = '#f9fffe';
+  }));
+  dropZone.addEventListener('drop', ev => {
+    const files = ev.dataTransfer.files;
+    if (files.length) { fileInput.files = files; mostrarArquivo(files[0]); }
+  });
+  fileInput.addEventListener('change', function () {
+    if (this.files.length) mostrarArquivo(this.files[0]);
+  });
+
+  function mostrarArquivo(file) {
+    nomeArq.textContent    = file.name;
+    tamanhoArq.textContent = '(' + formatBytes(file.size) + ')';
+    arqSel.style.display   = 'block';
+    btnImportar.disabled   = false;
+  }
+
+  // ── Submit importação completa ─────────────────────────────────────────
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!fileInput.files.length) {
+      if (typeof Swal !== 'undefined') Swal.fire('Atenção', 'Selecione o arquivo ZIP da base CNES.', 'warning');
+      else alert('Selecione o arquivo ZIP da base CNES.');
+      return;
+    }
+    btnImportar.disabled = true;
+    btnImportar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+    progressCard.style.display = 'block';
+    progressCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const fd = new FormData(form);
+    fetch('/cnes/importar/upload', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        if (typeof Swal !== 'undefined') Swal.fire('Erro', data.error || 'Erro ao iniciar importação.', 'error');
+        else alert(data.error || 'Erro ao iniciar importação.');
+        btnImportar.disabled = false;
+        btnImportar.innerHTML = '<i class="fas fa-cloud-upload-alt me-2"></i>Iniciar Importação Completa';
+        return;
+      }
+      document.getElementById('cnesProgressMsg').textContent = data.message || 'Importação iniciada...';
+      btnImportar.innerHTML = '<i class="fas fa-cloud-upload-alt me-2"></i>Importando...';
+      pollingInterval = setInterval(verificarStatus, 5000);
+      verificarStatus();
+    })
+    .catch(err => {
+      if (typeof Swal !== 'undefined') Swal.fire('Erro', 'Falha na comunicação: ' + err.message, 'error');
+      else alert('Falha na comunicação: ' + err.message);
+      btnImportar.disabled = false;
+      btnImportar.innerHTML = '<i class="fas fa-cloud-upload-alt me-2"></i>Iniciar Importação Completa';
+    });
+  });
+
+  // ── Polling de status ──────────────────────────────────────────────────
+  function verificarStatus() {
+    fetch('/cnes/importar/status', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      const estab = data.estab || data.db_estab || 0;
+      const equip = data.equip || data.db_equip || 0;
+      const prof  = data.prof  || data.db_prof  || 0;
+      document.getElementById('cnesCntEstab').textContent = Number(estab).toLocaleString('pt-BR');
+      document.getElementById('cnesCntEquip').textContent = Number(equip).toLocaleString('pt-BR');
+      document.getElementById('cnesCntProf').textContent  = Number(prof).toLocaleString('pt-BR');
+      document.getElementById('cnesProgressMsg').textContent = data.etapa || data.message || '';
+
+      const pct = data.pct || 0;
+      const bar = document.getElementById('cnesProgressBar');
+      if (pct > 0) {
+        bar.style.width = Math.min(pct, 99) + '%';
+      } else {
+        const w = parseFloat(bar.style.width || '0');
+        bar.style.width = Math.min(w + 1.5, 90) + '%';
+      }
+
+      const badge = document.getElementById('cnesProgressBadge');
+      if (data.status === 'concluido') {
+        clearInterval(pollingInterval);
+        badge.style.background = '#d1fae5'; badge.style.color = '#065f46';
+        badge.innerHTML = '<i class="fas fa-check-circle"></i> Concluído';
+        bar.style.width = '100%';
+        document.getElementById('cnesProgressTitle').textContent = 'Importação concluída!';
+        btnImportar.innerHTML = '<i class="fas fa-cloud-upload-alt me-2"></i>Iniciar Nova Importação';
+        btnImportar.disabled = false;
+        if (typeof Swal !== 'undefined') {
+          Swal.fire({
+            icon: 'success',
+            title: 'Importação concluída!',
+            html: `<strong>${Number(estab).toLocaleString('pt-BR')}</strong> estabelecimentos, <strong>${Number(equip).toLocaleString('pt-BR')}</strong> equipamentos e <strong>${Number(prof).toLocaleString('pt-BR')}</strong> profissionais importados.`,
+            confirmButtonText: 'Ver listagem CNES',
+          }).then(() => window.location.href = '/cnes');
+        }
+      } else if (data.status === 'erro') {
+        clearInterval(pollingInterval);
+        badge.style.background = '#fee2e2'; badge.style.color = '#991b1b';
+        badge.innerHTML = '<i class="fas fa-times-circle"></i> Erro';
+        document.getElementById('cnesProgressTitle').textContent = 'Erro na importação';
+        btnImportar.innerHTML = '<i class="fas fa-cloud-upload-alt me-2"></i>Tentar Novamente';
+        btnImportar.disabled = false;
+        const erros = data.erros ? data.erros.join('<br>') : (data.etapa || 'Verifique o log do servidor.');
+        if (typeof Swal !== 'undefined') Swal.fire('Erro na importação', erros, 'error');
+      }
+    })
+    .catch(() => {});
+  }
+
+  // Verificar se há importação em andamento ao carregar
+  <?php foreach (($cnesHistorico ?? []) as $h): if ($h->status === 'processando'): ?>
+  progressCard.style.display = 'block';
+  pollingInterval = setInterval(verificarStatus, 5000);
+  verificarStatus();
+  <?php break; endif; endforeach; ?>
+
+  // ── Diagnóstico de ZIP ─────────────────────────────────────────────────
+  const diagInput    = document.getElementById('cnesDiagArquivoZip');
+  const diagDropZone = document.getElementById('cnesDiagDropZone');
+  const diagArqSel   = document.getElementById('cnesDiagArqSel');
+  const diagNomeArq  = document.getElementById('cnesDiagNomeArq');
+  const btnDiag      = document.getElementById('cnesBtnDiagnosticar');
+  const diagResult   = document.getElementById('cnesDiagResultado');
+  const diagLista    = document.getElementById('cnesDiagListaArquivos');
+  const diagPasso2   = document.getElementById('cnesDiagPasso2');
+  const btnReimport  = document.getElementById('cnesBtnReimportar');
+  let diagZipPath    = null;
+  let diagPolling    = null;
+
+  ['dragenter','dragover'].forEach(e => diagDropZone.addEventListener(e, ev => {
+    ev.preventDefault();
+    diagDropZone.style.borderColor = '#1976d2';
+    diagDropZone.style.background  = '#e3f2fd';
+  }));
+  ['dragleave','drop'].forEach(e => diagDropZone.addEventListener(e, ev => {
+    ev.preventDefault();
+    diagDropZone.style.borderColor = '#90caf9';
+    diagDropZone.style.background  = '#f3f8ff';
+  }));
+  diagDropZone.addEventListener('drop', ev => {
+    const files = ev.dataTransfer.files;
+    if (files.length) { diagInput.files = files; mostrarDiagArq(files[0]); }
+  });
+  diagInput.addEventListener('change', function () {
+    if (this.files.length) mostrarDiagArq(this.files[0]);
+  });
+
+  function mostrarDiagArq(file) {
+    diagNomeArq.textContent   = file.name + ' (' + formatBytes(file.size) + ')';
+    diagArqSel.style.display  = 'block';
+    diagResult.style.display  = 'none';
+    diagZipPath = null;
+  }
+
+  btnDiag.addEventListener('click', function () {
+    if (!diagInput.files.length) return;
+    btnDiag.disabled = true;
+    btnDiag.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analisando...';
+    diagResult.style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('arquivo_zip', diagInput.files[0]);
+
+    fetch('/cnes/importar/diagnostico-zip', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      btnDiag.disabled = false;
+      btnDiag.innerHTML = '<i class="fas fa-search me-1"></i>Analisar ZIP';
+      if (!data.success) {
+        if (typeof Swal !== 'undefined') Swal.fire('Erro', data.error || 'Falha no diagnóstico.', 'error');
+        return;
+      }
+      diagZipPath = data.zip_path || null;
+      renderDiagnostico(data);
+    })
+    .catch(err => {
+      btnDiag.disabled = false;
+      btnDiag.innerHTML = '<i class="fas fa-search me-1"></i>Analisar ZIP';
+      if (typeof Swal !== 'undefined') Swal.fire('Erro', 'Falha na comunicação: ' + err.message, 'error');
+    });
+  });
+
+  function renderDiagnostico(data) {
+    diagResult.style.display = 'block';
+    diagLista.innerHTML = '';
+
+    const reconhecidos = data.reconhecidos || [];
+    const faltando     = data.faltando     || [];
+    const outros       = data.nao_reconhecidos || [];
+
+    reconhecidos.forEach(f => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-radius:6px;margin-bottom:.3rem;font-size:.84rem;background:#e8f5e9';
+      row.innerHTML = `<i class="fas fa-check-circle" style="color:#2d9b5e"></i>
+        <span class="fw-semibold">${escHtml(f.nome)}</span>
+        <span style="font-size:.72rem;padding:.2rem .5rem;border-radius:50px;background:#c8e6c9;color:#1b5e20">${escHtml(f.descricao || f.tipo)}</span>
+        <span class="text-muted ms-auto" style="font-size:.75rem">${escHtml(f.tamanho || '')}</span>`;
+      diagLista.appendChild(row);
+    });
+
+    faltando.forEach(f => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-radius:6px;margin-bottom:.3rem;font-size:.84rem;background:#fff3e0';
+      row.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#f59e0b"></i>
+        <span class="text-muted">${escHtml(f.prefixo)}*.csv</span>
+        <span style="font-size:.72rem;padding:.2rem .5rem;border-radius:50px;background:#ffe0b2;color:#e65100">${escHtml(f.descricao)}</span>
+        <span class="text-danger ms-auto" style="font-size:.75rem">Não encontrado${f.obrigatorio ? ' (obrigatório)' : ''}</span>`;
+      diagLista.appendChild(row);
+    });
+
+    if (outros.length) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-radius:6px;margin-bottom:.3rem;font-size:.84rem;background:#f5f5f5';
+      row.innerHTML = `<i class="fas fa-file"></i> <span class="text-muted">${outros.length} arquivo(s) não reconhecido(s) pelo sistema</span>`;
+      diagLista.appendChild(row);
+    }
+
+    const temEquip = data.tem_equipamento;
+    const temProf  = data.tem_profissional;
+    if (temEquip || temProf) {
+      diagPasso2.style.display = 'block';
+      document.getElementById('cnesDiagImportarEquip').disabled = !temEquip;
+      document.getElementById('cnesDiagImportarProf').disabled  = !temProf;
+      if (!temEquip) document.getElementById('cnesDiagImportarEquip').checked = false;
+      if (!temProf)  document.getElementById('cnesDiagImportarProf').checked  = false;
+    } else {
+      diagPasso2.style.display = 'none';
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Arquivos não encontrados',
+          html: 'O ZIP não contém os arquivos de equipamentos (<code>rlEstabEquipamento*.csv</code>) nem de profissionais (<code>tbCargaHorariaSus*.csv</code>).<br><br>Verifique se baixou a base completa do DATASUS.',
+        });
+      }
+    }
+  }
+
+  btnReimport.addEventListener('click', function () {
+    if (!diagZipPath) {
+      if (typeof Swal !== 'undefined') Swal.fire('Atenção', 'Faça o diagnóstico do ZIP primeiro.', 'warning');
+      return;
+    }
+    const importarEquip = document.getElementById('cnesDiagImportarEquip').checked;
+    const importarProf  = document.getElementById('cnesDiagImportarProf').checked;
+    const uf            = document.getElementById('cnesDiagUf').value;
+
+    if (!importarEquip && !importarProf) {
+      if (typeof Swal !== 'undefined') Swal.fire('Atenção', 'Selecione ao menos uma opção: Equipamentos ou Profissionais.', 'warning');
+      return;
+    }
+
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Confirmar reimportação parcial?',
+        html: `Serão importados:<br>
+          ${importarEquip ? '<b>Equipamentos</b><br>' : ''}
+          ${importarProf  ? '<b>Profissionais</b><br>' : ''}
+          ${uf ? '<br>Filtro UF: <b>' + uf + '</b>' : '<br>Todos os estados'}<br><br>
+          Os estabelecimentos já importados <b>não serão alterados</b>.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sim, reimportar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#2d9b5e',
+      }).then(result => {
+        if (!result.isConfirmed) return;
+        executarReimportacao(importarEquip, importarProf, uf);
+      });
+    } else {
+      if (confirm('Confirmar reimportação parcial?')) executarReimportacao(importarEquip, importarProf, uf);
+    }
+  });
+
+  function executarReimportacao(importarEquip, importarProf, uf) {
+    btnReimport.disabled = true;
+    btnReimport.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Iniciando...';
+
+    fetch('/cnes/importar/parcial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        zip_path:       diagZipPath,
+        uf:             uf,
+        importar_equip: importarEquip,
+        importar_prof:  importarProf,
+        competencia:    new Date().toISOString().slice(0,7).replace('-',''),
+      }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        if (typeof Swal !== 'undefined') Swal.fire('Erro', data.error || 'Falha ao iniciar reimportação.', 'error');
+        btnReimport.disabled = false;
+        btnReimport.innerHTML = '<i class="fas fa-sync-alt me-2"></i>Reimportar Equipamentos/Profissionais';
+        return;
+      }
+      progressCard.style.display = 'block';
+      document.getElementById('cnesProgressTitle').textContent = 'Reimportando equipamentos/profissionais...';
+      document.getElementById('cnesProgressMsg').textContent   = data.message || 'Processando...';
+      progressCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (diagPolling) clearInterval(diagPolling);
+      diagPolling = setInterval(verificarStatus, 4000);
+      verificarStatus();
+      btnReimport.innerHTML = '<i class="fas fa-sync-alt me-2"></i>Reimportando...';
+    })
+    .catch(err => {
+      if (typeof Swal !== 'undefined') Swal.fire('Erro', 'Falha na comunicação: ' + err.message, 'error');
+      btnReimport.disabled = false;
+      btnReimport.innerHTML = '<i class="fas fa-sync-alt me-2"></i>Reimportar Equipamentos/Profissionais';
+    });
+  }
+
+})();
 </script>
 
 <?php require_once dirname(__DIR__) . '/layout/erp_footer.php'; ?>
