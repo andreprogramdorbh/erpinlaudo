@@ -148,6 +148,178 @@ class CnesImportService
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Diagnóstico e Reimportação Parcial
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Analisa um arquivo ZIP sem extrair tudo, listando os CSVs encontrados
+     * e identificando quais são reconhecidos pelo sistema CNES.
+     *
+     * @param string $zipPath  Caminho absoluto do ZIP
+     * @return array  ['arquivos' => [...], 'reconhecidos' => [...], 'faltando' => [...]]
+     */
+    public function diagnosticarZip(string $zipPath): array
+    {
+        if (!file_exists($zipPath)) {
+            throw new \RuntimeException("Arquivo ZIP não encontrado: {$zipPath}");
+        }
+
+        $zip = new ZipArchive();
+        $result = $zip->open($zipPath);
+        if ($result !== true) {
+            throw new \RuntimeException("Não foi possível abrir o ZIP (código: {$result})");
+        }
+
+        $arquivos = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            $nome = $stat['name'];
+            $ext  = strtolower(pathinfo($nome, PATHINFO_EXTENSION));
+            if ($ext === 'csv') {
+                $arquivos[] = [
+                    'nome'        => basename($nome),
+                    'caminho'     => $nome,
+                    'tamanho'     => $stat['size'],
+                    'tamanho_fmt' => $this->formatarBytes((int)$stat['size']),
+                ];
+            }
+        }
+        $zip->close();
+
+        return $this->classificarArquivosCnes($arquivos);
+    }
+
+    /**
+     * Analisa um diretório com CSVs já extraídos.
+     *
+     * @param string $dir  Caminho absoluto do diretório
+     * @return array  ['arquivos' => [...], 'reconhecidos' => [...], 'faltando' => [...]]
+     */
+    public function diagnosticarDiretorio(string $dir): array
+    {
+        if (!is_dir($dir)) {
+            throw new \RuntimeException("Diretório não encontrado: {$dir}");
+        }
+
+        $arquivos = [];
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir));
+        foreach ($iterator as $file) {
+            if ($file->isFile() && strtolower($file->getExtension()) === 'csv') {
+                $arquivos[] = [
+                    'nome'        => $file->getFilename(),
+                    'caminho'     => $file->getPathname(),
+                    'tamanho'     => $file->getSize(),
+                    'tamanho_fmt' => $this->formatarBytes((int)$file->getSize()),
+                ];
+            }
+        }
+
+        return $this->classificarArquivosCnes($arquivos);
+    }
+
+    /**
+     * Reimporta apenas equipamentos e/ou profissionais a partir de um ZIP,
+     * sem reimportar os estabelecimentos (que já estão na base).
+     *
+     * @param string $zipPath  Caminho absoluto do ZIP
+     * @param array  $opcoes   ['uf', 'apenas_imagem', 'competencia', 'importar_equip', 'importar_prof']
+     */
+    public function importarParcialZip(string $zipPath, array $opcoes = []): void
+    {
+        $tmpDir = $this->storageDir . '/cnes_tmp_parcial_' . time();
+        @mkdir($tmpDir, 0755, true);
+
+        try {
+            $this->gravaProgresso([
+                'status'      => 'extraindo',
+                'etapa'       => 'Extraindo ZIP para reimportação parcial...',
+                'pct'         => 2,
+                'equip'       => 0,
+                'prof'        => 0,
+                'erros'       => [],
+                'iniciado_em' => date('Y-m-d H:i:s'),
+                'modo'        => 'parcial',
+            ]);
+
+            $this->extrairZip($zipPath, $tmpDir);
+            $this->importarParcialDiretorio($tmpDir, $opcoes);
+        } finally {
+            $this->limparDiretorio($tmpDir);
+        }
+    }
+
+    /**
+     * Reimporta apenas equipamentos e/ou profissionais a partir de um diretório
+     * com CSVs já extraídos, sem reimportar os estabelecimentos.
+     *
+     * @param string $dir     Caminho absoluto do diretório com os CSVs
+     * @param array  $opcoes  ['uf', 'apenas_imagem', 'competencia', 'importar_equip', 'importar_prof']
+     */
+    public function importarParcialDiretorio(string $dir, array $opcoes = []): void
+    {
+        $uf            = strtoupper(trim($opcoes['uf'] ?? ''));
+        $apenasImagem  = (bool)($opcoes['apenas_imagem'] ?? false);
+        $competencia   = $opcoes['competencia'] ?? date('Ym');
+        $importarEquip = (bool)($opcoes['importar_equip'] ?? true);
+        $importarProf  = (bool)($opcoes['importar_prof']  ?? true);
+
+        if (!is_dir($dir)) {
+            throw new \RuntimeException("Diretório não encontrado: {$dir}");
+        }
+
+        // Verificar quais arquivos estão disponíveis
+        $diagn = $this->diagnosticarDiretorio($dir);
+
+        $this->gravaProgresso([
+            'status'      => 'importando',
+            'etapa'       => 'Iniciando reimportação parcial (equipamentos/profissionais)...',
+            'pct'         => 5,
+            'equip'       => 0,
+            'prof'        => 0,
+            'erros'       => [],
+            'iniciado_em' => date('Y-m-d H:i:s'),
+            'modo'        => 'parcial',
+            'arquivos_encontrados' => array_column($diagn['reconhecidos'], 'nome'),
+            'arquivos_faltando'    => array_column($diagn['faltando'], 'descricao'),
+        ]);
+
+        try {
+            $importId   = $this->registrarImportacao($competencia);
+            $totalEquip = 0;
+            $totalProf  = 0;
+
+            if ($importarEquip) {
+                $this->gravaProgresso(['etapa' => 'Importando equipamentos...', 'pct' => 10]);
+                $totalEquip = $this->importarEquipamentos($dir, $uf, $apenasImagem, $competencia, $importId);
+            }
+
+            if ($importarProf) {
+                $this->gravaProgresso(['etapa' => 'Importando profissionais...', 'pct' => 55, 'equip' => $totalEquip]);
+                $totalProf = $this->importarProfissionais($dir, $uf, $competencia, $importId);
+            }
+
+            $this->finalizarImportacao($importId, 0, $totalEquip, $totalProf);
+            $this->gravaProgresso([
+                'status'       => 'concluido',
+                'etapa'        => 'Reimportação parcial concluída!',
+                'pct'          => 100,
+                'equip'        => $totalEquip,
+                'prof'         => $totalProf,
+                'concluido_em' => date('Y-m-d H:i:s'),
+                'modo'         => 'parcial',
+            ]);
+        } catch (\Throwable $e) {
+            $this->gravaProgresso([
+                'status' => 'erro',
+                'etapa'  => 'Erro na reimportação parcial: ' . $e->getMessage(),
+                'pct'    => 0,
+                'erros'  => [$e->getMessage()],
+            ]);
+            throw $e;
+        }
+    }
+
     /**
      * Lê o progresso atual da importação.
      */
@@ -378,12 +550,29 @@ class CnesImportService
         }
 
         // Carregar lookup de unidades por UF (se filtro aplicado)
+        // O CSV pode ter CO_ESTADO_GESTOR como sigla (RJ) ou código IBGE (33)
+        // O banco pode ter qualquer um dos dois dependendo da versão do CSV importado
         $unidadesPorUf = [];
         if ($uf) {
-            $stmt = $this->pdo->prepare(
-                "SELECT co_unidade FROM cnes_estabelecimentos WHERE co_estado_gestor = ?"
-            );
-            $stmt->execute([$uf]);
+            $siglaParaIbge = [
+                'AC'=>'12','AL'=>'27','AP'=>'16','AM'=>'13','BA'=>'29','CE'=>'23','DF'=>'53',
+                'ES'=>'32','GO'=>'52','MA'=>'21','MT'=>'51','MS'=>'50','MG'=>'31','PA'=>'15',
+                'PB'=>'25','PR'=>'41','PE'=>'26','PI'=>'22','RJ'=>'33','RN'=>'24','RS'=>'43',
+                'RO'=>'11','RR'=>'14','SC'=>'42','SP'=>'35','SE'=>'28','TO'=>'17',
+            ];
+            $codigoIbge = $siglaParaIbge[strtoupper($uf)] ?? null;
+            // Buscar por sigla OU código IBGE
+            if ($codigoIbge) {
+                $stmt = $this->pdo->prepare(
+                    "SELECT co_unidade FROM cnes_estabelecimentos WHERE co_estado_gestor = ? OR co_estado_gestor = ?"
+                );
+                $stmt->execute([$uf, $codigoIbge]);
+            } else {
+                $stmt = $this->pdo->prepare(
+                    "SELECT co_unidade FROM cnes_estabelecimentos WHERE co_estado_gestor = ?"
+                );
+                $stmt->execute([$uf]);
+            }
             foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $u) {
                 $unidadesPorUf[$u] = true;
             }
@@ -517,12 +706,28 @@ class CnesImportService
         }
 
         // Carregar lookup de unidades por UF
+        // O CSV pode ter CO_ESTADO_GESTOR como sigla (RJ) ou código IBGE (33)
+        // O banco pode ter qualquer um dos dois dependendo da versão do CSV importado
         $unidadesPorUf = [];
         if ($uf) {
-            $stmt = $this->pdo->prepare(
-                "SELECT co_unidade FROM cnes_estabelecimentos WHERE co_estado_gestor = ?"
-            );
-            $stmt->execute([$uf]);
+            $siglaParaIbge = [
+                'AC'=>'12','AL'=>'27','AP'=>'16','AM'=>'13','BA'=>'29','CE'=>'23','DF'=>'53',
+                'ES'=>'32','GO'=>'52','MA'=>'21','MT'=>'51','MS'=>'50','MG'=>'31','PA'=>'15',
+                'PB'=>'25','PR'=>'41','PE'=>'26','PI'=>'22','RJ'=>'33','RN'=>'24','RS'=>'43',
+                'RO'=>'11','RR'=>'14','SC'=>'42','SP'=>'35','SE'=>'28','TO'=>'17',
+            ];
+            $codigoIbge = $siglaParaIbge[strtoupper($uf)] ?? null;
+            if ($codigoIbge) {
+                $stmt = $this->pdo->prepare(
+                    "SELECT co_unidade FROM cnes_estabelecimentos WHERE co_estado_gestor = ? OR co_estado_gestor = ?"
+                );
+                $stmt->execute([$uf, $codigoIbge]);
+            } else {
+                $stmt = $this->pdo->prepare(
+                    "SELECT co_unidade FROM cnes_estabelecimentos WHERE co_estado_gestor = ?"
+                );
+                $stmt->execute([$uf]);
+            }
             foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $u) {
                 $unidadesPorUf[$u] = true;
             }
@@ -636,15 +841,117 @@ class CnesImportService
 
     private function encontrarArquivo(string $dir, string $prefixo): ?string
     {
+        // Prefixos alternativos conhecidos para cada tipo de arquivo CNES
+        $alternativas = [
+            'rlEstabEquipamento'      => ['rlEstabEquipamento', 'rl_estab_equipamento', 'estab_equipamento'],
+            'tbCargaHorariaSus'       => ['tbCargaHorariaSus', 'tb_carga_horaria', 'CargaHorariaSus', 'carga_horaria'],
+            'tbDadosProfissionalSus'  => ['tbDadosProfissionalSus', 'tb_dados_profissional', 'DadosProfissional'],
+            'tbEstabelecimento'       => ['tbEstabelecimento', 'tb_estabelecimento', 'Estabelecimento'],
+        ];
+        $prefixosBusca = $alternativas[$prefixo] ?? [$prefixo];
+
         // Busca recursiva no diretório extraído
-        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir));
+        $iterator   = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir));
+        $melhorMatch = null;
         foreach ($iterator as $file) {
-            if ($file->isFile() && stripos($file->getFilename(), $prefixo) !== false
-                && strtolower($file->getExtension()) === 'csv') {
-                return $file->getPathname();
+            if (!$file->isFile() || strtolower($file->getExtension()) !== 'csv') {
+                continue;
+            }
+            $nome = $file->getFilename();
+            foreach ($prefixosBusca as $p) {
+                if (stripos($nome, $p) !== false) {
+                    // Preferir o match mais específico (nome mais longo)
+                    if ($melhorMatch === null || strlen($nome) > strlen(basename($melhorMatch))) {
+                        $melhorMatch = $file->getPathname();
+                    }
+                    break;
+                }
             }
         }
-        return null;
+
+        if ($melhorMatch) {
+            $this->gravaProgresso(['etapa' => "[OK] Arquivo encontrado: " . basename($melhorMatch)]);
+        } else {
+            $this->gravaProgresso(['etapa' => "[AVISO] Arquivo '{$prefixo}*.csv' não encontrado no diretório."]);
+        }
+
+        return $melhorMatch;
+    }
+
+    /**
+     * Classifica uma lista de arquivos CSV identificando os tipos CNES.
+     */
+    private function classificarArquivosCnes(array $arquivos): array
+    {
+        // Mapeamento de padrões de nome → tipo CNES
+        $padroes = [
+            'tbEstabelecimento'      => ['tipo' => 'estabelecimento',   'descricao' => 'Estabelecimentos de Saúde',      'obrigatorio' => true],
+            'rlEstabEquipamento'     => ['tipo' => 'equipamento',       'descricao' => 'Equipamentos por Estabelecimento', 'obrigatorio' => false],
+            'tbCargaHorariaSus'      => ['tipo' => 'profissional_ch',   'descricao' => 'Carga Horária dos Profissionais',  'obrigatorio' => false],
+            'tbDadosProfissionalSus' => ['tipo' => 'profissional_dados','descricao' => 'Dados dos Profissionais',          'obrigatorio' => false],
+            'rlEstabServSaude'       => ['tipo' => 'servico',           'descricao' => 'Serviços de Saúde',              'obrigatorio' => false],
+            'rlEstabAtendNonSus'     => ['tipo' => 'atend_non_sus',     'descricao' => 'Atendimento não SUS',            'obrigatorio' => false],
+            'tbGestao'               => ['tipo' => 'gestao',            'descricao' => 'Gestão',                         'obrigatorio' => false],
+            'tbMunicipio'            => ['tipo' => 'municipio',         'descricao' => 'Municípios',                     'obrigatorio' => false],
+            'tbTipoUnidade'          => ['tipo' => 'tipo_unidade',      'descricao' => 'Tipos de Unidade',               'obrigatorio' => false],
+        ];
+
+        $reconhecidos    = [];
+        $naoReconhecidos = [];
+        $tiposEncontrados = [];
+
+        foreach ($arquivos as $arq) {
+            $encontrou = false;
+            foreach ($padroes as $padrao => $info) {
+                if (stripos($arq['nome'], $padrao) !== false) {
+                    $reconhecidos[] = array_merge($arq, [
+                        'tipo'        => $info['tipo'],
+                        'descricao'   => $info['descricao'],
+                        'obrigatorio' => $info['obrigatorio'],
+                    ]);
+                    $tiposEncontrados[$info['tipo']] = true;
+                    $encontrou = true;
+                    break;
+                }
+            }
+            if (!$encontrou) {
+                $naoReconhecidos[] = $arq;
+            }
+        }
+
+        // Verificar quais tipos importantes estão faltando
+        $faltando = [];
+        foreach ($padroes as $padrao => $info) {
+            if (!isset($tiposEncontrados[$info['tipo']])) {
+                $faltando[] = [
+                    'tipo'        => $info['tipo'],
+                    'descricao'   => $info['descricao'],
+                    'prefixo'     => $padrao,
+                    'obrigatorio' => $info['obrigatorio'],
+                ];
+            }
+        }
+
+        return [
+            'total_csvs'          => count($arquivos),
+            'reconhecidos'        => $reconhecidos,
+            'nao_reconhecidos'    => $naoReconhecidos,
+            'faltando'            => $faltando,
+            'tem_estabelecimento' => isset($tiposEncontrados['estabelecimento']),
+            'tem_equipamento'     => isset($tiposEncontrados['equipamento']),
+            'tem_profissional'    => isset($tiposEncontrados['profissional_ch']),
+        ];
+    }
+
+    /**
+     * Formata bytes em unidade legível.
+     */
+    private function formatarBytes(int $bytes): string
+    {
+        if ($bytes >= 1073741824) return round($bytes / 1073741824, 2) . ' GB';
+        if ($bytes >= 1048576)    return round($bytes / 1048576, 2) . ' MB';
+        if ($bytes >= 1024)       return round($bytes / 1024, 2) . ' KB';
+        return $bytes . ' B';
     }
 
     /**

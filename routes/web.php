@@ -103,6 +103,8 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::post("/cnes/importar/servidor",               "CnesController@importarDoServidor");
     Router::get("/cnes/importar/detectar",                "CnesController@detectarCsvs");
     Router::get("/cnes/importar/status",                  "CnesController@importarStatus");
+    Router::post("/cnes/importar/diagnostico-zip",         "CnesController@diagnosticarZip");
+    Router::post("/cnes/importar/parcial",                 "CnesController@importarParcial");
     Router::get("/cnes/buscar",                           "CnesController@buscar");
     Router::get("/cnes/{cnes}",                           "CnesController@show");
     Router::post("/cnes/{cnes}/importar-cliente",         "CnesController@importarComoCliente");

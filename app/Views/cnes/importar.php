@@ -91,6 +91,28 @@
 .info-box h5 { color: #1565c0; margin: 0 0 .5rem; font-size: .95rem; }
 .info-box p  { margin: 0; font-size: .88rem; color: #333; }
 .info-box code { background: #bbdefb; padding: .1rem .4rem; border-radius: 4px; font-size: .82rem; }
+
+/* Diagnóstico de ZIP */
+.diag-card { border-radius: 12px; overflow: hidden; }
+.diag-card .card-header { background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%); color: #fff; }
+.diag-file-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; border-radius: 6px; margin-bottom: .3rem; font-size: .85rem; }
+.diag-file-row.ok      { background: #e8f5e9; }
+.diag-file-row.missing { background: #fff3e0; }
+.diag-file-row.unknown { background: #f5f5f5; }
+.diag-file-row .badge-tipo { font-size: .72rem; padding: .2rem .5rem; border-radius: 50px; }
+.diag-file-row.ok .badge-tipo      { background: #c8e6c9; color: #1b5e20; }
+.diag-file-row.missing .badge-tipo { background: #ffe0b2; color: #e65100; }
+.diag-file-row.unknown .badge-tipo { background: #e0e0e0; color: #555; }
+.diag-upload-zone {
+    border: 2px dashed #90caf9;
+    border-radius: 10px;
+    background: #f3f8ff;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+}
+.diag-upload-zone:hover { border-color: #1976d2; background: #e3f2fd; }
 </style>
 
 <!-- Hero -->
@@ -196,6 +218,103 @@
                     </div>
                     <div class="mt-2 text-muted" style="font-size:.85rem" id="progressMsg"></div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Diagnóstico de ZIP e Reimportação Parcial -->
+        <div class="card shadow-sm border-0 mt-4 diag-card">
+            <div class="card-header border-0 py-3">
+                <h6 class="fw-bold mb-0">
+                    <i class="bi bi-search me-2"></i>Diagnóstico de ZIP &amp; Reimportação Parcial
+                </h6>
+                <div style="font-size:.82rem; opacity:.85; margin-top:.2rem">
+                    Verifique quais arquivos estão no ZIP e reimporte apenas equipamentos/profissionais sem repetir os 31.800 estabelecimentos.
+                </div>
+            </div>
+            <div class="card-body">
+
+                <!-- Alerta de equipamentos/profissionais vazios -->
+                <?php
+                $totalEquipDb = 0;
+                $totalProfDb  = 0;
+                try {
+                    $pdo = (new \App\Core\Database())->getInstance();
+                    $totalEquipDb = (int)$pdo->query("SELECT COUNT(*) FROM cnes_equipamentos")->fetchColumn();
+                    $totalProfDb  = (int)$pdo->query("SELECT COUNT(*) FROM cnes_profissionais")->fetchColumn();
+                } catch (\Throwable $e) {}
+                ?>
+                <?php if ($totalEstab > 0 && ($totalEquipDb === 0 || $totalProfDb === 0)): ?>
+                <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" style="font-size:.88rem">
+                    <i class="bi bi-exclamation-triangle-fill text-warning fs-5 mt-1"></i>
+                    <div>
+                        <strong>Dados incompletos detectados!</strong><br>
+                        <?php if ($totalEquipDb === 0): ?>
+                        <span class="text-danger">Equipamentos: <strong>0 registros</strong> (tabela vazia)</span><br>
+                        <?php endif; ?>
+                        <?php if ($totalProfDb === 0): ?>
+                        <span class="text-danger">Profissionais: <strong>0 registros</strong> (tabela vazia)</span><br>
+                        <?php endif; ?>
+                        O ZIP importado provavelmente não continha os arquivos <code>rlEstabEquipamento*.csv</code> e/ou <code>tbCargaHorariaSus*.csv</code>.
+                        Use a reimportação parcial abaixo para corrigir sem reimportar os estabelecimentos.
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Passo 1: Diagnóstico -->
+                <div class="mb-3">
+                    <h6 class="fw-semibold text-primary mb-2"><i class="bi bi-1-circle me-1"></i> Passo 1: Diagnosticar o ZIP</h6>
+                    <div class="diag-upload-zone" id="diagDropZone" onclick="document.getElementById('diagArquivoZip').click()">
+                        <i class="bi bi-file-earmark-zip fs-3 text-primary"></i>
+                        <div class="mt-1 fw-semibold" style="font-size:.9rem">Clique ou arraste o ZIP para diagnóstico</div>
+                        <div class="text-muted" style="font-size:.8rem">Não importa nada &mdash; apenas analisa o conteúdo</div>
+                    </div>
+                    <input type="file" id="diagArquivoZip" accept=".zip" style="display:none">
+                    <div id="diagArquivoSel" class="mt-2" style="display:none">
+                        <span class="badge bg-primary"><i class="bi bi-file-zip me-1"></i><span id="diagNomeArq"></span></span>
+                        <button class="btn btn-sm btn-primary ms-2" id="btnDiagnosticar">
+                            <i class="bi bi-search me-1"></i>Analisar ZIP
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resultado do diagnóstico -->
+                <div id="diagResultado" style="display:none">
+                    <hr>
+                    <h6 class="fw-semibold mb-2"><i class="bi bi-list-check me-1"></i> Arquivos encontrados no ZIP</h6>
+                    <div id="diagListaArquivos"></div>
+
+                    <!-- Passo 2: Reimportar -->
+                    <div id="diagPasso2" style="display:none">
+                        <hr>
+                        <h6 class="fw-semibold text-success mb-2"><i class="bi bi-2-circle me-1"></i> Passo 2: Reimportar</h6>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" style="font-size:.85rem">Filtrar por UF</label>
+                                <select id="diagUf" class="form-select form-select-sm">
+                                    <option value="">Todos os estados</option>
+                                    <?php foreach (['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'] as $uf): ?>
+                                    <option value="<?= $uf ?>"><?= $uf ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-8 d-flex align-items-end gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="diagImportarEquip" checked>
+                                    <label class="form-check-label" for="diagImportarEquip" style="font-size:.85rem">Importar Equipamentos</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="diagImportarProf" checked>
+                                    <label class="form-check-label" for="diagImportarProf" style="font-size:.85rem">Importar Profissionais</label>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-success" id="btnReimportar">
+                            <i class="bi bi-arrow-repeat me-2"></i>Reimportar Equipamentos/Profissionais
+                        </button>
+                        <span class="text-muted ms-2" style="font-size:.82rem">Os 31.800 estabelecimentos já importados não serão alterados.</span>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -483,5 +602,211 @@ document.addEventListener('DOMContentLoaded', function () {
     pollingInterval = setInterval(verificarStatus, 5000);
     verificarStatus();
     <?php break; endif; endforeach; ?>
+
+    // ── Diagnóstico de ZIP ─────────────────────────────────────────────────
+    const diagInput    = document.getElementById('diagArquivoZip');
+    const diagDropZone = document.getElementById('diagDropZone');
+    const diagArqSel   = document.getElementById('diagArquivoSel');
+    const diagNomeArq  = document.getElementById('diagNomeArq');
+    const btnDiag      = document.getElementById('btnDiagnosticar');
+    const diagResult   = document.getElementById('diagResultado');
+    const diagLista    = document.getElementById('diagListaArquivos');
+    const diagPasso2   = document.getElementById('diagPasso2');
+    const btnReimport  = document.getElementById('btnReimportar');
+    let   diagZipPath  = null;
+    let   diagPolling  = null;
+
+    // Drag & Drop no diagnóstico
+    ['dragenter','dragover'].forEach(e => diagDropZone.addEventListener(e, ev => {
+        ev.preventDefault();
+        diagDropZone.style.borderColor = '#1976d2';
+    }));
+    ['dragleave','drop'].forEach(e => diagDropZone.addEventListener(e, ev => {
+        ev.preventDefault();
+        diagDropZone.style.borderColor = '';
+    }));
+    diagDropZone.addEventListener('drop', ev => {
+        const files = ev.dataTransfer.files;
+        if (files.length) { diagInput.files = files; mostrarDiagArq(files[0]); }
+    });
+    diagInput.addEventListener('change', function () {
+        if (this.files.length) mostrarDiagArq(this.files[0]);
+    });
+
+    function mostrarDiagArq(file) {
+        diagNomeArq.textContent = file.name + ' (' + formatBytes(file.size) + ')';
+        diagArqSel.style.display = 'block';
+        diagResult.style.display = 'none';
+        diagZipPath = null;
+    }
+
+    btnDiag.addEventListener('click', function () {
+        if (!diagInput.files.length) return;
+
+        btnDiag.disabled = true;
+        btnDiag.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analisando...';
+        diagResult.style.display = 'none';
+
+        const fd = new FormData();
+        fd.append('arquivo_zip', diagInput.files[0]);
+
+        fetch('/cnes/importar/diagnostico-zip', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            btnDiag.disabled = false;
+            btnDiag.innerHTML = '<i class="bi bi-search me-1"></i>Analisar ZIP';
+
+            if (!data.success) {
+                Swal.fire('Erro', data.error || 'Falha no diagnóstico.', 'error');
+                return;
+            }
+
+            diagZipPath = data.zip_path || null;
+            renderDiagnostico(data);
+        })
+        .catch(err => {
+            btnDiag.disabled = false;
+            btnDiag.innerHTML = '<i class="bi bi-search me-1"></i>Analisar ZIP';
+            Swal.fire('Erro', 'Falha na comunicação: ' + err.message, 'error');
+        });
+    });
+
+    function renderDiagnostico(data) {
+        diagResult.style.display = 'block';
+        diagLista.innerHTML = '';
+
+        const reconhecidos = data.reconhecidos || [];
+        const faltando     = data.faltando     || [];
+        const outros       = data.nao_reconhecidos || [];
+
+        // Arquivos reconhecidos
+        reconhecidos.forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'diag-file-row ok';
+            row.innerHTML = `
+                <i class="bi bi-check-circle-fill text-success"></i>
+                <span class="fw-semibold">${escHtml(f.nome)}</span>
+                <span class="badge-tipo">${escHtml(f.descricao || f.tipo)}</span>
+                <span class="text-muted ms-auto" style="font-size:.78rem">${escHtml(f.tamanho || '')}</span>`;
+            diagLista.appendChild(row);
+        });
+
+        // Arquivos faltando
+        faltando.forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'diag-file-row missing';
+            row.innerHTML = `
+                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                <span class="text-muted">${escHtml(f.prefixo)}*.csv</span>
+                <span class="badge-tipo">${escHtml(f.descricao)}</span>
+                <span class="text-danger ms-auto" style="font-size:.78rem">Não encontrado${f.obrigatorio ? ' (obrigatório)' : ''}</span>`;
+            diagLista.appendChild(row);
+        });
+
+        // Outros arquivos (não reconhecidos)
+        if (outros.length) {
+            const row = document.createElement('div');
+            row.className = 'diag-file-row unknown';
+            row.innerHTML = `<i class="bi bi-file-earmark"></i> <span class="text-muted">${outros.length} arquivo(s) não reconhecido(s) pelo sistema</span>`;
+            diagLista.appendChild(row);
+        }
+
+        // Mostrar passo 2 se há equipamentos ou profissionais para importar
+        const temEquip = data.tem_equipamento;
+        const temProf  = data.tem_profissional;
+        if (temEquip || temProf) {
+            diagPasso2.style.display = 'block';
+            document.getElementById('diagImportarEquip').disabled = !temEquip;
+            document.getElementById('diagImportarProf').disabled  = !temProf;
+            if (!temEquip) document.getElementById('diagImportarEquip').checked = false;
+            if (!temProf)  document.getElementById('diagImportarProf').checked  = false;
+        } else {
+            diagPasso2.style.display = 'none';
+            Swal.fire({
+                icon: 'warning',
+                title: 'Arquivos não encontrados',
+                html: 'O ZIP não contém os arquivos de equipamentos (<code>rlEstabEquipamento*.csv</code>) nem de profissionais (<code>tbCargaHorariaSus*.csv</code>).<br><br>Verifique se baixou a base completa do DATASUS.',
+            });
+        }
+    }
+
+    btnReimport.addEventListener('click', function () {
+        if (!diagZipPath) {
+            Swal.fire('Atenção', 'Faça o diagnóstico do ZIP primeiro.', 'warning');
+            return;
+        }
+
+        const importarEquip = document.getElementById('diagImportarEquip').checked;
+        const importarProf  = document.getElementById('diagImportarProf').checked;
+        const uf            = document.getElementById('diagUf').value;
+
+        if (!importarEquip && !importarProf) {
+            Swal.fire('Atenção', 'Selecione ao menos uma opção: Equipamentos ou Profissionais.', 'warning');
+            return;
+        }
+
+        Swal.fire({
+            title: 'Confirmar reimportação parcial?',
+            html: `Serão importados:<br>
+                ${importarEquip ? '<b>Equipamentos</b><br>' : ''}
+                ${importarProf  ? '<b>Profissionais</b><br>' : ''}
+                ${uf ? '<br>Filtro UF: <b>' + uf + '</b>' : '<br>Todos os estados'}<br><br>
+                Os estabelecimentos já importados <b>não serão alterados</b>.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sim, reimportar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#2d9b5e',
+        }).then(result => {
+            if (!result.isConfirmed) return;
+
+            btnReimport.disabled = true;
+            btnReimport.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Iniciando...';
+
+            fetch('/cnes/importar/parcial', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    zip_path:       diagZipPath,
+                    uf:             uf,
+                    importar_equip: importarEquip,
+                    importar_prof:  importarProf,
+                    competencia:    new Date().toISOString().slice(0,7).replace('-',''),
+                }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    Swal.fire('Erro', data.error || 'Falha ao iniciar reimportação.', 'error');
+                    btnReimport.disabled = false;
+                    btnReimport.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i>Reimportar Equipamentos/Profissionais';
+                    return;
+                }
+
+                // Mostrar card de progresso principal
+                progressCard.style.display = 'block';
+                document.getElementById('progressTitle').textContent = 'Reimportando equipamentos/profissionais...';
+                document.getElementById('progressMsg').textContent = data.message;
+                progressCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+                // Iniciar polling
+                if (diagPolling) clearInterval(diagPolling);
+                diagPolling = setInterval(verificarStatus, 4000);
+                verificarStatus();
+
+                btnReimport.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i>Reimportando...';
+            })
+            .catch(err => {
+                Swal.fire('Erro', 'Falha na comunicação: ' + err.message, 'error');
+                btnReimport.disabled = false;
+                btnReimport.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i>Reimportar Equipamentos/Profissionais';
+            });
+        });
+    });
+
+    function escHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
 });
 </script>
