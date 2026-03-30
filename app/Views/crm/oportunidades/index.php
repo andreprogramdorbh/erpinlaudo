@@ -11,6 +11,28 @@ $etapaColors = [
     'negociacao'   => 'warning',
     'fechamento'   => 'success',
 ];
+
+// Função auxiliar para formatar data de próximo contato com urgência
+function proximoContatoLabel(string|null $data): string {
+    if (!$data) return '<span class="text-muted">—</span>';
+    $hoje   = new DateTime('today');
+    $dt     = new DateTime($data);
+    $diff   = (int) $hoje->diff($dt)->days;
+    $sinal  = $dt >= $hoje ? 1 : -1;
+    $dias   = $diff * $sinal;
+    $fmt    = date('d/m/Y', strtotime($data));
+
+    if ($dias < 0) {
+        // Atrasado
+        return "<span class=\"badge bg-danger-subtle text-danger\" title=\"Atrasado {$diff}d\"><i class=\"fas fa-exclamation-circle me-1\"></i>{$fmt}</span>";
+    } elseif ($dias === 0) {
+        return "<span class=\"badge bg-warning-subtle text-warning\"><i class=\"fas fa-clock me-1\"></i>Hoje</span>";
+    } elseif ($dias <= 3) {
+        return "<span class=\"badge bg-warning-subtle text-warning\"><i class=\"fas fa-calendar-day me-1\"></i>{$fmt}</span>";
+    } else {
+        return "<span class=\"text-muted\" style=\"font-size:.8rem\">{$fmt}</span>";
+    }
+}
 ?>
 <style>
 .crm-kpi-bar{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem}
@@ -31,6 +53,7 @@ $etapaColors = [
 .empty-state i{font-size:3rem;margin-bottom:.75rem;display:block}
 .prob-bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-top:3px}
 .prob-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#f59e0b,#10b981)}
+.proximo-contato-col{min-width:120px}
 </style>
 
 <div class="container-fluid">
@@ -100,6 +123,7 @@ $etapaColors = [
             <th>Etapa</th>
             <th>Valor Est.</th>
             <th>Probabilidade</th>
+            <th>Próx. Contato</th>
             <th>Fechamento</th>
             <th>Status</th>
             <th class="text-end pe-3">Ações</th>
@@ -118,6 +142,9 @@ $etapaColors = [
               <div class="op-sub">
                 <?php if ($op->total_interacoes): ?>
                 <i class="fas fa-comments me-1"></i><?php echo $op->total_interacoes; ?> interações
+                <?php endif; ?>
+                <?php if (!empty($op->modalidade_principal) && isset($modalidades[$op->modalidade_principal])): ?>
+                &nbsp;<span class="badge bg-success-subtle text-success" style="font-size:.65rem"><?php echo $modalidades[$op->modalidade_principal]; ?></span>
                 <?php endif; ?>
               </div>
             </td>
@@ -140,6 +167,9 @@ $etapaColors = [
             <td style="min-width:90px">
               <span><?php echo $prob; ?>%</span>
               <div class="prob-bar"><div class="prob-fill" style="width:<?php echo $prob; ?>%"></div></div>
+            </td>
+            <td class="proximo-contato-col">
+              <?php echo proximoContatoLabel($op->data_proximo_contato ?? null); ?>
             </td>
             <td>
               <?php if ($op->data_fechamento_prevista): ?>

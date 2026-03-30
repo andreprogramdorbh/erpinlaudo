@@ -1,7 +1,8 @@
 <?php
 use App\Core\View;
-$action    = $isEdit ? '/crm/oportunidades/update/' . $op->id : '/crm/oportunidades';
-$activeTab = $_GET['tab'] ?? 'dados';
+$action            = $isEdit ? '/crm/oportunidades/update/' . $op->id : '/crm/oportunidades';
+$activeTab         = $_GET['tab'] ?? 'dados';
+$modalidadesAtivas = $modalidadesAtivas ?? json_decode($op->modalidades_interesse ?? '[]', true) ?: [];
 
 $tiposIcones = [
     'email'              => 'fa-envelope',
@@ -52,6 +53,11 @@ $tiposIcones = [
 .int-form-card{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:.5rem;padding:1.25rem;margin-bottom:1.5rem}
 .int-form-card h3{font-size:.9rem;font-weight:600;color:#059669;margin-bottom:1rem}
 .lead-origin-badge{background:#e0f2fe;color:#0284c7;font-size:.65rem;padding:.2em .6em;border-radius:10px;font-weight:600}
+.mod-grid{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
+.mod-chip{display:flex;align-items:center;gap:.4rem;padding:.35rem .75rem;border:1px solid #e2e8f0;border-radius:20px;font-size:.8125rem;cursor:pointer;transition:all .2s;user-select:none}
+.mod-chip:hover{border-color:#059669;background:#f0fdf4}
+.mod-chip input{display:none}
+.mod-chip.checked{background:#059669;color:#fff;border-color:#059669}
 </style>
 
 <div class="crm-form-wrap">
@@ -156,7 +162,7 @@ $tiposIcones = [
 
       <!-- Seção: Radiologia -->
       <section class="form-section">
-        <h2 class="form-section-title"><i class="fas fa-x-ray text-success"></i> Detalhes — Radiologia</h2>
+        <h2 class="form-section-title"><i class="fas fa-x-ray text-success"></i> Detalhes — Radiologia / Tecnologia</h2>
         <div class="form-grid form-grid-3">
           <div class="form-group">
             <label class="form-label">Modalidade Principal</label>
@@ -182,6 +188,23 @@ $tiposIcones = [
                    value="<?php echo htmlspecialchars($op->volume_estimado_mes ?? ''); ?>">
           </div>
         </div>
+
+        <!-- Múltiplas Modalidades de Interesse -->
+        <div class="form-group mt-3">
+          <label class="form-label">Todas as Modalidades / Soluções de Interesse</label>
+          <small class="text-muted d-block mb-2">Selecione todas as modalidades que o cliente tem interesse</small>
+          <div class="mod-grid">
+            <?php foreach ($modalidades as $k => $v): ?>
+            <?php $checked = in_array($k, $modalidadesAtivas); ?>
+            <label class="mod-chip <?php echo $checked ? 'checked' : ''; ?>">
+              <input type="checkbox" name="modalidades_interesse[]" value="<?php echo htmlspecialchars($k); ?>"
+                     <?php echo $checked ? 'checked' : ''; ?> onchange="toggleModChip(this)">
+              <i class="fas fa-x-ray" style="font-size:.7rem"></i>
+              <?php echo htmlspecialchars($v); ?>
+            </label>
+            <?php endforeach; ?>
+          </div>
+        </div>
       </section>
 
       <!-- Seção: Lead Vinculado -->
@@ -198,12 +221,20 @@ $tiposIcones = [
               </option>
               <?php endforeach; ?>
             </select>
+            <?php if ($isEdit && $op->cliente_id): ?>
+            <small class="text-success mt-1 d-block"><i class="fas fa-check-circle me-1"></i> Cliente vinculado automaticamente (ID <?php echo (int)$op->cliente_id; ?>)</small>
+            <?php endif; ?>
           </div>
           <div class="form-group">
-            <label class="form-label">Observações</label>
-            <textarea name="observacoes" class="form-control" rows="3"
-                      placeholder="Contexto adicional da oportunidade..."><?php echo htmlspecialchars($op->observacoes ?? ''); ?></textarea>
+            <label class="form-label">Data do Próximo Contato</label>
+            <input type="date" name="data_proximo_contato" class="form-control"
+                   value="<?php echo htmlspecialchars($op->data_proximo_contato ?? ''); ?>">
           </div>
+        </div>
+        <div class="form-group mt-3">
+          <label class="form-label">Observações</label>
+          <textarea name="observacoes" class="form-control" rows="3"
+                    placeholder="Contexto adicional da oportunidade..."><?php echo htmlspecialchars($op->observacoes ?? ''); ?></textarea>
         </div>
       </section>
 
@@ -363,6 +394,15 @@ function deletarInteracao(id) {
   fetch('/crm/oportunidades/interacao/delete/' + id, { method: 'POST', body: form })
     .then(r => r.json())
     .then(res => { if (res.success) { const el = document.getElementById('int-' + id); if (el) el.remove(); } });
+}
+
+function toggleModChip(checkbox) {
+  const chip = checkbox.closest('.mod-chip');
+  if (checkbox.checked) {
+    chip.classList.add('checked');
+  } else {
+    chip.classList.remove('checked');
+  }
 }
 </script>
 

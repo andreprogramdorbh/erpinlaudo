@@ -360,6 +360,7 @@ class CrmLeadsController extends Controller
             'num_medicos','num_unidades','acreditacao',
             'responsavel_nome','responsavel_cargo','responsavel_email','responsavel_telefone',
             'data_proximo_contato','observacoes',
+            'website','instagram','linkedin',
         ];
 
         $data = [];

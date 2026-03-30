@@ -193,6 +193,37 @@ $tiposIcones = [
                    value="<?php echo htmlspecialchars($lead->data_proximo_contato ?? ''); ?>">
           </div>
         </div>
+
+        <!-- Mídias Sociais -->
+        <div class="form-grid form-grid-3 mt-3">
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-globe text-secondary me-1"></i> Website</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fas fa-link"></i></span>
+              <input type="url" name="website" class="form-control"
+                     placeholder="https://www.empresa.com.br"
+                     value="<?php echo htmlspecialchars($lead->website ?? ''); ?>">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fab fa-instagram text-danger me-1"></i> Instagram</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" name="instagram" class="form-control"
+                     placeholder="perfil_empresa"
+                     value="<?php echo htmlspecialchars($lead->instagram ?? ''); ?>">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fab fa-linkedin text-primary me-1"></i> LinkedIn</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fab fa-linkedin"></i></span>
+              <input type="url" name="linkedin" class="form-control"
+                     placeholder="https://linkedin.com/company/..."
+                     value="<?php echo htmlspecialchars($lead->linkedin ?? ''); ?>">
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- Seção: Endereço -->

@@ -34,6 +34,10 @@ class CrmOportunidade extends Model
         'densitometria' => 'Densitometria Óssea',
         'pet_ct'        => 'PET-CT',
         'laudos_gerais' => 'Laudos Gerais',
+        'pacs'          => 'PACS',
+        'ris'           => 'RIS',
+        'his'           => 'HIS',
+        'teleradiologia'=> 'Teleradiologia',
         'outro'         => 'Outro',
     ];
 
@@ -55,7 +59,7 @@ class CrmOportunidade extends Model
         $params = [':uid' => $usuarioId];
 
         if (!empty($filtros['etapa'])) {
-            $where[]         = 'o.etapa_funil = :etapa';
+            $where[]          = 'o.etapa_funil = :etapa';
             $params[':etapa'] = $filtros['etapa'];
         }
         if (!empty($filtros['status'])) {
@@ -77,7 +81,7 @@ class CrmOportunidade extends Model
                 LEFT JOIN crm_leads l ON l.id = o.lead_id
                 LEFT JOIN clientes  c ON c.id = o.cliente_id
                 WHERE " . implode(' AND ', $where) . "
-                ORDER BY o.data_fechamento_prevista ASC, o.created_at DESC";
+                ORDER BY o.data_proximo_contato ASC, o.data_fechamento_prevista ASC, o.created_at DESC";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
@@ -131,7 +135,8 @@ class CrmOportunidade extends Model
             'usuario_id','lead_id','cliente_id','titulo_oportunidade','etapa_funil',
             'valor_estimado','data_fechamento_prevista','probabilidade_sucesso',
             'status_oportunidade','motivo_perda','modalidade_principal',
-            'tipo_contrato','volume_estimado_mes','observacoes',
+            'modalidades_interesse','tipo_contrato','volume_estimado_mes',
+            'observacoes','data_proximo_contato',
         ];
 
         $cols  = implode(', ', $fields);
@@ -153,7 +158,8 @@ class CrmOportunidade extends Model
             'lead_id','cliente_id','titulo_oportunidade','etapa_funil',
             'valor_estimado','data_fechamento_prevista','probabilidade_sucesso',
             'status_oportunidade','motivo_perda','modalidade_principal',
-            'tipo_contrato','volume_estimado_mes','observacoes',
+            'modalidades_interesse','tipo_contrato','volume_estimado_mes',
+            'observacoes','data_proximo_contato',
         ];
 
         $sets   = [];

@@ -9,6 +9,7 @@ use App\Core\Audit\AuditLogger;
 use App\Models\CrmOportunidade;
 use App\Models\CrmLead;
 use App\Models\CrmInteracao;
+use App\Models\Cliente;
 
 class CrmOportunidadesController extends Controller
 {
@@ -54,6 +55,7 @@ class CrmOportunidadesController extends Controller
             'filtros'       => $filtros,
             'etapas'        => CrmOportunidade::ETAPAS,
             'statusList'    => CrmOportunidade::STATUS,
+            'modalidades'   => CrmOportunidade::MODALIDADES,
         ]);
     }
 
@@ -90,6 +92,11 @@ class CrmOportunidadesController extends Controller
         $data = $this->sanitizePost();
         $data['usuario_id'] = $uid;
 
+        // Múltiplas modalidades como JSON
+        $data['modalidades_interesse'] = !empty($_POST['modalidades_interesse'])
+            ? json_encode(array_values($_POST['modalidades_interesse']))
+            : null;
+
         $id = $this->opModel->create($data);
 
         if (!$id) {
@@ -98,8 +105,14 @@ class CrmOportunidadesController extends Controller
             exit();
         }
 
+        // Criação automática de cliente a partir do lead vinculado
+        $clienteId = $this->sincronizarClienteDoLead((int) ($data['lead_id'] ?? 0), $uid);
+        if ($clienteId) {
+            $this->opModel->update((int) $id, ['cliente_id' => $clienteId]);
+        }
+
         AuditLogger::log('crm_oportunidade_criada', ['op_id' => $id, 'usuario_id' => $uid]);
-        $this->logger->info('[CRM] Oportunidade criada', ['op_id' => $id]);
+        $this->logger->info('[CRM] Oportunidade criada', ['op_id' => $id, 'cliente_id' => $clienteId]);
 
         header("Location: /crm/oportunidades/edit/{$id}?success=criado");
         exit();
@@ -128,21 +141,25 @@ class CrmOportunidadesController extends Controller
 
         $leads = (new CrmLead())->findByUsuarioId($uid, []);
 
+        // Decodifica modalidades de interesse salvas
+        $modalidadesAtivas = json_decode($op->modalidades_interesse ?? '[]', true) ?: [];
+
         View::render('crm/oportunidades/form', [
-            'title'           => 'Oportunidade — ' . htmlspecialchars($op->titulo_oportunidade),
-            '_layout'         => 'erp',
-            'breadcrumb'      => ['CRM' => '/crm/funil', 'Oportunidades' => '/crm/oportunidades', 'Editar'],
-            'op'              => $op,
-            'isEdit'          => true,
-            'interacoes'      => $interacoes,
-            'interacoesLead'  => $interacoesLead,
-            'leads'           => $leads,
-            'etapas'          => CrmOportunidade::ETAPAS,
-            'statusList'      => CrmOportunidade::STATUS,
-            'modalidades'     => CrmOportunidade::MODALIDADES,
-            'tiposContrato'   => CrmOportunidade::TIPOS_CONTRATO,
-            'tiposInteracao'  => CrmInteracao::TIPOS,
-            'iconesInteracao' => CrmInteracao::ICONES,
+            'title'              => 'Oportunidade — ' . htmlspecialchars($op->titulo_oportunidade),
+            '_layout'            => 'erp',
+            'breadcrumb'         => ['CRM' => '/crm/funil', 'Oportunidades' => '/crm/oportunidades', 'Editar'],
+            'op'                 => $op,
+            'isEdit'             => true,
+            'interacoes'         => $interacoes,
+            'interacoesLead'     => $interacoesLead,
+            'leads'              => $leads,
+            'etapas'             => CrmOportunidade::ETAPAS,
+            'statusList'         => CrmOportunidade::STATUS,
+            'modalidades'        => CrmOportunidade::MODALIDADES,
+            'modalidadesAtivas'  => $modalidadesAtivas,
+            'tiposContrato'      => CrmOportunidade::TIPOS_CONTRATO,
+            'tiposInteracao'     => CrmInteracao::TIPOS,
+            'iconesInteracao'    => CrmInteracao::ICONES,
         ]);
     }
 
@@ -160,12 +177,24 @@ class CrmOportunidadesController extends Controller
         }
 
         $data = $this->sanitizePost();
-        $ok   = $this->opModel->update($id, $data);
+
+        // Múltiplas modalidades como JSON
+        $data['modalidades_interesse'] = !empty($_POST['modalidades_interesse'])
+            ? json_encode(array_values($_POST['modalidades_interesse']))
+            : null;
+
+        $ok = $this->opModel->update($id, $data);
 
         if (!$ok) {
             $this->logger->error('[CRM] Falha ao atualizar oportunidade', ['op_id' => $id]);
             header("Location: /crm/oportunidades/edit/{$id}?error=falha_atualizar");
             exit();
+        }
+
+        // Sincroniza cliente ao atualizar (caso lead tenha sido vinculado/alterado)
+        $clienteId = $this->sincronizarClienteDoLead((int) ($data['lead_id'] ?? $op->lead_id ?? 0), $uid);
+        if ($clienteId && (int) ($op->cliente_id ?? 0) !== $clienteId) {
+            $this->opModel->update($id, ['cliente_id' => $clienteId]);
         }
 
         AuditLogger::log('crm_oportunidade_atualizada', ['op_id' => $id, 'usuario_id' => $uid]);
@@ -292,13 +321,117 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------
+
+    /**
+     * Verifica se o lead já tem um cliente cadastrado (por CNPJ/CPF ou e-mail).
+     * Se não existir, cria o cliente automaticamente com os dados do lead.
+     * Retorna o ID do cliente (existente ou recém-criado), ou null se não for possível.
+     */
+    private function sincronizarClienteDoLead(int $leadId, int $usuarioId): ?int
+    {
+        if ($leadId <= 0) {
+            return null;
+        }
+
+        try {
+            $leadModel = new CrmLead();
+            $lead      = $leadModel->findById($leadId);
+
+            if (!$lead) {
+                return null;
+            }
+
+            $clienteModel = new Cliente();
+
+            // Tenta localizar cliente existente por CNPJ/CPF
+            $cpfCnpj  = $lead->cnpj ?? $lead->cpf ?? null;
+            $existing = null;
+
+            if ($cpfCnpj) {
+                $existing = $clienteModel->findByCpfCnpjAndUsuarioId(
+                    preg_replace('/\D/', '', $cpfCnpj),
+                    $usuarioId
+                );
+            }
+
+            // Fallback: busca por e-mail se não encontrou por CNPJ
+            if (!$existing && !empty($lead->email)) {
+                $byEmail = $clienteModel->findByEmail($lead->email);
+                if ($byEmail && (int) $byEmail->usuario_id === $usuarioId) {
+                    $existing = $byEmail;
+                }
+            }
+
+            if ($existing) {
+                $this->logger->info('[CRM] Cliente já existe, vinculando à oportunidade', [
+                    'cliente_id' => $existing->id,
+                    'lead_id'    => $leadId,
+                ]);
+                return (int) $existing->id;
+            }
+
+            // Cria novo cliente com dados do lead
+            $novoCliente = [
+                'usuario_id'    => $usuarioId,
+                'tipo'          => $lead->tipo_pessoa === 'PF' ? 'PF' : 'PJ',
+                'cpf_cnpj'      => $cpfCnpj ? preg_replace('/\D/', '', $cpfCnpj) : null,
+                'razao_social'  => $lead->razao_social ?? $lead->nome_lead,
+                'nome_fantasia' => $lead->nome_fantasia ?? null,
+                'email'         => $lead->email ?? null,
+                'telefone'      => $lead->telefone ?? null,
+                'celular'       => $lead->celular ?? null,
+                'cnae_principal'=> $lead->cnae_principal ?? null,
+                'descricao_cnae'=> $lead->descricao_cnae ?? null,
+                'endereco'      => $lead->endereco ?? null,
+                'numero'        => $lead->numero ?? null,
+                'complemento'   => $lead->complemento ?? null,
+                'bairro'        => $lead->bairro ?? null,
+                'cidade'        => $lead->cidade ?? null,
+                'estado'        => $lead->estado ?? null,
+                'cep'           => $lead->cep ?? null,
+                'website'       => $lead->website ?? null,
+                'instagram'     => $lead->instagram ?? null,
+                'status'        => 'ativo',
+            ];
+
+            $novoId = $clienteModel->create($novoCliente);
+
+            if ($novoId) {
+                AuditLogger::log('crm_cliente_criado_automaticamente', [
+                    'cliente_id' => $novoId,
+                    'lead_id'    => $leadId,
+                    'usuario_id' => $usuarioId,
+                ]);
+                $this->logger->info('[CRM] Cliente criado automaticamente a partir do lead', [
+                    'cliente_id' => $novoId,
+                    'lead_id'    => $leadId,
+                ]);
+                return (int) $novoId;
+            }
+
+            $this->logger->error('[CRM] Falha ao criar cliente automaticamente', [
+                'lead_id'    => $leadId,
+                'usuario_id' => $usuarioId,
+            ]);
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[CRM] Exceção ao sincronizar cliente', [
+                'lead_id' => $leadId,
+                'error'   => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
+            ]);
+        }
+
+        return null;
+    }
+
     private function sanitizePost(): array
     {
         $fields = [
             'lead_id','cliente_id','titulo_oportunidade','etapa_funil',
             'valor_estimado','data_fechamento_prevista','probabilidade_sucesso',
             'status_oportunidade','motivo_perda','modalidade_principal',
-            'tipo_contrato','volume_estimado_mes','observacoes',
+            'tipo_contrato','volume_estimado_mes','observacoes','data_proximo_contato',
         ];
 
         $data = [];

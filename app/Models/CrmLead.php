@@ -51,6 +51,10 @@ class CrmLead extends Model
         'Medicina Nuclear',
         'Fluoroscopia',
         'Ecocardiograma',
+        'PACS',
+        'RIS',
+        'HIS',
+        'Teleradiologia',
         'Outro',
     ];
 
@@ -108,7 +112,9 @@ class CrmLead extends Model
     public function create(array $data): string|false
     {
         $fields = [
-            'usuario_id','nome_lead','email','telefone','celular','cnpj','cpf','tipo_pessoa',
+            'usuario_id','nome_lead','email','telefone','celular',
+            'website','instagram','linkedin',
+            'cnpj','cpf','tipo_pessoa',
             'razao_social','nome_fantasia','cnae_principal','descricao_cnae',
             'endereco','numero','complemento','bairro','cidade','estado','cep',
             'origem','status_lead','segmento_principal','especialidades_interesse',
@@ -134,7 +140,9 @@ class CrmLead extends Model
     public function update(int $id, array $data): bool
     {
         $allowed = [
-            'nome_lead','email','telefone','celular','cnpj','cpf','tipo_pessoa',
+            'nome_lead','email','telefone','celular',
+            'website','instagram','linkedin',
+            'cnpj','cpf','tipo_pessoa',
             'razao_social','nome_fantasia','cnae_principal','descricao_cnae',
             'endereco','numero','complemento','bairro','cidade','estado','cep',
             'origem','status_lead','segmento_principal','especialidades_interesse',
@@ -150,7 +158,7 @@ class CrmLead extends Model
 
         foreach ($allowed as $f) {
             if (!array_key_exists($f, $data)) continue;
-            $sets[]         = "{$f} = :{$f}";
+            $sets[]           = "{$f} = :{$f}";
             $params[':' . $f] = ($data[$f] === '') ? null : $data[$f];
         }
 
