@@ -49,12 +49,37 @@ class ContasReceberController extends Controller
     }
 
     /**
-     * Retorna a instância do MailService, criando-a apenas quando necessário.
+     * Retorna a instância do MailService carregando credenciais SMTP do banco.
      */
     private function getMailService(): MailService
     {
         if ($this->mailService === null) {
-            $this->mailService = new MailService();
+            try {
+                $integracaoModel = new \App\Models\Integracao();
+                $usuarioId       = (int) Auth::user()->id;
+                $row             = $integracaoModel->findByNomeAndUsuarioId('email', $usuarioId);
+                if ($row && ($row->status ?? 'ativo') === 'ativo') {
+                    $config   = $integracaoModel->getDecodedConfig($row);
+                    $password = '';
+                    if (!empty($config['password_enc'])) {
+                        $crypto   = new \App\Services\CryptoService();
+                        $password = $crypto->decryptString((string) $config['password_enc']);
+                    }
+                    $this->mailService = new MailService([
+                        'host'       => $config['host']       ?? '',
+                        'port'       => $config['port']       ?? 587,
+                        'username'   => $config['username']   ?? '',
+                        'password'   => $password,
+                        'protocol'   => $config['protocol']   ?? 'tls',
+                        'from_email' => $config['from_email'] ?? ($config['username'] ?? ''),
+                        'from_name'  => $config['from_name']  ?? 'ERP InLaudo',
+                    ]);
+                } else {
+                    $this->mailService = new MailService(); // fallback .env
+                }
+            } catch (\Exception $e) {
+                $this->mailService = new MailService(); // fallback .env
+            }
         }
         return $this->mailService;
     }

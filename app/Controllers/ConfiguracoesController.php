@@ -9,22 +9,73 @@ use App\Core\Audit\AuditLogger;
 use App\Models\User;
 use App\Models\PasswordResetToken;
 use App\Models\ConfigNfs;
+use App\Models\Integracao;
 use App\Services\MailService;
+use App\Services\CryptoService;
 
 class ConfiguracoesController extends Controller
 {
     private User $userModel;
-    private MailService $mailService;
     private PasswordResetToken $passwordResetModel;
     private ConfigNfs $configNfsModel;
+    private Integracao $integracaoModel;
 
     public function __construct()
     {
         $this->userModel          = new User();
-        $this->mailService        = new MailService();
         $this->passwordResetModel = new PasswordResetToken();
         $this->configNfsModel     = new ConfigNfs();
+        $this->integracaoModel    = new Integracao();
     }
+
+    // ================================================================
+    // Helpers
+    // ================================================================
+
+    /**
+     * Cria uma instância do MailService carregando as credenciais SMTP
+     * salvas no banco de dados (tabela integracoes) para o usuário atual.
+     * Se não houver configuração no banco, usa fallback do .env.
+     *
+     * @throws \RuntimeException se a integração de e-mail estiver inativa
+     *                           ou a senha não puder ser descriptografada.
+     */
+    private function buildMailService(): MailService
+    {
+        $usuarioId = (int) Auth::user()->id;
+        $row       = $this->integracaoModel->findByNomeAndUsuarioId('email', $usuarioId);
+
+        // Sem configuração no banco → tenta .env (comportamento legado)
+        if (!$row) {
+            return new MailService();
+        }
+
+        if (($row->status ?? 'ativo') !== 'ativo') {
+            throw new \RuntimeException('A integração de e-mail está inativa. Ative-a em Integração → E-mail.');
+        }
+
+        $config   = $this->integracaoModel->getDecodedConfig($row);
+        $password = '';
+
+        if (!empty($config['password_enc'])) {
+            $crypto   = new CryptoService();
+            $password = $crypto->decryptString((string) $config['password_enc']);
+        }
+
+        return new MailService([
+            'host'       => $config['host']       ?? '',
+            'port'       => $config['port']       ?? 587,
+            'username'   => $config['username']   ?? '',
+            'password'   => $password,
+            'protocol'   => $config['protocol']   ?? 'tls',
+            'from_email' => $config['from_email'] ?? ($config['username'] ?? ''),
+            'from_name'  => $config['from_name']  ?? 'ERP InLaudo',
+        ]);
+    }
+
+    // ================================================================
+    // PÁGINAS
+    // ================================================================
 
     public function index(): void
     {
@@ -45,6 +96,10 @@ class ConfiguracoesController extends Controller
             'configNfs'   => $configNfs,
         ]);
     }
+
+    // ================================================================
+    // USUÁRIOS — CRUD
+    // ================================================================
 
     public function usuariosCreate(): void
     {
@@ -99,7 +154,8 @@ class ConfiguracoesController extends Controller
                     $token = bin2hex(random_bytes(32));
                     $this->passwordResetModel->create((int)$newId, $token);
                     $resetLink = "http://" . $_SERVER['HTTP_HOST'] . "/reset-password/{$token}";
-                    $this->mailService->sendPasswordResetEmail($email, $nome, $resetLink);
+                    $mailService = $this->buildMailService();
+                    $mailService->sendPasswordResetEmail($email, $nome, $resetLink);
                 }
                 header("Location: /configuracoes?tab=usuarios&success=user_created");
             } else {
@@ -171,6 +227,10 @@ class ConfiguracoesController extends Controller
         exit();
     }
 
+    // ================================================================
+    // USUÁRIOS — RESET DE SENHA
+    // ================================================================
+
     public function usuariosResetPassword(int $id): void
     {
         if (!Auth::can('manage_users')) {
@@ -182,19 +242,35 @@ class ConfiguracoesController extends Controller
             header("Location: /configuracoes?tab=usuarios&error=cannot_reset"); exit();
         }
         try {
+            // Gera e persiste o token de reset
             $this->passwordResetModel->invalidateUserTokens($id);
             $token     = bin2hex(random_bytes(32));
             $this->passwordResetModel->create($id, $token);
             $resetLink = "http://" . $_SERVER['HTTP_HOST'] . "/reset-password/{$token}";
-            $emailSent = $this->mailService->sendPasswordResetEmail($usuario->email, $usuario->name, $resetLink);
-            AuditLogger::log('reset_user_password', ['reset_by' => $currentUser->id, 'user_id' => $id, 'email_sent' => $emailSent]);
+
+            // Carrega as credenciais SMTP do banco (não do .env)
+            $mailService = $this->buildMailService();
+            $emailSent   = $mailService->sendPasswordResetEmail($usuario->email, $usuario->name, $resetLink);
+
+            AuditLogger::log('reset_user_password', [
+                'reset_by'   => $currentUser->id,
+                'user_id'    => $id,
+                'email_sent' => $emailSent,
+            ]);
             header("Location: /configuracoes?tab=usuarios&success=password_reset");
         } catch (\Exception $e) {
-            AuditLogger::log('password_reset_exception', ['error' => $e->getMessage(), 'user_id' => $id]);
+            AuditLogger::log('password_reset_exception', [
+                'error'   => $e->getMessage(),
+                'user_id' => $id,
+            ]);
             header("Location: /configuracoes?tab=usuarios&error=reset_failed");
         }
         exit();
     }
+
+    // ================================================================
+    // USUÁRIOS — TOGGLE STATUS
+    // ================================================================
 
     public function usuariosToggleStatus(int $id): void
     {
@@ -214,6 +290,10 @@ class ConfiguracoesController extends Controller
         echo json_encode(['success' => $ok, 'status' => $novoStatus]);
         exit();
     }
+
+    // ================================================================
+    // Helpers de permissão
+    // ================================================================
 
     private function canManageUser($currentUser, $targetUser): bool
     {
