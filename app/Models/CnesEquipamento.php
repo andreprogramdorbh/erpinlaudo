@@ -7,33 +7,61 @@ use PDO;
 /**
  * Model para equipamentos de estabelecimentos CNES.
  * Tabela: cnes_equipamentos
+ *
+ * NOTA: A busca aceita tanto co_unidade quanto co_cnes para compatibilidade
+ * com diferentes versões do CSV CNES (algumas versões usam CO_CNES, outras CO_UNIDADE).
  */
 class CnesEquipamento extends Model
 {
     protected string $table = 'cnes_equipamentos';
 
     /**
-     * Busca equipamentos de um estabelecimento.
+     * Monta cláusula WHERE que busca por co_unidade OU co_cnes.
+     * Garante que equipamentos importados por qualquer versão do CSV sejam encontrados.
+     */
+    private function whereEstab(string $coUnidade, string $coCnes = ''): array
+    {
+        if ($coCnes) {
+            return [
+                '(co_unidade = ? OR co_cnes = ?)',
+                [$coUnidade, $coCnes],
+            ];
+        }
+        return ['co_unidade = ?', [$coUnidade]];
+    }
+
+    /**
+     * Busca equipamentos de um estabelecimento com filtros opcionais.
+     *
+     * @param string $coUnidade  Código da unidade (CO_UNIDADE do CNES)
+     * @param array  $filtros    ['tipo' => '', 'q' => '', 'co_cnes' => '']
      */
     public function findByUnidade(string $coUnidade, array $filtros = []): array
     {
-        $where  = ['co_unidade = ?'];
-        $params = [$coUnidade];
+        $coCnes = $filtros['co_cnes'] ?? '';
+        [$estabWhere, $estabParams] = $this->whereEstab($coUnidade, $coCnes);
+
+        $where  = [$estabWhere];
+        $params = $estabParams;
 
         if (!empty($filtros['tipo'])) {
-            $where[]  = 'co_tipo_equipamento = ?';
+            $where[]  = 'e.co_tipo_equipamento = ?';
             $params[] = $filtros['tipo'];
         }
         if (!empty($filtros['q'])) {
-            $where[]  = 'no_equipamento LIKE ?';
+            $where[]  = 'e.no_equipamento LIKE ?';
             $params[] = '%' . $filtros['q'] . '%';
         }
 
-        $whereStr = implode(' AND ', $where);
+        // Prefixar co_unidade/co_cnes com alias e
+        $whereStr = str_replace('co_unidade', 'e.co_unidade', implode(' AND ', $where));
+        $whereStr = str_replace('e.e.co_unidade', 'e.co_unidade', $whereStr);
+
+        // Não faz JOIN com cnes_dom_tipo_equipamento pois a tabela pode não existir
+        // O campo no_tipo_equipamento já vem preenchido na importação
         $sql = "SELECT e.*,
-                       COALESCE(e.no_tipo_equipamento, t.no_tipo) AS no_tipo_desc
+                       COALESCE(e.no_tipo_equipamento, e.co_tipo_equipamento) AS no_tipo_desc
                 FROM {$this->table} e
-                LEFT JOIN cnes_dom_tipo_equipamento t ON t.co_tipo = e.co_tipo_equipamento
                 WHERE {$whereStr}
                 ORDER BY e.co_tipo_equipamento, e.no_equipamento";
 
@@ -45,9 +73,9 @@ class CnesEquipamento extends Model
     /**
      * Busca apenas equipamentos de diagnóstico por imagem (tipo 1).
      */
-    public function findImagemByUnidade(string $coUnidade): array
+    public function findImagemByUnidade(string $coUnidade, string $coCnes = ''): array
     {
-        return $this->findByUnidade($coUnidade, ['tipo' => '1']);
+        return $this->findByUnidade($coUnidade, ['tipo' => '1', 'co_cnes' => $coCnes]);
     }
 
     /**
@@ -76,16 +104,31 @@ class CnesEquipamento extends Model
     /**
      * Retorna tipos de equipamento disponíveis para um estabelecimento.
      */
-    public function tiposDisponiveis(string $coUnidade): array
+    public function tiposDisponiveis(string $coUnidade, string $coCnes = ''): array
     {
+        [$estabWhere, $estabParams] = $this->whereEstab($coUnidade, $coCnes);
         $stmt = $this->pdo->prepare(
-            "SELECT DISTINCT co_tipo_equipamento, no_tipo_equipamento
+            "SELECT DISTINCT co_tipo_equipamento,
+                    COALESCE(no_tipo_equipamento, co_tipo_equipamento) AS no_tipo_equipamento
              FROM {$this->table}
-             WHERE co_unidade = ? AND co_tipo_equipamento IS NOT NULL
+             WHERE ({$estabWhere}) AND co_tipo_equipamento IS NOT NULL
              ORDER BY co_tipo_equipamento"
         );
-        $stmt->execute([$coUnidade]);
+        $stmt->execute($estabParams);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Conta equipamentos por estabelecimento.
+     */
+    public function contarPorUnidade(string $coUnidade, string $coCnes = ''): int
+    {
+        [$estabWhere, $estabParams] = $this->whereEstab($coUnidade, $coCnes);
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM {$this->table} WHERE {$estabWhere}"
+        );
+        $stmt->execute($estabParams);
+        return (int)$stmt->fetchColumn();
     }
 
     /**

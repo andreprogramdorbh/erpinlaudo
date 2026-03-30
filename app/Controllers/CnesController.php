@@ -112,24 +112,32 @@ class CnesController extends Controller
             $tiposEquip    = [];
             $cbos          = [];
 
+            // co_cnes passado como filtro extra para buscar por co_unidade OU co_cnes
+            // Garante compatibilidade com diferentes versões do CSV CNES
+            $coCnes = (string)($estab->co_cnes ?? '');
+
             if ($aba === 'equipamentos' || $aba === 'dados') {
-                $filtroEquip  = ['tipo' => $_GET['tipo_equip'] ?? ''];
+                $filtroEquip  = [
+                    'tipo'    => $_GET['tipo_equip'] ?? '',
+                    'co_cnes' => $coCnes,
+                ];
                 $equipamentos = $this->equipModel->findByUnidade($estab->co_unidade, $filtroEquip);
-                $tiposEquip   = $this->equipModel->tiposDisponiveis($estab->co_unidade);
+                $tiposEquip   = $this->equipModel->tiposDisponiveis($estab->co_unidade, $coCnes);
             }
             if ($aba === 'profissionais') {
                 $filtroProf    = [
                     'q'        => $_GET['q_prof'] ?? '',
                     'cbo'      => $_GET['cbo'] ?? '',
                     'situacao' => $_GET['situacao'] ?? '',
+                    'co_cnes'  => $coCnes,
                 ];
                 $profissionais = $this->profModel->findByUnidade($estab->co_unidade, $filtroProf);
-                $cbos          = $this->profModel->cbosDisponiveis($estab->co_unidade);
+                $cbos          = $this->profModel->cbosDisponiveis($estab->co_unidade, $coCnes);
             }
 
-            // Contadores para badges
-            $totalEquip = count($this->equipModel->findByUnidade($estab->co_unidade));
-            $totalProf  = $this->profModel->contarPorUnidade($estab->co_unidade);
+            // Contadores para badges (busca por co_unidade OU co_cnes)
+            $totalEquip = $this->equipModel->contarPorUnidade($estab->co_unidade, $coCnes);
+            $totalProf  = $this->profModel->contarPorUnidade($estab->co_unidade, $coCnes);
 
             // Cliente vinculado
             $clienteVinculado = null;
