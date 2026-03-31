@@ -848,6 +848,15 @@ $roleLabels = [
               <i class="fas fa-info-circle me-1"></i>
               Omita <code>--uf</code> para importar todos os estados (~605 mil estabelecimentos).
             </p>
+            <!-- Botão: importar do servidor quando os CSVs já estão em /tmp/cnes_base -->
+            <hr style="margin:.8rem 0">
+            <p style="font-size:.82rem;color:#555;margin-bottom:.5rem">
+              <strong>CSVs já extraidos no servidor?</strong> Clique para importar diretamente de <code>/tmp/cnes_base/</code>:
+            </p>
+            <button type="button" id="btnImportarServidor" class="btn btn-sm" style="background:#0f172a;color:#fff;width:100%">
+              <i class="fas fa-server me-1"></i> Importar de /tmp/cnes_base/
+            </button>
+            <div id="servidorAlerta" class="mt-2" style="display:none;font-size:.8rem"></div>
           </div>
         </div>
 
@@ -1334,7 +1343,66 @@ function toggleStatus(userId, btn) {
     });
   }
 
+  // ── Importar do Servidor (/tmp/cnes_base/) ───────────────────────────────────────
+  const btnServidor   = document.getElementById('btnImportarServidor');
+  const servidorAlerta = document.getElementById('servidorAlerta');
+  if (btnServidor) {
+    btnServidor.addEventListener('click', function () {
+      const uf = document.getElementById('cnesUf')?.value || '';
+      const apenasImagem = document.getElementById('cnesApenasImagem')?.checked || false;
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          title: 'Importar de /tmp/cnes_base/',
+          html: `O sistema vai verificar se os CSVs estão em <code>/tmp/cnes_base/</code> e iniciar a importação.<br><br>
+                 ${uf ? 'Filtro UF: <b>' + uf + '</b>' : 'Todos os estados'}<br>
+                 ${apenasImagem ? '<br>Apenas equipamentos de imagem' : ''}`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Sim, importar',
+          cancelButtonText: 'Cancelar',
+          confirmButtonColor: '#0f172a',
+        }).then(r => { if (r.isConfirmed) executarImportacaoServidor(uf, apenasImagem); });
+      } else {
+        if (confirm('Importar de /tmp/cnes_base/?')) executarImportacaoServidor(uf, apenasImagem);
+      }
+    });
+  }
+
+  function executarImportacaoServidor(uf, apenasImagem) {
+    if (btnServidor) { btnServidor.disabled = true; btnServidor.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Verificando...'; }
+    servidorAlerta.style.display = 'none';
+    fetch('/cnes/importar/servidor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uf, apenas_imagem: apenasImagem }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        servidorAlerta.style.display = 'block';
+        servidorAlerta.style.color = '#dc2626';
+        servidorAlerta.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>' + (data.error || 'Erro desconhecido.');
+        if (btnServidor) { btnServidor.disabled = false; btnServidor.innerHTML = '<i class="fas fa-server me-1"></i>Importar de /tmp/cnes_base/'; }
+        return;
+      }
+      servidorAlerta.style.display = 'block';
+      servidorAlerta.style.color = '#16a34a';
+      servidorAlerta.innerHTML = '<i class="fas fa-check-circle me-1"></i>Importação iniciada! ' + data.csvs + ' CSVs encontrados.';
+      progressCard.style.display = 'block';
+      document.getElementById('cnesProgressTitle').textContent = 'Importando do servidor...';
+      document.getElementById('cnesProgressMsg').textContent   = 'Processando ' + data.csvs + ' arquivos CSV...';
+      progressCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      pollingInterval = setInterval(verificarStatus, 4000);
+      verificarStatus();
+      if (btnServidor) { btnServidor.innerHTML = '<i class="fas fa-server me-1"></i>Importando...'; }
+    })
+    .catch(err => {
+      servidorAlerta.style.display = 'block';
+      servidorAlerta.style.color = '#dc2626';
+      servidorAlerta.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Falha na comunicação: ' + err.message;
+      if (btnServidor) { btnServidor.disabled = false; btnServidor.innerHTML = '<i class="fas fa-server me-1"></i>Importar de /tmp/cnes_base/'; }
+    });
+  }
 })();
 </script>
-
 <?php require_once dirname(__DIR__) . '/layout/erp_footer.php'; ?>

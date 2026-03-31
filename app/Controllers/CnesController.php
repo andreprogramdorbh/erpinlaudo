@@ -325,15 +325,54 @@ class CnesController extends Controller
      * Usa INSERT em lotes — compatível com MariaDB Hostinger (sem LOAD DATA INFILE).
      * Grava progresso em storage/cnes_import_progress.json para polling do browser.
      */
+    /**
+     * Converte string de limite PHP (ex: '2M', '512K', '1G') para bytes.
+     */
+    private function parseIniBytes(string $val): int
+    {
+        $val  = trim($val);
+        $last = strtolower($val[strlen($val) - 1]);
+        $num  = (int) $val;
+        return match ($last) {
+            'g' => $num * 1024 * 1024 * 1024,
+            'm' => $num * 1024 * 1024,
+            'k' => $num * 1024,
+            default => $num,
+        };
+    }
+
     public function importarUpload(): void
     {
         header('Content-Type: application/json');
 
-        // Aumentar limites para arquivos grandes
+        // Aumentar limites para arquivos grandes (runtime — complementa .user.ini e .htaccess)
         @set_time_limit(0);
-        @ini_set('memory_limit', '512M');
+        @ini_set('memory_limit',        '512M');
+        @ini_set('upload_max_filesize', '1024M');
+        @ini_set('post_max_size',       '1024M');
 
         try {
+            // ── Detectar quando post_max_size foi excedido ────────────────────────────────
+            // Quando o arquivo excede post_max_size, o PHP descarta $_POST e $_FILES
+            // completamente. O Content-Length do request revela o tamanho real enviado.
+            $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+            $postMaxBytes  = $this->parseIniBytes(ini_get('post_max_size'));
+            if ($contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes) {
+                $limiteMb  = round($postMaxBytes  / 1024 / 1024);
+                $enviadoMb = round($contentLength / 1024 / 1024);
+                http_response_code(413);
+                echo json_encode([
+                    'success'    => false,
+                    'error'      => "O arquivo ({$enviadoMb} MB) excede o limite de upload do servidor ({$limiteMb} MB). "
+                                  . 'Solicite ao administrador do servidor que aumente post_max_size e upload_max_filesize no php.ini '
+                                  . 'para pelo menos 1024M, ou use a opção de importação via caminho do servidor (SSH/FTP).',
+                    'limite_mb'  => $limiteMb,
+                    'enviado_mb' => $enviadoMb,
+                    'dica'       => 'Adicione ao php.ini (ou public/.user.ini): upload_max_filesize=1024M e post_max_size=1024M',
+                ]);
+                return;
+            }
+
             // Verificar se é admin
             $usuario = Auth::user();
             if (!$usuario || !in_array($usuario->role ?? '', ['admin', 'superadmin'])) {
@@ -344,13 +383,15 @@ class CnesController extends Controller
 
             // Verificar upload
             if (!isset($_FILES['arquivo_zip']) || $_FILES['arquivo_zip']['error'] !== UPLOAD_ERR_OK) {
+                $uploadMaxBytes = $this->parseIniBytes(ini_get('upload_max_filesize'));
+                $uploadMaxMb    = round($uploadMaxBytes / 1024 / 1024);
                 $erros = [
-                    1 => 'Arquivo muito grande (limite php.ini: upload_max_filesize)',
-                    2 => 'Arquivo muito grande (limite do formulário)',
+                    1 => "Arquivo muito grande (limite atual: upload_max_filesize={$uploadMaxMb}MB). Adicione ao public/.user.ini: upload_max_filesize=1024M",
+                    2 => 'Arquivo muito grande (limite do formulário HTML)',
                     3 => 'Upload incompleto — tente novamente',
                     4 => 'Nenhum arquivo enviado',
                     6 => 'Pasta temporária não encontrada no servidor',
-                    7 => 'Falha ao gravar arquivo no disco',
+                    7 => 'Falha ao gravar arquivo no disco (verifique permissões de /tmp)',
                 ];
                 $errCode = $_FILES['arquivo_zip']['error'] ?? 4;
                 $errMsg  = $erros[$errCode] ?? 'Erro desconhecido no upload (código ' . $errCode . ')';

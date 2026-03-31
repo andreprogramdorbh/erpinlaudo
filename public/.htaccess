@@ -1,7 +1,16 @@
-# ── Configurações de upload para importação CNES ──────────────────────────
+# ── Configurações de upload para importação CNES (BASE ~700MB) ─────────────
+# mod_php (Apache clássico)
 <IfModule mod_php.c>
-    php_value upload_max_filesize 2048M
-    php_value post_max_size       2048M
+    php_value upload_max_filesize 1024M
+    php_value post_max_size       1024M
+    php_value max_execution_time  0
+    php_value max_input_time      3600
+    php_value memory_limit        512M
+</IfModule>
+# mod_php8 (Apache com PHP 8.x)
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 1024M
+    php_value post_max_size       1024M
     php_value max_execution_time  0
     php_value max_input_time      3600
     php_value memory_limit        512M
