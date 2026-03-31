@@ -491,6 +491,7 @@ class CrmOportunidadesController extends Controller
 
     private function jsonError(string $msg): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'error' => $msg]);
         exit();

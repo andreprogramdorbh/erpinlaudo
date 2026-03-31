@@ -508,6 +508,7 @@ class ClientesController extends Controller
      */
     public function removeContato()
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $id = $_POST['id'];

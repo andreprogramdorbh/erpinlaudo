@@ -120,7 +120,8 @@ class IntegracaoController extends Controller
     public function saveEmail(): void
     {
         if (!Auth::can('manage_settings')) {
-            header('Content-Type: application/json');
+            ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Não autorizado']);
             return;
         }
@@ -157,7 +158,8 @@ class IntegracaoController extends Controller
                         $crypto = new CryptoService();
                         $crypto->decryptString($existingEnc); // valida se é descriptogravável
                     } catch (\RuntimeException $cryptoEx) {
-                        header('Content-Type: application/json');
+                        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
                         echo json_encode([
                             'success' => false,
                             'error' => 'A senha salva foi criptografada com uma chave diferente da atual. Digite a senha novamente para atualizá-la com a chave correta.',
@@ -225,7 +227,8 @@ class IntegracaoController extends Controller
     public function testEmail(): void
     {
         if (!Auth::can('manage_settings')) {
-            header('Content-Type: application/json');
+            ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Não autorizado']);
             return;
         }
@@ -393,6 +396,7 @@ class IntegracaoController extends Controller
      */
     public function gerarChaveEmail(): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
 
         if (!Auth::can('manage_settings')) {
@@ -451,7 +455,8 @@ class IntegracaoController extends Controller
     public function saveAsaas()
     {
         if (!Auth::can('manage_settings')) {
-            header('Content-Type: application/json');
+            ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Não autorizado']);
             return;
         }
@@ -491,7 +496,8 @@ class IntegracaoController extends Controller
     public function testAsaas()
     {
         if (!Auth::can('manage_settings')) {
-            header('Content-Type: application/json');
+            ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Não autorizado']);
             return;
         }
@@ -1154,7 +1160,8 @@ class IntegracaoController extends Controller
     public function emailAlertas(): void
     {
         if (!Auth::can('manage_settings')) {
-            header('Content-Type: application/json');
+            ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
             http_response_code(403);
             echo json_encode(['error' => 'unauthorized']);
             exit();

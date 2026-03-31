@@ -299,6 +299,7 @@ class ConfiguracoesController extends Controller
 
     public function usuariosToggleStatus(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         if (!Auth::can('manage_users')) {
             echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit();

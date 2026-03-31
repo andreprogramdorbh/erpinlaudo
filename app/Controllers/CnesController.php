@@ -180,6 +180,7 @@ class CnesController extends Controller
      */
     public function atualizarEquipamento(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $dados = [
@@ -207,6 +208,7 @@ class CnesController extends Controller
      */
     public function atualizarProfissional(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $dados = [
@@ -234,6 +236,7 @@ class CnesController extends Controller
      */
     public function importarComoCliente(string $cnes): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $usuarioId = Auth::user()->id;
@@ -343,6 +346,8 @@ class CnesController extends Controller
 
     public function importarUpload(): void
     {
+        ob_start(); // captura output espúrio antes do JSON
+        ob_end_clean();
         header('Content-Type: application/json');
 
         // Aumentar limites para arquivos grandes (runtime — complementa .user.ini e .htaccess)
@@ -464,6 +469,8 @@ class CnesController extends Controller
      */
     public function importarStatus(): void
     {
+        ob_start(); // captura output espúrio antes do JSON
+        ob_end_clean();
         header('Content-Type: application/json');
         header('Cache-Control: no-cache, no-store, must-revalidate');
         try {
@@ -500,7 +507,10 @@ class CnesController extends Controller
      */
     public function importarDoServidor(): void
     {
-        header('Content-Type: application/json');
+        // Capturar qualquer output espúrio (erros/notices do PHP que geram HTML)
+        // antes de enviar o header JSON. Isso evita o 'Unexpected token <'.
+        ob_start();
+
         try {
             $body         = json_decode(file_get_contents('php://input'), true) ?? [];
             $uf           = strtoupper(trim($body['uf'] ?? $_POST['uf'] ?? ''));
@@ -524,52 +534,67 @@ class CnesController extends Controller
                 }
             }
 
+            // Descartar qualquer output espúrio acumulado antes de enviar JSON
+            ob_end_clean();
+            header('Content-Type: application/json');
+
             if (!$dirEncontrado) {
                 echo json_encode([
                     'success' => false,
                     'error'   => 'Nenhum diretório com CSVs CNES encontrado. Verifique se os arquivos estão em /tmp/cnes_base/',
-                    'candidatos_verificados' => array_filter($candidatos),
+                    'candidatos_verificados' => array_values(array_filter($candidatos)),
                 ]);
                 return;
             }
 
-            // Iniciar importação em background usando ignore_user_abort
+            // Iniciar importação em background
             ignore_user_abort(true);
             set_time_limit(0);
             ini_set('memory_limit', '512M');
 
-            // Responder imediatamente ao browser
+            $numCsvs = count(glob($dirEncontrado . '/*.csv'));
+
+            // Enviar resposta JSON imediatamente ao browser
             echo json_encode([
                 'success'  => true,
                 'message'  => 'Importação iniciada! Acompanhe o progresso abaixo.',
                 'dir'      => $dirEncontrado,
                 'uf'       => $uf ?: 'Todos os estados',
-                'csvs'     => count(glob($dirEncontrado . '/*.csv')),
+                'csvs'     => $numCsvs,
             ]);
 
-            // Fechar conexão HTTP para o browser receber a resposta imediatamente
+            // Fechar conexão HTTP para o browser receber a resposta antes do processamento
             if (function_exists('fastcgi_finish_request')) {
+                // PHP-FPM (Hostinger, servidores modernos)
                 fastcgi_finish_request();
             } else {
-                ob_end_flush();
+                // Apache mod_php — tenta flush manual
+                if (ob_get_level() > 0) {
+                    ob_end_flush();
+                }
                 flush();
             }
 
             // Processar importação após fechar a conexão HTTP
             $service = new \App\Services\CnesImportService();
             $service->importarDiretorio($dirEncontrado, [
-                'uf'           => $uf,
-                'apenas_imagem'=> $apenasImagem,
-                'competencia'  => $competencia,
+                'uf'            => $uf,
+                'apenas_imagem' => $apenasImagem,
+                'competencia'   => $competencia,
             ]);
 
         } catch (\Throwable $e) {
             $this->logger->error('CnesController::importarDoServidor - ' . $e->getMessage());
-            // Se ainda não enviou resposta, enviar erro
-            if (!headers_sent()) {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            // Limpar qualquer buffer acumulado e enviar erro JSON limpo
+            if (ob_get_level() > 0) {
+                ob_end_clean();
             }
+            if (!headers_sent()) {
+                ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+                http_response_code(500);
+            }
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 
@@ -579,6 +604,8 @@ class CnesController extends Controller
      */
     public function detectarCsvs(): void
     {
+        ob_start(); // captura output espúrio antes do JSON
+        ob_end_clean();
         header('Content-Type: application/json');
         $candidatos = [
             '/tmp/cnes_base',
@@ -617,6 +644,8 @@ class CnesController extends Controller
      */
     public function diagnosticarZip(): void
     {
+        ob_start(); // captura output espúrio antes do JSON
+        ob_end_clean();
         header('Content-Type: application/json');
         try {
             $usuario = Auth::user();
@@ -664,6 +693,8 @@ class CnesController extends Controller
      */
     public function importarParcial(): void
     {
+        ob_start(); // captura output espúrio antes do JSON
+        ob_end_clean();
         header('Content-Type: application/json');
         try {
             $usuario = Auth::user();
@@ -761,6 +792,8 @@ class CnesController extends Controller
      */
     public function buscar(): void
     {
+        ob_start(); // captura output espúrio antes do JSON
+        ob_end_clean();
         header('Content-Type: application/json');
         try {
             $q   = trim($_GET['q'] ?? '');

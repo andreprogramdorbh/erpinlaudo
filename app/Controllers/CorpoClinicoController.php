@@ -123,6 +123,7 @@ class CorpoClinicoController extends Controller
     // -------------------------------------------------------
     public function updateExameTabela(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $nomeExame   = trim(strip_tags((string) ($_POST['nome_exame'] ?? '')));
@@ -157,6 +158,7 @@ class CorpoClinicoController extends Controller
     // -------------------------------------------------------
     public function deleteExameTabela(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $ok = $this->tabelaExameModel->delete($id);
@@ -176,6 +178,7 @@ class CorpoClinicoController extends Controller
     // -------------------------------------------------------
     public function getConfigExame(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $exame = $this->tabelaExameModel->findById($id);
@@ -201,6 +204,7 @@ class CorpoClinicoController extends Controller
     // -------------------------------------------------------
     public function savePrecos(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $exame = $this->tabelaExameModel->findById($id);
@@ -239,6 +243,7 @@ class CorpoClinicoController extends Controller
     // -------------------------------------------------------
     public function saveSecao(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $exame = $this->tabelaExameModel->findById($id);
@@ -290,6 +295,7 @@ class CorpoClinicoController extends Controller
     // -------------------------------------------------------
     public function saveTags(int $id): void
     {
+        ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
             $rawTags = $_POST['tags'] ?? [];
