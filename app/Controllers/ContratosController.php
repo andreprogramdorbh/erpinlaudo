@@ -14,6 +14,9 @@ use App\Models\LayoutExame;
 use App\Models\Medico;
 use App\Models\Cliente;
 use App\Models\TabelaExame;
+use App\Models\ContaReceber;
+use App\Models\PlanoConta;
+use App\Services\ContaReceberRecorrenciaService;
 
 class ContratosController extends Controller
 {
@@ -791,6 +794,157 @@ class ContratosController extends Controller
         ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => $msg]);
+        exit();
+    }
+
+    // =========================================================
+    // GERAR COBRANÇAS (Contas a Receber) a partir do contrato
+    // =========================================================
+    /**
+     * POST /contratos/gerar-cobrancas/{id}
+     */
+    public function gerarCobrancas(string $id): void
+    {
+        ob_start();
+        $user      = Auth::user();
+        $usuarioId = (int) $user->id;
+
+        try {
+            $contrato = $this->contratoModel->findById((int)$id);
+            if (!$contrato || (int)$contrato->usuario_id !== $usuarioId) {
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Contrato não encontrado.']);
+                exit();
+            }
+
+            $planoContaId    = (int)($_POST['plano_conta_id'] ?? 0);
+            $meioPagamento   = trim($_POST['meio_pagamento'] ?? '');
+            $totalParcelas   = (int)($_POST['total_parcelas'] ?? 0);
+            $dataVencInicial = trim($_POST['data_vencimento_inicial'] ?? '');
+
+            if ($planoContaId <= 0) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Selecione um Plano de Conta.']); exit();
+            }
+            if ($totalParcelas <= 0) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Informe o número de parcelas.']); exit();
+            }
+            if (empty($dataVencInicial) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataVencInicial)) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Informe a data do primeiro vencimento.']); exit();
+            }
+
+            // Verificar se já existem cobranças
+            $contaReceberModel   = new ContaReceber();
+            $cobrancasExistentes = $contaReceberModel->findByContratoId($usuarioId, (int)$id);
+            if (!empty($cobrancasExistentes) && (int)($_POST['forcar'] ?? 0) !== 1) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode([
+                    'success'            => false,
+                    'message'            => 'Já existem ' . count($cobrancasExistentes) . ' cobrança(s) para este contrato. Envie forcar=1 para regenerar.',
+                    'existentes'         => count($cobrancasExistentes),
+                    'requer_confirmacao' => true,
+                ]); exit();
+            }
+
+            $recorrenciaService = new ContaReceberRecorrenciaService();
+            $resultado = $recorrenciaService->gerarParcelasDeContrato(
+                $usuarioId, $contrato, $planoContaId, $meioPagamento, $totalParcelas, $dataVencInicial
+            );
+
+            if ($resultado['sucesso']) {
+                $this->contratoModel->update((int)$id, [
+                    'cobrancas_geradas'    => 1,
+                    'cobrancas_geradas_em' => date('Y-m-d H:i:s'),
+                    'plano_conta_id'       => $planoContaId,
+                    'meio_pagamento'       => $meioPagamento ?: null,
+                    'num_parcelas'         => $totalParcelas,
+                ]);
+                AuditLogger::log('contrato_cobrancas_geradas', [
+                    'contrato_id' => (int)$id, 'usuario_id' => $usuarioId,
+                    'total' => $resultado['geradas'], 'grupo' => $resultado['grupo'],
+                ]);
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => $resultado['geradas'] . ' parcela(s) gerada(s) com sucesso!',
+                    'geradas' => $resultado['geradas'],
+                    'grupo'   => $resultado['grupo'],
+                    'ids'     => $resultado['ids'],
+                    'erros'   => $resultado['erros'],
+                ]);
+            } else {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => false,
+                    'message' => implode('; ', $resultado['erros']) ?: 'Falha ao gerar cobranças.',
+                    'erros'   => $resultado['erros'],
+                ]);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->error('[Contratos] Erro ao gerar cobranças: ' . $e->getMessage(), ['contrato_id' => $id]);
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * GET /contratos/cobrancas/{id}
+     */
+    public function listarCobrancas(string $id): void
+    {
+        ob_start();
+        $user      = Auth::user();
+        $usuarioId = (int) $user->id;
+
+        try {
+            $contrato = $this->contratoModel->findById((int)$id);
+            if (!$contrato || (int)$contrato->usuario_id !== $usuarioId) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'cobrancas' => []]); exit();
+            }
+
+            $contaReceberModel = new ContaReceber();
+            $cobrancas = $contaReceberModel->findByContratoId($usuarioId, (int)$id);
+            $hoje = date('Y-m-d');
+
+            $lista = array_map(function($c) use ($hoje) {
+                $venc     = $c->data_vencimento ?? '';
+                $status   = $c->status ?? 'aberta';
+                $atrasada = ($status === 'aberta' && $venc < $hoje);
+                return [
+                    'id'                  => (int)$c->id,
+                    'numero_parcela'      => (int)($c->numero_parcela ?? 0),
+                    'total_parcelas'      => (int)($c->total_parcelas ?? 0),
+                    'descricao'           => $c->descricao ?? '',
+                    'valor'               => number_format((float)($c->valor ?? 0), 2, ',', '.'),
+                    'data_vencimento'     => $venc,
+                    'data_vencimento_fmt' => $venc ? date('d/m/Y', strtotime($venc)) : '',
+                    'status'              => $status,
+                    'atrasada'            => $atrasada,
+                    'edit_url'            => '/financeiro/contas-a-receber/edit/' . (int)$c->id,
+                ];
+            }, $cobrancas);
+
+            $totalValor = array_sum(array_map(fn($c) => (float)($c->valor ?? 0), $cobrancas));
+            $totalPagas = count(array_filter($cobrancas, fn($c) => ($c->status ?? '') === 'recebida'));
+
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode([
+                'success'     => true,
+                'cobrancas'   => $lista,
+                'total'       => count($lista),
+                'total_valor' => number_format($totalValor, 2, ',', '.'),
+                'total_pagas' => $totalPagas,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[Contratos] Erro ao listar cobranças: ' . $e->getMessage());
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'cobrancas' => []]);
+        }
         exit();
     }
 }

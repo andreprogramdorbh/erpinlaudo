@@ -336,6 +336,9 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::post("/contratos/nova-apuracao", "ContratosController@novaApuracao");
     Router::post("/contratos/importar-apuracao", "ContratosController@importarApuracao");
     Router::post("/contratos/executar-apuracao", "ContratosController@executarApuracao");
+    // Cobranças vinculadas ao contrato
+    Router::post("/contratos/gerar-cobrancas/{id}", "ContratosController@gerarCobrancas");
+    Router::get("/contratos/cobrancas/{id}", "ContratosController@listarCobrancas");
 
     // Apuração — Faturamento
     Router::get("/faturamento/apuracao-prestador", "ApuracaoController@prestador");

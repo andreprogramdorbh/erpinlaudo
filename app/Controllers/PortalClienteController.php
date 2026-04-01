@@ -57,17 +57,33 @@ class PortalClienteController extends Controller
 
         // Resumo financeiro
         $contasAbertas  = $this->contaReceberModel->findByClienteIdAndTenantId($clienteId, $tenantId, ['status' => 'aberta']);
-        $contasVencidas = array_filter($contasAbertas, fn($c) => $c->data_vencimento < date('Y-m-d'));
+        $contasVencidas = array_filter($contasAbertas, fn($c) => ($c->data_vencimento ?? '') < date('Y-m-d'));
         $totalAberto    = array_sum(array_column($contasAbertas, 'valor'));
 
+        // Grupos de parcelas recorrentes
+        $gruposParcelas = $this->contaReceberModel->findGruposByClienteId($clienteId, $tenantId);
+
+        // Próximas parcelas a vencer (30 dias)
+        $todasContas = $this->contaReceberModel->findByClienteIdAndTenantId($clienteId, $tenantId);
+        $hoje = date('Y-m-d');
+        $em30dias = date('Y-m-d', strtotime('+30 days'));
+        $proximasVencer = array_filter($todasContas, fn($c) =>
+            ($c->status ?? '') === 'aberta' &&
+            ($c->data_vencimento ?? '') >= $hoje &&
+            ($c->data_vencimento ?? '') <= $em30dias
+        );
+        usort($proximasVencer, fn($a, $b) => strcmp($a->data_vencimento ?? '', $b->data_vencimento ?? ''));
+
         View::render('portal/dashboard', [
-            'title'          => 'Meu Painel',
-            '_layout'        => 'portal',
-            'portal'         => $portal,
-            'contasAbertas'  => count($contasAbertas),
-            'contasVencidas' => count($contasVencidas),
-            'totalAberto'    => $totalAberto,
-            'welcome'        => !empty($_GET['welcome']),
+            'title'           => 'Meu Painel',
+            '_layout'         => 'portal',
+            'portal'          => $portal,
+            'contasAbertas'   => count($contasAbertas),
+            'contasVencidas'  => count($contasVencidas),
+            'totalAberto'     => $totalAberto,
+            'welcome'         => !empty($_GET['welcome']),
+            'gruposParcelas'  => $gruposParcelas,
+            'proximasVencer'  => array_values($proximasVencer),
         ]);
     }
 

@@ -199,20 +199,30 @@ class ContasReceberController extends Controller
                 exit();
             }
 
+            // Campos de recorrência e parcelas
+            $recorrente         = isset($_POST['recorrente']) ? 1 : 0;
+            $recorrenciaTipo    = trim($_POST['recorrencia_tipo'] ?? '');
+            $recorrenciaIntervalo = (int)($_POST['recorrencia_intervalo'] ?? 0);
+            $totalParcelas      = (int)($_POST['total_parcelas'] ?? 0);
+            $recorrenciaModo    = ($recorrente && $recorrenciaTipo !== '' && $totalParcelas > 1) ? 'antecipado' : 'rolling';
+
             $dados = [
-                'usuario_id'          => $usuarioId,
-                'cliente_id'          => $clienteId,
-                'plano_conta_id'      => $planoContaId,
-                'descricao'           => $descricao,
-                'valor'               => $valor,
-                'data_vencimento'     => $dataVencimento,
-                'data_recebimento'    => $_POST['data_recebimento'] ?? null,
-                'status'              => $_POST['status'] ?? 'aberta',
-                'observacoes'         => trim($_POST['observacoes'] ?? ''),
-                'meio_pagamento'      => trim($_POST['meio_pagamento'] ?? ''),
-                'recorrente'          => isset($_POST['recorrente']) ? 1 : 0,
-                'recorrencia_tipo'    => $_POST['recorrencia_tipo'] ?? null,
-                'recorrencia_intervalo' => $_POST['recorrencia_intervalo'] ?? null,
+                'usuario_id'            => $usuarioId,
+                'cliente_id'            => $clienteId,
+                'plano_conta_id'        => $planoContaId,
+                'descricao'             => $descricao,
+                'valor'                 => $valor,
+                'data_vencimento'       => $dataVencimento,
+                'data_recebimento'      => $_POST['data_recebimento'] ?? null,
+                'status'                => $_POST['status'] ?? 'aberta',
+                'observacoes'           => trim($_POST['observacoes'] ?? ''),
+                'meio_pagamento'        => trim($_POST['meio_pagamento'] ?? ''),
+                'recorrente'            => $recorrente,
+                'recorrencia_tipo'      => $recorrenciaTipo ?: null,
+                'recorrencia_intervalo' => $recorrenciaIntervalo > 0 ? $recorrenciaIntervalo : null,
+                'recorrencia_modo'      => $recorrenciaModo,
+                'numero_parcela'        => ($recorrenciaModo === 'antecipado' && $totalParcelas > 1) ? 1 : null,
+                'total_parcelas'        => ($recorrenciaModo === 'antecipado' && $totalParcelas > 1) ? $totalParcelas : null,
             ];
 
             if ($dados['observacoes'] === '')   $dados['observacoes']  = null;
@@ -222,6 +232,26 @@ class ContasReceberController extends Controller
             if ($id) {
                 $this->model->update((int)$id, ['external_reference' => 'cr:' . (int)$id . '|u:' . (int)$usuarioId]);
 
+                // Gerar parcelas antecipadas se solicitado
+                $parcelasGeradas = 0;
+                if ($recorrenciaModo === 'antecipado' && $totalParcelas > 1 && $recorrenciaTipo !== '') {
+                    $recorrenciaService = new ContaReceberRecorrenciaService();
+                    $resultadoParcelas  = $recorrenciaService->gerarTodasParcelas(
+                        (int)$usuarioId,
+                        (int)$id,
+                        $totalParcelas,
+                        $recorrenciaTipo,
+                        max(1, $recorrenciaIntervalo)
+                    );
+                    $parcelasGeradas = $resultadoParcelas['geradas'];
+                    if (!empty($resultadoParcelas['erros'])) {
+                        $this->logger->error('Erros ao gerar parcelas antecipadas', [
+                            'conta_id' => $id,
+                            'erros'    => $resultadoParcelas['erros'],
+                        ]);
+                    }
+                }
+
                 // Integrar com Asaas apenas se meio de pagamento for digital E a chave estiver configurada
                 $meioPagamento = $dados['meio_pagamento'] ?? null;
                 if (in_array($meioPagamento, ['boleto', 'cartao', 'pix']) && AsaasService::isConfigured()) {
@@ -229,14 +259,18 @@ class ContasReceberController extends Controller
                 }
 
                 AuditLogger::log('conta_receber_created', [
-                    'conta_id'       => $id,
-                    'usuario_id'     => $usuarioId,
-                    'cliente_id'     => $clienteId,
-                    'valor'          => $valor,
-                    'meio_pagamento' => $meioPagamento,
+                    'conta_id'        => $id,
+                    'usuario_id'      => $usuarioId,
+                    'cliente_id'      => $clienteId,
+                    'valor'           => $valor,
+                    'meio_pagamento'  => $meioPagamento,
+                    'parcelas_geradas'=> $parcelasGeradas,
+                    'total_parcelas'  => $totalParcelas,
+                    'recorrencia_modo'=> $recorrenciaModo,
                 ]);
 
-                header("Location: /financeiro/contas-a-receber/edit/{$id}?success=created&tab=anexos");
+                $successParam = $parcelasGeradas > 0 ? 'created_parcelas&parcelas=' . ($parcelasGeradas + 1) : 'created';
+                header("Location: /financeiro/contas-a-receber/edit/{$id}?success={$successParam}&tab=parcelas");
             } else {
                 header('Location: /financeiro/contas-a-receber/create?error=create_failed');
             }
@@ -466,14 +500,24 @@ class ContasReceberController extends Controller
 
             $anexos   = $this->anexoModel->findByContaId((int)$conta->id, $usuarioId);
 
+            // Buscar parcelas do grupo (se existir)
+            $parcelas     = [];
+            $resumoParcelas = null;
+            if (!empty($conta->grupo_parcelas)) {
+                $parcelas       = $this->model->findByGrupoParcelas($usuarioId, (string)$conta->grupo_parcelas);
+                $resumoParcelas = $this->model->getResumoParcelas($usuarioId, (string)$conta->grupo_parcelas);
+            }
+
             View::render('contas_receber/form-enterprise', [
-                '_layout'  => 'erp',
-                'title'    => 'Editar Conta a Receber',
-                'conta'    => $conta,
-                'planos'   => $planos,
-                'clientes' => $clientes,
-                'anexos'   => $anexos,
-                'tab'      => $_GET['tab'] ?? 'geral',
+                '_layout'       => 'erp',
+                'title'         => 'Editar Conta a Receber',
+                'conta'         => $conta,
+                'planos'        => $planos,
+                'clientes'      => $clientes,
+                'anexos'        => $anexos,
+                'parcelas'      => $parcelas,
+                'resumoParcelas'=> $resumoParcelas,
+                'tab'           => $_GET['tab'] ?? 'geral',
             ]);
         } catch (\Throwable $e) {
             $this->logger->error('Erro ao editar conta a receber: ' . $e->getMessage());

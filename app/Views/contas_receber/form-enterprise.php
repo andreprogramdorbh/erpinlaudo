@@ -5,6 +5,9 @@ $isEdit = !empty($conta);
 $activeTab = $_GET['tab'] ?? 'geral';
 $planos = $planos ?? [];
 $clientes = $clientes ?? [];
+$parcelas = $parcelas ?? [];
+$resumoParcelas = $resumoParcelas ?? null;
+$temParcelas = !empty($parcelas) && count($parcelas) > 1;
 
 $formConfig = [
     'title' => $isEdit ? 'Editar Conta a Receber' : 'Nova Conta a Receber',
@@ -32,6 +35,14 @@ $formConfig = [
             'icon' => 'fas fa-hand-holding-usd',
             'locked' => false,
             'view' => 'contas_receber.tabs.geral-enterprise'
+        ],
+        [
+            'id' => 'parcelas',
+            'title' => 'Parcelas' . ($temParcelas ? ' (' . count($parcelas) . ')' : ''),
+            'icon' => 'fas fa-list-ol',
+            'locked' => !$isEdit,
+            'locked_message' => 'Salve o recebimento primeiro para visualizar parcelas.',
+            'view' => $isEdit ? 'contas_receber.tabs.parcelas' : null
         ],
         [
             'id' => 'anexos',

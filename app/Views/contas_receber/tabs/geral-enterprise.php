@@ -180,29 +180,85 @@ $meioPagamentoAtual = $conta->meio_pagamento ?? '';
                 <select name="recorrencia_tipo" id="recorrencia_tipo" class="form-select">
                     <option value="">(Opcional)</option>
                     <option value="mensal"     <?php echo ($conta->recorrencia_tipo ?? '') === 'mensal'     ? 'selected' : ''; ?>>Mensal</option>
+                    <option value="trimestral" <?php echo ($conta->recorrencia_tipo ?? '') === 'trimestral' ? 'selected' : ''; ?>>Trimestral</option>
+                    <option value="semestral"  <?php echo ($conta->recorrencia_tipo ?? '') === 'semestral'  ? 'selected' : ''; ?>>Semestral</option>
                     <option value="semanal"    <?php echo ($conta->recorrencia_tipo ?? '') === 'semanal'    ? 'selected' : ''; ?>>Semanal</option>
                     <option value="anual"      <?php echo ($conta->recorrencia_tipo ?? '') === 'anual'      ? 'selected' : ''; ?>>Anual</option>
                     <option value="customizada"<?php echo ($conta->recorrencia_tipo ?? '') === 'customizada'? 'selected' : ''; ?>>Customizada</option>
                 </select>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="grupo-intervalo">
                 <label for="recorrencia_intervalo" class="form-label">Intervalo</label>
                 <input type="number" name="recorrencia_intervalo" id="recorrencia_intervalo"
-                       class="form-control"
-                       value="<?php echo htmlspecialchars($conta->recorrencia_intervalo ?? ''); ?>">
+                       class="form-control" min="1" max="999" placeholder="Ex: 1"
+                       value="<?php echo htmlspecialchars($conta->recorrencia_intervalo ?? '1'); ?>">
+                <small class="text-muted">Repete a cada N períodos</small>
             </div>
 
-            <div class="form-group">
-                <label for="observacoes" class="form-label">Observações</label>
-                <textarea name="observacoes" id="observacoes" class="form-control" rows="2"><?php echo htmlspecialchars($conta->observacoes ?? ''); ?></textarea>
+            <div class="form-group" id="grupo-total-parcelas">
+                <label for="total_parcelas" class="form-label">Total de Parcelas <span class="text-danger">*</span></label>
+                <input type="number" name="total_parcelas" id="total_parcelas"
+                       class="form-control" min="2" max="360" placeholder="Ex: 12"
+                       value="<?php echo htmlspecialchars($conta->total_parcelas ?? ''); ?>">
+                <small class="text-muted">Gera todas as parcelas de uma vez</small>
             </div>
+        </div>
+
+        <div id="recorrencia-preview" class="alert alert-info mt-2" style="display:none">
+            <i class="fas fa-info-circle me-2"></i>
+            <span id="recorrencia-preview-texto"></span>
+        </div>
+
+        <div class="form-group mt-2">
+            <label for="observacoes" class="form-label">Observações</label>
+            <textarea name="observacoes" id="observacoes" class="form-control" rows="2"><?php echo htmlspecialchars($conta->observacoes ?? ''); ?></textarea>
         </div>
     </section>
 
 </form>
 
 <script>
+// Preview dinâmico de recorrência
+(function () {
+    var isEdit = <?php echo $isEdit ? 'true' : 'false'; ?>;
+
+    function updateRecorrenciaPreview() {
+        var recorrente = document.getElementById('recorrente');
+        var tipo       = document.getElementById('recorrencia_tipo');
+        var intervalo  = document.getElementById('recorrencia_intervalo');
+        var total      = document.getElementById('total_parcelas');
+        var preview    = document.getElementById('recorrencia-preview');
+        var previewTxt = document.getElementById('recorrencia-preview-texto');
+        var grupoTotal = document.getElementById('grupo-total-parcelas');
+
+        if (!recorrente || !tipo || !preview) return;
+
+        var ativo = recorrente.checked && tipo.value !== '';
+        grupoTotal.style.display = ativo ? '' : 'none';
+
+        if (!ativo || isEdit) { preview.style.display = 'none'; return; }
+
+        var n = parseInt(total ? total.value : 0) || 0;
+        var inv = parseInt(intervalo ? intervalo.value : 1) || 1;
+        if (n < 2) { preview.style.display = 'none'; return; }
+
+        var tipoLabel = {mensal:'mês',trimestral:'trimestre',semestral:'semestre',semanal:'semana',anual:'ano',customizada:'período'};
+        var label = tipoLabel[tipo.value] || tipo.value;
+        var msg = 'Serão geradas <strong>' + n + ' parcelas</strong> com vencimento a cada <strong>' + inv + ' ' + label + (inv > 1 ? 's' : '') + '</strong>.';
+        previewTxt.innerHTML = msg;
+        preview.style.display = 'block';
+    }
+
+    ['recorrente','recorrencia_tipo','recorrencia_intervalo','total_parcelas'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('change', updateRecorrenciaPreview);
+        if (el && el.tagName === 'INPUT' && el.type === 'number') el.addEventListener('input', updateRecorrenciaPreview);
+    });
+
+    updateRecorrenciaPreview();
+})();
+
 // Painel de informação dinâmico para meios de pagamento Asaas
 (function () {
     var asaasConfigured = <?php echo \App\Services\AsaasService::isConfigured() ? 'true' : 'false'; ?>;

@@ -9,6 +9,74 @@ class ContaReceber extends Model
 {
     protected string $table = 'contas_receber';
 
+    /**
+     * Expõe o PDO para uso em services que precisam de queries customizadas.
+     */
+    public function getPdo(): \PDO
+    {
+        return $this->pdo;
+    }
+
+    /**
+     * Busca todas as parcelas de um grupo.
+     */
+    public function findByGrupoParcelas(int $usuarioId, string $grupoParcelas): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT cr.*, c.razao_social AS cliente_nome
+             FROM {$this->table} cr
+             LEFT JOIN clientes c ON c.id = cr.cliente_id
+             WHERE cr.usuario_id = ? AND cr.grupo_parcelas = ?
+             ORDER BY cr.numero_parcela ASC, cr.data_vencimento ASC"
+        );
+        $stmt->execute([$usuarioId, $grupoParcelas]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Busca todas as contas a receber de um contrato.
+     */
+    public function findByContratoId(int $usuarioId, int $contratoId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT cr.*, c.razao_social AS cliente_nome
+             FROM {$this->table} cr
+             LEFT JOIN clientes c ON c.id = cr.cliente_id
+             WHERE cr.usuario_id = ? AND cr.contrato_id = ?
+             ORDER BY cr.data_vencimento ASC, cr.numero_parcela ASC"
+        );
+        $stmt->execute([$usuarioId, $contratoId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Resumo de parcelas de um grupo para exibição no portal e no ERP.
+     */
+    public function getResumoParcelas(int $usuarioId, string $grupoParcelas): object
+    {
+        $hoje = date('Y-m-d');
+        $stmt = $this->pdo->prepare(
+            "SELECT
+               COUNT(*) AS total,
+               SUM(CASE WHEN status = 'recebida' THEN 1 ELSE 0 END) AS pagas,
+               SUM(CASE WHEN status = 'aberta' AND data_vencimento < :hoje THEN 1 ELSE 0 END) AS vencidas,
+               SUM(CASE WHEN status = 'aberta' AND data_vencimento >= :hoje2 THEN 1 ELSE 0 END) AS abertas,
+               COALESCE(SUM(valor), 0) AS valor_total,
+               COALESCE(SUM(CASE WHEN status = 'recebida' THEN valor ELSE 0 END), 0) AS valor_pago,
+               MIN(data_vencimento) AS primeiro_vencimento,
+               MAX(data_vencimento) AS ultimo_vencimento
+             FROM {$this->table}
+             WHERE usuario_id = :usuario_id AND grupo_parcelas = :grupo"
+        );
+        $stmt->execute([
+            ':usuario_id' => $usuarioId,
+            ':grupo'      => $grupoParcelas,
+            ':hoje'       => $hoje,
+            ':hoje2'      => $hoje,
+        ]);
+        return $stmt->fetch(PDO::FETCH_OBJ) ?: (object)[];
+    }
+
     public function findById(int $id): object|false
     {
         $sql = "SELECT cr.*, c.razao_social AS cliente_nome, pc.codigo AS plano_codigo, pc.nome AS plano_nome
@@ -77,6 +145,50 @@ class ContaReceber extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Busca grupos de parcelas de um cliente para exibição no portal.
+     * Retorna um resumo por grupo_parcelas com progresso de pagamento.
+     */
+    public function findGruposByClienteId(int $clienteId, int $tenantId): array
+    {
+        $sql = "SELECT
+                    grupo_parcelas,
+                    MIN(descricao) AS descricao,
+                    MIN(data_vencimento) AS primeira_parcela,
+                    MAX(data_vencimento) AS ultima_parcela,
+                    COUNT(*) AS total_parcelas,
+                    SUM(CASE WHEN status = 'recebida' THEN 1 ELSE 0 END) AS parcelas_pagas,
+                    SUM(CASE WHEN status = 'aberta' AND data_vencimento < CURDATE() THEN 1 ELSE 0 END) AS parcelas_vencidas,
+                    SUM(valor) AS valor_total,
+                    SUM(CASE WHEN status = 'recebida' THEN valor ELSE 0 END) AS valor_pago,
+                    contrato_id
+                FROM {$this->table}
+                WHERE cliente_id = :cliente_id
+                  AND usuario_id = :tenant_id
+                  AND grupo_parcelas IS NOT NULL
+                  AND grupo_parcelas != ''
+                GROUP BY grupo_parcelas, contrato_id
+                ORDER BY primeira_parcela ASC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':cliente_id' => $clienteId, ':tenant_id' => $tenantId]);
+        return $stmt->fetchAll(\PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Busca todas as parcelas de um grupo para exibição no portal (por cliente).
+     */
+    public function findParcelasByGrupoAndCliente(int $clienteId, int $tenantId, string $grupo): array
+    {
+        $sql = "SELECT * FROM {$this->table}
+                WHERE cliente_id = :cliente_id
+                  AND usuario_id = :tenant_id
+                  AND grupo_parcelas = :grupo
+                ORDER BY numero_parcela ASC, data_vencimento ASC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':cliente_id' => $clienteId, ':tenant_id' => $tenantId, ':grupo' => $grupo]);
+        return $stmt->fetchAll(\PDO::FETCH_OBJ);
+    }
+
     public function findByAsaasPaymentIdAndUsuarioId(int $usuarioId, string $paymentId): object|false
     {
         $stmt = $this->pdo->prepare("SELECT id, status FROM {$this->table} WHERE usuario_id = :usuario_id AND asaas_payment_id = :pid LIMIT 1");
@@ -123,10 +235,12 @@ class ContaReceber extends Model
     {
         $sql = "INSERT INTO {$this->table}
                 (usuario_id, cliente_id, plano_conta_id, descricao, valor, data_vencimento, data_recebimento, status, observacoes,
-                 meio_pagamento, recorrente, recorrencia_tipo, recorrencia_intervalo, asaas_payment_id, asaas_subscription_id, external_reference)
+                 meio_pagamento, recorrente, recorrencia_tipo, recorrencia_intervalo, asaas_payment_id, asaas_subscription_id, external_reference,
+                 numero_parcela, total_parcelas, grupo_parcelas, recorrencia_modo, contrato_id)
                 VALUES
                 (:usuario_id, :cliente_id, :plano_conta_id, :descricao, :valor, :data_vencimento, :data_recebimento, :status, :observacoes,
-                 :meio_pagamento, :recorrente, :recorrencia_tipo, :recorrencia_intervalo, :asaas_payment_id, :asaas_subscription_id, :external_reference)";
+                 :meio_pagamento, :recorrente, :recorrencia_tipo, :recorrencia_intervalo, :asaas_payment_id, :asaas_subscription_id, :external_reference,
+                 :numero_parcela, :total_parcelas, :grupo_parcelas, :recorrencia_modo, :contrato_id)";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':usuario_id', $data['usuario_id']);
@@ -196,6 +310,22 @@ class ContaReceber extends Model
             $stmt->bindValue(':external_reference', (string)$extRef);
         }
 
+        // Campos de parcelas (opcionais)
+        $numParcela = $data['numero_parcela'] ?? null;
+        $stmt->bindValue(':numero_parcela', ($numParcela !== null && $numParcela !== '') ? (int)$numParcela : null, PDO::PARAM_INT);
+
+        $totalParcelas = $data['total_parcelas'] ?? null;
+        $stmt->bindValue(':total_parcelas', ($totalParcelas !== null && $totalParcelas !== '') ? (int)$totalParcelas : null, PDO::PARAM_INT);
+
+        $grupoParcelas = $data['grupo_parcelas'] ?? null;
+        $stmt->bindValue(':grupo_parcelas', ($grupoParcelas === '' || $grupoParcelas === null) ? null : (string)$grupoParcelas);
+
+        $recorrenciaModo = $data['recorrencia_modo'] ?? 'rolling';
+        $stmt->bindValue(':recorrencia_modo', ($recorrenciaModo === '' || $recorrenciaModo === null) ? 'rolling' : (string)$recorrenciaModo);
+
+        $contratoId = $data['contrato_id'] ?? null;
+        $stmt->bindValue(':contrato_id', ($contratoId === '' || $contratoId === null) ? null : (int)$contratoId, PDO::PARAM_INT);
+
         if ($stmt->execute()) {
             return $this->pdo->lastInsertId();
         }
@@ -221,6 +351,11 @@ class ContaReceber extends Model
             'asaas_payment_id',
             'asaas_subscription_id',
             'external_reference',
+            'numero_parcela',
+            'total_parcelas',
+            'grupo_parcelas',
+            'recorrencia_modo',
+            'contrato_id',
         ];
 
         $updateFields = [];
