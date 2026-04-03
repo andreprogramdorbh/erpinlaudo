@@ -95,8 +95,20 @@ class EmailAlertaService
                 $assunto = $this->renderTemplate($alerta->assunto_template, $vars);
                 $corpo   = $this->renderTemplate($alerta->corpo_template, $vars);
 
+                // Detecta se o corpo é HTML (templates podem conter tags)
+                $isHtml = (stripos($corpo, '<html') !== false
+                        || stripos($corpo, '<p>') !== false
+                        || stripos($corpo, '<br') !== false
+                        || stripos($corpo, '<table') !== false
+                        || stripos($corpo, '<div') !== false);
+
+                // Envolve em template HTML padrão se for HTML puro sem estrutura completa
+                if ($isHtml && stripos($corpo, '<html') === false) {
+                    $corpo = $this->wrapAlertaHtml($alerta->nome ?? 'Alerta ERP', $corpo);
+                }
+
                 try {
-                    $this->mailService->send($email, $assunto, $corpo);
+                    $this->mailService->send($email, $assunto, $corpo, $isHtml);
                     $this->alertaModel->registrarDisparo(
                         (int) $alerta->id, $this->usuarioId,
                         $email, $assunto, 'enviado', null,
@@ -186,18 +198,27 @@ class EmailAlertaService
 
             // ── Resumo Financeiro Diário ──────────────────────────────────────
             case 'financeiro_resumo_diario':
-                // Retorna um único objeto-resumo para o template
+                // Retorna um único objeto-resumo para o template.
+                // NOTA: PDO não permite reutilizar o mesmo placeholder nomeado em
+                // subconsultas múltiplas — usamos parâmetros posicionais (?) para evitar HY093.
                 $hoje = date('Y-m-d');
                 $stmt = $this->pdo->prepare(
                     "SELECT
-                        (SELECT COUNT(*) FROM contas_receber WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS receber_atrasadas,
-                        (SELECT COALESCE(SUM(valor),0) FROM contas_receber WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS receber_valor_atrasado,
-                        (SELECT COUNT(*) FROM contas_pagar WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS pagar_atrasadas,
-                        (SELECT COALESCE(SUM(valor),0) FROM contas_pagar WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento < :hoje) AS pagar_valor_atrasado,
-                        (SELECT COUNT(*) FROM contas_receber WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento BETWEEN :hoje AND DATE_ADD(:hoje, INTERVAL 7 DAY)) AS receber_proximos_7d,
-                        (SELECT COUNT(*) FROM contas_pagar WHERE usuario_id = :uid AND status = 'aberta' AND data_vencimento BETWEEN :hoje AND DATE_ADD(:hoje, INTERVAL 7 DAY)) AS pagar_proximos_7d"
+                        (SELECT COUNT(*) FROM contas_receber WHERE usuario_id = ? AND status = 'aberta' AND data_vencimento < ?) AS receber_atrasadas,
+                        (SELECT COALESCE(SUM(valor),0) FROM contas_receber WHERE usuario_id = ? AND status = 'aberta' AND data_vencimento < ?) AS receber_valor_atrasado,
+                        (SELECT COUNT(*) FROM contas_pagar WHERE usuario_id = ? AND status = 'aberta' AND data_vencimento < ?) AS pagar_atrasadas,
+                        (SELECT COALESCE(SUM(valor),0) FROM contas_pagar WHERE usuario_id = ? AND status = 'aberta' AND data_vencimento < ?) AS pagar_valor_atrasado,
+                        (SELECT COUNT(*) FROM contas_receber WHERE usuario_id = ? AND status = 'aberta' AND data_vencimento BETWEEN ? AND DATE_ADD(?, INTERVAL 7 DAY)) AS receber_proximos_7d,
+                        (SELECT COUNT(*) FROM contas_pagar WHERE usuario_id = ? AND status = 'aberta' AND data_vencimento BETWEEN ? AND DATE_ADD(?, INTERVAL 7 DAY)) AS pagar_proximos_7d"
                 );
-                $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
+                $stmt->execute([
+                    $uid, $hoje,   // receber_atrasadas
+                    $uid, $hoje,   // receber_valor_atrasado
+                    $uid, $hoje,   // pagar_atrasadas
+                    $uid, $hoje,   // pagar_valor_atrasado
+                    $uid, $hoje, $hoje, // receber_proximos_7d
+                    $uid, $hoje, $hoje, // pagar_proximos_7d
+                ]);
                 $row = $stmt->fetch(PDO::FETCH_OBJ);
                 return $row ? [$row] : [];
 
@@ -448,5 +469,41 @@ class EmailAlertaService
     private function renderTemplate(string $template, array $vars): string
     {
         return str_replace(array_keys($vars), array_values($vars), $template);
+    }
+
+    /**
+     * Envolve o corpo do alerta em um template HTML responsivo padrão.
+     */
+    private function wrapAlertaHtml(string $titulo, string $corpo): string
+    {
+        $ano = date('Y');
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{$titulo}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+      <tr><td style="background:#1a56db;padding:24px 32px;">
+        <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">ERP InLaudo</h1>
+        <p style="margin:4px 0 0;color:#c7d9ff;font-size:13px;">{$titulo}</p>
+      </td></tr>
+      <tr><td style="padding:32px;color:#374151;font-size:15px;line-height:1.6;">
+        {$corpo}
+      </td></tr>
+      <tr><td style="background:#f9fafb;padding:16px 32px;text-align:center;color:#9ca3af;font-size:12px;border-top:1px solid #e5e7eb;">
+        &copy; {$ano} ERP InLaudo &mdash; Este é um e-mail automático, não responda.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
+HTML;
     }
 }

@@ -136,8 +136,25 @@ class EmailAlerta extends Model
                     ativo             = :ativo,
                     updated_at        = NOW()
                 WHERE id = :id AND usuario_id = :usuario_id";
-        $params = $this->buildParams($usuarioId, $data);
-        $params[':id'] = $id;
+
+        // NOTA: buildParams() inclui :codigo e :modulo que não existem no UPDATE acima.
+        // Extraímos apenas os parâmetros que o SQL realmente usa para evitar HY093.
+        $all = $this->buildParams($usuarioId, $data);
+        $params = [
+            ':nome'              => $all[':nome'],
+            ':descricao'         => $all[':descricao'],
+            ':antecedencia_dias' => $all[':antecedencia_dias'],
+            ':frequencia'        => $all[':frequencia'],
+            ':hora_disparo'      => $all[':hora_disparo'],
+            ':destinatarios'     => $all[':destinatarios'],
+            ':cc'                => $all[':cc'],
+            ':assunto_template'  => $all[':assunto_template'],
+            ':corpo_template'    => $all[':corpo_template'],
+            ':ativo'             => $all[':ativo'],
+            ':usuario_id'        => $usuarioId,
+            ':id'                => $id,
+        ];
+
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute($params);
     }
