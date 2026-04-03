@@ -415,6 +415,60 @@ class MailService
     // Template HTML padrão
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Gera um e-mail HTML completo com o layout padrão do ERP InLaudo.
+     * Método estático para uso direto nos controllers sem instanciar o serviço.
+     *
+     * @param string $subtitle  Subtítulo exibido no cabeçalho (ex: 'Confirmação de Pagamento')
+     * @param string $content   Conteúdo HTML interno (p, table, etc.)
+     * @param string $accentColor Cor do cabeçalho em hex (padrão azul ERP)
+     */
+    public static function buildEmailHtml(
+        string $subtitle,
+        string $content,
+        string $accentColor = '#1a56db'
+    ): string {
+        $year = date('Y');
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f6f9;padding:32px 0;">
+  <tr>
+    <td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:600px;">
+        <tr>
+          <td style="background:{$accentColor};padding:24px 32px;">
+            <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">ERP InLaudo</h1>
+            <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">{$subtitle}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px;color:#374151;font-size:15px;line-height:1.7;">
+            {$content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;text-align:center;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">
+              &copy; {$year} ERP InLaudo &mdash; E-mail automático, não responda.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+HTML;
+    }
+
     private function wrapHtmlTemplate(string $title, string $content): string
     {
         return <<<HTML

@@ -401,25 +401,39 @@ class ContasReceberController extends Controller
             $linkPagamento = $this->getAsaasService()->getLinkPagamento($cobrancaAsaas['id']);
 
             if ($linkPagamento && MailService::isConfigured()) {
-                $subject = 'Link de Pagamento - ' . $dados['descricao'];
-                $body    = "Olá, " . ($cliente->razao_social ?? $cliente->nome ?? '') . "!\n\n";
-                $body   .= "Geramos um link de pagamento para a sua cobrança:\n\n";
-                $body   .= "Descrição: " . $dados['descricao'] . "\n";
-                $body   .= "Valor: R$ " . number_format((float)str_replace(['R$', ' ', '.'], ['', '', ''], str_replace(',', '.', $dados['valor'])), 2, ',', '.') . "\n";
-                $body   .= "Vencimento: " . date('d/m/Y', strtotime($dados['data_vencimento'])) . "\n\n";
-                $body   .= "Clique no link abaixo para efetuar o pagamento:\n";
-                $body   .= $linkPagamento . "\n\n";
+                $nomeCliente  = htmlspecialchars($cliente->razao_social ?? $cliente->nome ?? 'Cliente', ENT_QUOTES);
+                $descricao    = htmlspecialchars($dados['descricao'] ?? '', ENT_QUOTES);
+                $valor        = 'R$ ' . number_format((float)str_replace(['R$', ' ', '.'], ['', '', ''], str_replace(',', '.', $dados['valor'] ?? '0')), 2, ',', '.');
+                $vencimento   = date('d/m/Y', strtotime($dados['data_vencimento'] ?? 'now'));
+                $meioPgto     = ucfirst($dados['meio_pagamento'] ?? 'link');
 
+                $infoMeio = '';
                 if ($dados['meio_pagamento'] === 'boleto') {
-                    $body .= "O boleto também será enviado por e-mail e estará disponível no link acima.\n\n";
+                    $infoMeio = "<p style='color:#374151;'>O boleto também será enviado por e-mail e estará disponível no link acima.</p>";
                 } elseif ($dados['meio_pagamento'] === 'pix') {
-                    $body .= "O código PIX estará disponível no link acima.\n\n";
+                    $infoMeio = "<p style='color:#374151;'>O código PIX estará disponível no link acima.</p>";
                 }
 
-                $body .= "Dúvidas? Entre em contato conosco.\n\n";
-                $body .= "Atenciosamente,\nEquipe ERP InLaudo";
+                $subject = 'Link de Pagamento — ' . $descricao;
 
-                $this->getMailService()->send($cliente->email, $subject, $body);
+                $body = MailService::buildEmailHtml(
+                    'Link de Pagamento',
+                    "<p>Olá, <strong>{$nomeCliente}</strong>!</p>"
+                    . "<p>Geramos um link de pagamento para a sua cobrança:</p>"
+                    . "<table cellpadding='0' cellspacing='0' border='0' style='border-collapse:collapse;width:100%;max-width:480px;margin:16px 0;'>"
+                    . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;'><strong>Descrição</strong></td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$descricao}</td></tr>"
+                    . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;'><strong>Valor</strong></td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$valor}</td></tr>"
+                    . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;'><strong>Vencimento</strong></td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$vencimento}</td></tr>"
+                    . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;'><strong>Meio de Pagamento</strong></td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$meioPgto}</td></tr>"
+                    . "</table>"
+                    . "<p style='text-align:center;margin:24px 0;'>"
+                    . "<a href='{$linkPagamento}' style='background:#1a56db;color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;'>Acessar Link de Pagamento</a>"
+                    . "</p>"
+                    . $infoMeio
+                    . "<p style='color:#6b7280;font-size:13px;'>Dúvidas? Entre em contato conosco.</p>"
+                );
+
+                $this->getMailService()->send($cliente->email, $subject, $body, true);
 
                 AuditLogger::log('payment_email_sent', [
                     'cliente_id'     => $cliente->id,
@@ -984,25 +998,26 @@ class ContasReceberController extends Controller
                     $descFmt     = htmlspecialchars($conta->descricao ?? '');
                     $dataFmt     = date('d/m/Y', strtotime($dataRecebimento));
 
-                    $assunto = "Pagamento Confirmado — {$descFmt}";
-                    $corpo   = "
-                        <p>Olá, <strong>{$nomeCliente}</strong>!</p>
-                        <p>Confirmamos o recebimento do seguinte título:</p>
-                        <table style='border-collapse:collapse;width:100%;max-width:480px'>
-                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Descrição</strong></td>
-                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>{$descFmt}</td></tr>
-                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Valor</strong></td>
-                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>{$valorFmt}</td></tr>
-                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Data de Recebimento</strong></td>
-                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>{$dataFmt}</td></tr>
-                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Meio de Pagamento</strong></td>
-                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>' . ucfirst($meioPagamento) . '</td></tr>
-                        </table>
-                        " . ($nfLiberada ? "<p style='margin-top:16px'>✅ Sua <strong>Nota Fiscal</strong> já está disponível no <a href='/portal'>Portal do Cliente</a>.</p>" : '') . "
-                        <p style='color:#6b7280;font-size:.85em;margin-top:24px'>Este é um e-mail automático. Não responda a esta mensagem.</p>
-                    ";
+                    $meioPagFmt = ucfirst($meioPagamento ?? 'pix');
+                    $nfBloco    = $nfLiberada
+                        ? "<p style='margin-top:16px;color:#059669;font-size:14px;'>✅ Sua <strong>Nota Fiscal</strong> já está disponível no <a href='https://erp.inlaudo.com.br/portal' style='color:#1a56db;'>Portal do Cliente</a>.</p>"
+                        : '';
 
-                    $mail->send($emailCliente, $assunto, $corpo);
+                    $assunto = "Pagamento Confirmado \u2014 {$descFmt}";
+                    $corpo   = MailService::buildEmailHtml(
+                        'Confirmação de Pagamento',
+                        "<p style='margin:0 0 8px;font-size:15px;'>Olá, <strong>{$nomeCliente}</strong>!</p>"
+                        . "<p style='margin:0 0 20px;font-size:15px;'>Confirmamos o recebimento do seguinte título:</p>"
+                        . "<table style='border-collapse:collapse;width:100%;font-size:14px;'>"
+                        . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;font-weight:700;width:42%'>Descrição</td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$descFmt}</td></tr>"
+                        . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;font-weight:700;'>Valor</td><td style='padding:8px 12px;border:1px solid #e5e7eb;color:#059669;font-weight:700;'>{$valorFmt}</td></tr>"
+                        . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;font-weight:700;'>Data de Recebimento</td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$dataFmt}</td></tr>"
+                        . "<tr><td style='padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;font-weight:700;'>Meio de Pagamento</td><td style='padding:8px 12px;border:1px solid #e5e7eb;'>{$meioPagFmt}</td></tr>"
+                        . "</table>"
+                        . $nfBloco
+                    );
+
+                    $mail->send($emailCliente, $assunto, $corpo, true);
                     $emailEnviado = true;
                     $log[]        = 'email_enviado_para_' . $emailCliente;
                 }
