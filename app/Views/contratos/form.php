@@ -474,10 +474,10 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                                 title="Importar arquivo">
                                             <i class="fas fa-file-import"></i>
                                         </button>
-                                        <a href="/faturamento/apuracao-prestador/excluir/<?php echo $ap->id; ?>"
-                                           class="btn btn-outline-danger"
-                                           title="Excluir apuração"
-                                           onclick="return confirm('Excluir esta apuração? Esta ação não pode ser desfeita.')">
+                        <a href="/faturamento/apuracao/delete/<?php echo $ap->id; ?>"
+                           class="btn btn-outline-danger"
+                           title="Excluir apuração"
+                           onclick="return confirm('Excluir esta apuração?\n\nEsta ação não pode ser desfeita e removerá todos os itens importados.')">
                                             <i class="fas fa-trash"></i>
                                         </a>
                                         <?php endif; ?>

@@ -216,7 +216,7 @@ class ApuracaoController extends Controller
     }
 
     // =========================================================
-    // EXCLUIR APURAÇÃO (apenas rascunho/erro)
+    // EXCLUIR APURAÇÃO (apenas rascunho/erro — nunca após faturamento)
     // =========================================================
     public function delete(string $id): void
     {
@@ -224,13 +224,56 @@ class ApuracaoController extends Controller
         $usuarioId = (int) $user->id;
         $apuracao  = $this->apuracaoModel->findById((int) $id);
 
+        // Determinar URL de retorno com base no tipo da apuração
         $redirect = ($apuracao && $apuracao->tipo === 'cliente')
             ? '/faturamento/apuracao-cliente'
             : '/faturamento/apuracao-prestador';
 
-        $this->apuracaoModel->delete((int) $id, $usuarioId);
-        AuditLogger::log('apuracao_excluida', ['apuracao_id' => $id]);
-        header("Location: {$redirect}?success=deleted");
+        // Validação: apuração deve existir e pertencer ao tenant
+        if (!$apuracao || (int) $apuracao->usuario_id !== $usuarioId) {
+            header("Location: {$redirect}?error=not_found");
+            exit();
+        }
+
+        // Regra de negócio: não pode excluir após concluído ou faturado
+        $statusBloqueados = ['concluido', 'faturado'];
+        if (in_array($apuracao->status, $statusBloqueados, true)) {
+            $this->logger->warning('[ApuracaoController] Tentativa de excluir apuração bloqueada', [
+                'apuracao_id' => $id,
+                'status'      => $apuracao->status,
+                'usuario_id'  => $usuarioId,
+            ]);
+            header("Location: {$redirect}?error=exclusao_bloqueada");
+            exit();
+        }
+
+        try {
+            $excluiu = $this->apuracaoModel->delete((int) $id, $usuarioId);
+
+            if (!$excluiu) {
+                // O DELETE retornou 0 linhas afetadas (status não permitido no banco)
+                header("Location: {$redirect}?error=exclusao_bloqueada");
+                exit();
+            }
+
+            AuditLogger::log('apuracao_excluida', [
+                'apuracao_id' => $id,
+                'numero'      => $apuracao->numero,
+                'status_era'  => $apuracao->status,
+                'tipo'        => $apuracao->tipo,
+            ]);
+
+            header("Location: {$redirect}?success=deleted");
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[ApuracaoController] Erro ao excluir apuração', [
+                'apuracao_id' => $id,
+                'error'       => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+            header("Location: {$redirect}?error=db_error");
+        }
+
         exit();
     }
 }

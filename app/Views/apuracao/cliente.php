@@ -11,9 +11,12 @@ UI::sectionHeader('Apuração Cliente', 'Controle de exames realizados e recebim
 $success = $_GET['success'] ?? '';
 $error   = $_GET['error'] ?? '';
 if ($success === 'faturado')  echo '<div class="alert alert-success border-0 shadow-sm"><i class="fas fa-check-circle me-2"></i>Apuração faturada! Conta a receber gerada em Financeiro.</div>';
-if ($success === 'deleted')   echo '<div class="alert alert-success border-0 shadow-sm">Apuração excluída.</div>';
-if ($error === 'status_invalido') echo '<div class="alert alert-warning border-0 shadow-sm">Apenas apurações com status "Concluído" podem ser faturadas.</div>';
-if ($error === 'faturamento_falhou') echo '<div class="alert alert-danger border-0 shadow-sm">Erro ao gerar conta a receber. Verifique os logs.</div>';
+if ($success === 'deleted')          echo '<div class="alert alert-success border-0 shadow-sm"><i class="fas fa-check-circle me-2"></i>Apuração excluída com sucesso.</div>';
+if ($error === 'status_invalido')     echo '<div class="alert alert-warning border-0 shadow-sm"><i class="fas fa-exclamation-triangle me-2"></i>Apenas apurações com status "Concluído" podem ser faturadas.</div>';
+if ($error === 'faturamento_falhou')  echo '<div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-times-circle me-2"></i>Erro ao gerar conta a receber. Verifique os logs.</div>';
+if ($error === 'exclusao_bloqueada') echo '<div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-lock me-2"></i><strong>Exclusão bloqueada:</strong> Não é possível excluir apurações com status <strong>Concluído</strong> ou <strong>Faturado</strong>. Apenas apurações em rascunho ou com erro podem ser excluídas.</div>';
+if ($error === 'not_found')           echo '<div class="alert alert-warning border-0 shadow-sm"><i class="fas fa-search me-2"></i>Apuração não encontrada.</div>';
+if ($error === 'db_error')            echo '<div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-times-circle me-2"></i>Erro ao excluir apuração. Tente novamente.</div>';
 ?>
 
 <!-- FILTROS -->
