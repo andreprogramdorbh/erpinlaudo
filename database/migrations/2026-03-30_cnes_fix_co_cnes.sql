@@ -1,6 +1,6 @@
 -- ============================================================
 -- Migration: 2026-03-30_cnes_fix_co_cnes.sql
--- Compatível com: MariaDB 10.x / MySQL 5.7+
+-- Compatível com: MariaDB 10.1.4+ (CREATE INDEX IF NOT EXISTS)
 --
 -- Objetivo: Preencher co_cnes retroativamente em equipamentos
 --           e profissionais importados antes da correção do
@@ -21,60 +21,13 @@ SET p.co_cnes = est.co_cnes
 WHERE p.co_cnes IS NULL
   AND est.co_cnes IS NOT NULL;
 
--- ─── 3. Índices para performance (MariaDB — sem IF NOT EXISTS) ─
--- Execute cada bloco separadamente se um índice já existir.
+-- ─── 3. Índices para performance (MariaDB 10.1.4+ nativo) ────
+-- CREATE INDEX IF NOT EXISTS é idempotente — seguro executar múltiplas vezes.
 
--- Equipamentos: índice simples por co_cnes
-SET @exist := (
-    SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME   = 'cnes_equipamentos'
-      AND INDEX_NAME   = 'idx_co_cnes'
-);
-SET @sql := IF(@exist = 0,
-    'ALTER TABLE cnes_equipamentos ADD INDEX idx_co_cnes (co_cnes)',
-    'SELECT "idx_co_cnes em cnes_equipamentos ja existe"'
-);
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
--- Equipamentos: índice composto co_unidade + co_cnes
-SET @exist := (
-    SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME   = 'cnes_equipamentos'
-      AND INDEX_NAME   = 'idx_unidade_cnes'
-);
-SET @sql := IF(@exist = 0,
-    'ALTER TABLE cnes_equipamentos ADD INDEX idx_unidade_cnes (co_unidade, co_cnes)',
-    'SELECT "idx_unidade_cnes em cnes_equipamentos ja existe"'
-);
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
--- Profissionais: índice simples por co_cnes
-SET @exist := (
-    SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME   = 'cnes_profissionais'
-      AND INDEX_NAME   = 'idx_co_cnes'
-);
-SET @sql := IF(@exist = 0,
-    'ALTER TABLE cnes_profissionais ADD INDEX idx_co_cnes (co_cnes)',
-    'SELECT "idx_co_cnes em cnes_profissionais ja existe"'
-);
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
--- Profissionais: índice composto co_unidade + co_cnes
-SET @exist := (
-    SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME   = 'cnes_profissionais'
-      AND INDEX_NAME   = 'idx_unidade_cnes'
-);
-SET @sql := IF(@exist = 0,
-    'ALTER TABLE cnes_profissionais ADD INDEX idx_unidade_cnes (co_unidade, co_cnes)',
-    'SELECT "idx_unidade_cnes em cnes_profissionais ja existe"'
-);
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+CREATE INDEX IF NOT EXISTS idx_co_cnes       ON cnes_equipamentos  (co_cnes);
+CREATE INDEX IF NOT EXISTS idx_unidade_cnes  ON cnes_equipamentos  (co_unidade, co_cnes);
+CREATE INDEX IF NOT EXISTS idx_co_cnes       ON cnes_profissionais (co_cnes);
+CREATE INDEX IF NOT EXISTS idx_unidade_cnes  ON cnes_profissionais (co_unidade, co_cnes);
 
 -- ─── 4. Verificação (opcional — descomente para checar) ──────
 -- SELECT 'Equipamentos sem co_cnes' AS info, COUNT(*) AS total
