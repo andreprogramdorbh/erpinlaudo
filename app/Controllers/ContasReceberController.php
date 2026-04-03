@@ -965,22 +965,54 @@ class ContasReceberController extends Controller
 
             $log[] = 'status_atualizado';
 
-            // ── 2. Liberar NF vinculada no portal ─────────────────────────────
+            // ── 2. Liberar NF vinculada no portal (ou criar registro pendente) ────
             $nfLiberada = false;
             try {
                 $nfModel = new \App\Models\NotaFiscal();
                 $nf      = $nfModel->findByContaReceberId((int) $id, $usuarioId);
-                if ($nf && in_array($nf->status ?? '', ['pendente', 'emitida', 'aprovada'], true)) {
-                    // Marca NF como liberada para download no portal
+
+                if ($nf) {
+                    // NF já existe — libera para o portal independente do status
                     $nfModel->update((int) $nf->id, [
                         'portal_liberada'    => 1,
                         'portal_liberada_em' => date('Y-m-d H:i:s'),
                     ]);
                     $nfLiberada = true;
                     $log[]      = 'nf_liberada_id_' . $nf->id;
+                } else {
+                    // Não existe NF — cria registro pendente para que o portal
+                    // exiba o botão "Emitir NF-s" (ou "Ver NF-s" após emissão)
+                    $clienteNf = $this->clienteModel->findById((int)($conta->cliente_id ?? 0));
+                    if ($clienteNf) {
+                        $nfId = $nfModel->create([
+                            'usuario_id'        => $usuarioId,
+                            'cliente_id'        => (int) $conta->cliente_id,
+                            'numero_nf'         => '',
+                            'serie'             => '1',
+                            'valor_total'       => (float) ($conta->valor ?? 0),
+                            'data_emissao'      => $dataRecebimento,
+                            'status'            => 'pendente',
+                            'xml_path'          => null,
+                            'asaas_invoice_id'  => null,
+                            'origem_emissao'    => 'manual',
+                            'conta_receber_id'  => (int) $id,
+                            'asaas_pdf_url'     => null,
+                            'asaas_status'      => null,
+                            'servico_descricao' => $conta->descricao ?? 'Serviços Prestados',
+                            'observacoes_nf'    => 'Gerada automaticamente no recebimento manual',
+                        ]);
+                        if ($nfId) {
+                            $nfLiberada = true;
+                            $log[]      = 'nf_pendente_criada_id_' . $nfId;
+                        } else {
+                            $log[] = 'nf_pendente_falha_ao_criar';
+                        }
+                    } else {
+                        $log[] = 'nf_pendente_sem_cliente';
+                    }
                 }
             } catch (\Throwable $eNf) {
-                $this->logger->warning('[receberManual] Falha ao liberar NF: ' . $eNf->getMessage(), [
+                $this->logger->warning('[receberManual] Falha ao liberar/criar NF: ' . $eNf->getMessage(), [
                     'conta_id' => (int) $id,
                 ]);
                 $log[] = 'nf_erro: ' . $eNf->getMessage();

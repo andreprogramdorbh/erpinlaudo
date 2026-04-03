@@ -59,7 +59,7 @@ class NotaFiscal extends Model
         $where  = [
             "nf.cliente_id = :cliente_id",
             "nf.usuario_id = :tenant_id",
-            "nf.status IN ('emitida', 'importada', 'emitida_asaas', 'cancelada', 'erro_emissao', 'agendada')",
+            "nf.status IN ('emitida', 'importada', 'emitida_asaas', 'cancelada', 'erro_emissao', 'agendada', 'pendente')",
         ];
         $params = [':cliente_id' => $clienteId, ':tenant_id' => $tenantId];
 
@@ -241,6 +241,8 @@ class NotaFiscal extends Model
             'servico_codigo',
             'servico_id_asaas',
             'observacoes_nf',
+            'portal_liberada',
+            'portal_liberada_em',
         ];
 
         $updateFields = [];
@@ -256,11 +258,11 @@ class NotaFiscal extends Model
 
             $nullableFields = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_status',
                                'servico_descricao', 'servico_codigo', 'servico_id_asaas',
-                               'observacoes_nf', 'conta_receber_id'];
+                               'observacoes_nf', 'conta_receber_id', 'portal_liberada_em'];
 
             if (in_array($field, $nullableFields, true) && ($value === '' || $value === null)) {
                 $params[":{$field}"] = null;
-            } elseif ($field === 'cliente_id' || $field === 'conta_receber_id') {
+            } elseif ($field === 'cliente_id' || $field === 'conta_receber_id' || $field === 'portal_liberada') {
                 $params[":{$field}"] = (int)$value;
             } else {
                 $params[":{$field}"] = $value;

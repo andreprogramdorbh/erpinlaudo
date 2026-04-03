@@ -3,6 +3,7 @@ $statusMap = [
     'emitida'       => ['label' => 'Emitida',            'class' => 'portal-badge-success',   'icon' => 'fa-check-circle'],
     'emitida_asaas' => ['label' => 'Emitida',            'class' => 'portal-badge-success',   'icon' => 'fa-check-circle'],
     'importada'     => ['label' => 'Emitida Manualmente','class' => 'portal-badge-info',      'icon' => 'fa-user-check'],
+    'pendente'      => ['label' => 'Aguardando Emiss&atilde;o', 'class' => 'portal-badge-warning', 'icon' => 'fa-hourglass-half'],
     'cancelada'     => ['label' => 'Cancelada',          'class' => 'portal-badge-danger',    'icon' => 'fa-ban'],
     'agendada'      => ['label' => 'Agendada',           'class' => 'portal-badge-warning',   'icon' => 'fa-clock'],
     'erro_emissao'  => ['label' => 'Erro na emiss&atilde;o', 'class' => 'portal-badge-error', 'icon' => 'fa-exclamation-triangle'],
@@ -210,7 +211,19 @@ function exibirNumeroNf(object $nota): string {
                             <?php endif; ?>
 
                             <?php if (!$emitida): ?>
-                                <?php if (($nota->status ?? '') === 'erro_emissao'): ?>
+                                <?php if (($nota->status ?? '') === 'pendente' && !empty($nota->conta_receber_id)): ?>
+                                    <button type="button"
+                                            class="portal-btn portal-btn-info portal-btn-sm btn-emitir-nfs-nf"
+                                            data-conta-id="<?php echo (int)$nota->conta_receber_id; ?>"
+                                            data-descricao="<?php echo htmlspecialchars($nota->servico_descricao ?? 'Servi&ccedil;os Prestados'); ?>"
+                                            data-valor="R$ <?php echo number_format((float)$nota->valor_total, 2, ',', '.'); ?>">
+                                        <i class="fa fa-file-invoice me-1"></i> Emitir NF-s
+                                    </button>
+                                <?php elseif (($nota->status ?? '') === 'pendente'): ?>
+                                    <span class="nf-status-msg nf-status-agendada">
+                                        <i class="fa fa-hourglass-half me-1"></i>Aguardando emiss&atilde;o
+                                    </span>
+                                <?php elseif (($nota->status ?? '') === 'erro_emissao'): ?>
                                     <span class="nf-status-msg nf-status-error">
                                         <i class="fa fa-exclamation-triangle me-1"></i>Erro na emiss&atilde;o
                                     </span>
@@ -306,7 +319,19 @@ function exibirNumeroNf(object $nota): string {
                 <?php endif; ?>
 
                 <?php if (!$emitida): ?>
-                    <?php if (($nota->status ?? '') === 'erro_emissao'): ?>
+                    <?php if (($nota->status ?? '') === 'pendente' && !empty($nota->conta_receber_id)): ?>
+                        <button type="button"
+                                class="portal-btn portal-btn-info portal-btn-sm btn-emitir-nfs-nf"
+                                data-conta-id="<?php echo (int)$nota->conta_receber_id; ?>"
+                                data-descricao="<?php echo htmlspecialchars($nota->servico_descricao ?? 'Servi&ccedil;os Prestados'); ?>"
+                                data-valor="R$ <?php echo number_format((float)$nota->valor_total, 2, ',', '.'); ?>">
+                            <i class="fa fa-file-invoice me-1"></i> Emitir NF-s
+                        </button>
+                    <?php elseif (($nota->status ?? '') === 'pendente'): ?>
+                        <span class="nf-status-msg nf-status-agendada">
+                            <i class="fa fa-hourglass-half me-1"></i>Aguardando emiss&atilde;o
+                        </span>
+                    <?php elseif (($nota->status ?? '') === 'erro_emissao'): ?>
                         <span class="nf-status-msg nf-status-error">
                             <i class="fa fa-exclamation-triangle me-1"></i>Erro na emiss&atilde;o
                         </span>
@@ -334,6 +359,92 @@ function exibirNumeroNf(object $nota): string {
     </div>
 
 <?php endif; ?>
+
+<!-- Modal Emitir NF-s (para NFs pendentes de recebimento manual) -->
+<div id="modalEmitirNfsNf" class="portal-modal-overlay" style="display:none;">
+    <div class="portal-modal-box" style="max-width:440px;">
+        <div class="p-4">
+            <div class="d-flex align-items-center mb-3">
+                <i class="fa fa-file-invoice text-primary fa-lg me-2"></i>
+                <h5 class="mb-0 fw-bold">Emitir Nota Fiscal de Servi&ccedil;o</h5>
+            </div>
+            <p class="text-muted small mb-3">Confirme os dados antes de emitir</p>
+            <div class="portal-conta-card p-3 mb-3" style="background:#f8fafc;">
+                <div class="fw-semibold mb-1" id="nfsNfDescricao">—</div>
+                <div class="text-success fw-bold" id="nfsNfValor">—</div>
+            </div>
+            <div id="nfsNfLoadingMsg" style="display:none;" class="text-center text-muted small py-2">
+                <i class="fa fa-spinner fa-spin me-1"></i> Emitindo nota fiscal...
+            </div>
+            <div id="nfsNfErroMsg" class="portal-alert portal-alert-danger mt-2" style="display:none;"></div>
+        </div>
+        <div class="d-flex gap-2 px-4 pb-4">
+            <button type="button" id="btnCancelarNfsNf"
+                    class="portal-btn portal-btn-outline flex-fill">
+                <i class="fa fa-times me-1"></i> Cancelar
+            </button>
+            <button type="button" id="btnConfirmarNfsNf"
+                    class="portal-btn portal-btn-primary flex-fill">
+                <i class="fa fa-file-invoice me-1"></i> Emitir NF-s
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function(){
+    var nfsNfContaIdAtual = null;
+    document.querySelectorAll('.btn-emitir-nfs-nf').forEach(function(btn){
+        btn.addEventListener('click',function(){
+            nfsNfContaIdAtual = btn.dataset.contaId;
+            document.getElementById('nfsNfDescricao').textContent = btn.dataset.descricao || 'Servi\u00e7os Prestados';
+            document.getElementById('nfsNfValor').textContent = btn.dataset.valor || '';
+            document.getElementById('nfsNfErroMsg').style.display = 'none';
+            document.getElementById('nfsNfLoadingMsg').style.display = 'none';
+            document.getElementById('btnConfirmarNfsNf').disabled = false;
+            document.getElementById('modalEmitirNfsNf').style.display = 'flex';
+        });
+    });
+    document.getElementById('btnCancelarNfsNf').addEventListener('click',function(){
+        document.getElementById('modalEmitirNfsNf').style.display = 'none';
+        nfsNfContaIdAtual = null;
+    });
+    document.getElementById('btnConfirmarNfsNf').addEventListener('click',function(){
+        if(!nfsNfContaIdAtual) return;
+        var btn = document.getElementById('btnConfirmarNfsNf');
+        var loading = document.getElementById('nfsNfLoadingMsg');
+        var erroEl = document.getElementById('nfsNfErroMsg');
+        btn.disabled = true;
+        loading.style.display = 'block';
+        erroEl.style.display = 'none';
+        fetch('/portal/faturamento/emitir-nfs/'+nfsNfContaIdAtual,{
+            method:'POST',
+            credentials:'same-origin',
+            headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'}
+        })
+        .then(function(r){return r.json();})
+        .then(function(d){
+            loading.style.display = 'none';
+            if(d.success){
+                document.getElementById('modalEmitirNfsNf').style.display = 'none';
+                setTimeout(function(){
+                    window.location.href = d.redirect || '/portal/faturamento/notas-fiscais?success=nf_emitida';
+                }, 800);
+            } else {
+                btn.disabled = false;
+                erroEl.textContent = d.error || 'Erro ao emitir NF-s. Tente novamente.';
+                erroEl.style.display = 'block';
+            }
+        })
+        .catch(function(){
+            loading.style.display = 'none';
+            btn.disabled = false;
+            erroEl.textContent = 'Erro de conex\u00e3o. Tente novamente.';
+            erroEl.style.display = 'block';
+        });
+    });
+})();
+</script>
 
 <style>
 .portal-filter-card{background:var(--portal-surface);border-radius:var(--portal-radius);border:1px solid var(--portal-border);padding:1rem 1.25rem;box-shadow:var(--portal-shadow)}

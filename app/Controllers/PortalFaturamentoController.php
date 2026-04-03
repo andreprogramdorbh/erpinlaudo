@@ -280,7 +280,8 @@ class PortalFaturamentoController extends Controller
             }
 
             $nfExistente = $this->notaFiscalModel->findByContaReceberId($contaId, $tenantId);
-            if ($nfExistente) {
+            // Se já existe NF e não está pendente (foi emitida via Asaas ou manualmente), redireciona
+            if ($nfExistente && ($nfExistente->status ?? '') !== 'pendente') {
                 echo json_encode([
                     'success'    => true,
                     'ja_emitida' => true,
@@ -289,6 +290,8 @@ class PortalFaturamentoController extends Controller
                 ]);
                 return;
             }
+            // $nfExistente pode ser um registro pendente criado no recebimento manual
+            // Nesse caso, prosseguimos com a emissão via Asaas e atualizamos o registro
 
             $asaas = $this->getAsaasService($tenantId);
             if (!$asaas) {
@@ -502,23 +505,39 @@ class PortalFaturamentoController extends Controller
             // SCHEDULED/SYNCHRONIZED = 'agendada'; AUTHORIZED = 'emitida'
             $statusBanco = AsaasService::mapearStatusNfsParaBanco($asaasStatus);
 
-            $nfId = $this->notaFiscalModel->create([
-                'usuario_id'        => $tenantId,
-                'cliente_id'        => $clienteId,
-                'numero_nf'         => (string) $numeroNf,
-                'serie'             => '1',
-                'valor_total'       => $valor,
-                'data_emissao'      => $dataHoje,
-                'status'            => $statusBanco,
-                'xml_path'          => null,
-                'asaas_invoice_id'  => $asaasInvoiceId,
-                'origem_emissao'    => 'asaas',
-                'conta_receber_id'  => $contaId,
-                'asaas_pdf_url'     => $pdfUrl,
-                'asaas_status'      => $asaasStatus,
-                'servico_descricao' => $descricao,
-                'observacoes_nf'    => $payload['observations'],
-            ]);
+            if ($nfExistente && ($nfExistente->status ?? '') === 'pendente') {
+                // Atualiza o registro pendente existente com os dados da emissão via Asaas
+                $this->notaFiscalModel->update((int) $nfExistente->id, [
+                    'numero_nf'        => (string) $numeroNf,
+                    'status'           => $statusBanco,
+                    'asaas_invoice_id' => $asaasInvoiceId,
+                    'origem_emissao'   => 'asaas',
+                    'asaas_pdf_url'    => $pdfUrl,
+                    'asaas_status'     => $asaasStatus,
+                    'data_emissao'     => $dataHoje,
+                    'observacoes_nf'   => $payload['observations'],
+                ]);
+                $nfId = $nfExistente->id;
+            } else {
+                // Cria novo registro de NF
+                $nfId = $this->notaFiscalModel->create([
+                    'usuario_id'        => $tenantId,
+                    'cliente_id'        => $clienteId,
+                    'numero_nf'         => (string) $numeroNf,
+                    'serie'             => '1',
+                    'valor_total'       => $valor,
+                    'data_emissao'      => $dataHoje,
+                    'status'            => $statusBanco,
+                    'xml_path'          => null,
+                    'asaas_invoice_id'  => $asaasInvoiceId,
+                    'origem_emissao'    => 'asaas',
+                    'conta_receber_id'  => $contaId,
+                    'asaas_pdf_url'     => $pdfUrl,
+                    'asaas_status'      => $asaasStatus,
+                    'servico_descricao' => $descricao,
+                    'observacoes_nf'    => $payload['observations'],
+                ]);
+            }
 
             $this->logger->info('[Portal] NF-s emitida via Asaas', [
                 'portal_id'        => $portal->id,
