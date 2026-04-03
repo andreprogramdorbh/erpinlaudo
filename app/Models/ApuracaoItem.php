@@ -11,7 +11,7 @@ class ApuracaoItem extends Model
     public function findByApuracaoId(int $apuracaoId): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT ai.*, te.nome AS exame_nome_tabela
+            "SELECT ai.*, te.nome_exame AS exame_nome_tabela
              FROM {$this->table} ai
              LEFT JOIN tabela_exames te ON te.id = ai.exame_id
              WHERE ai.apuracao_id = ?

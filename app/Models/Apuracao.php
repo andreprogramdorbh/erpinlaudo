@@ -28,7 +28,10 @@ class Apuracao extends Model
     {
         $where  = ['a.usuario_id = :usuario_id'];
         $params = [':usuario_id' => $usuarioId];
-
+        if (!empty($filtros['contrato_id_raw'])) {
+            $where[] = 'a.contrato_id = :contrato_id';
+            $params[':contrato_id'] = (int) $filtros['contrato_id_raw'];
+        }
         if (!empty($filtros['tipo'])) {
             $where[] = 'a.tipo = :tipo';
             $params[':tipo'] = $filtros['tipo'];
@@ -53,7 +56,6 @@ class Apuracao extends Model
             $where[] = 'a.periodo_fim <= :periodo_fim';
             $params[':periodo_fim'] = $filtros['periodo_fim'];
         }
-
         $sql = "SELECT a.*,
                        m.nome AS medico_nome, m.crm AS medico_crm,
                        cl.razao_social AS cliente_nome,
@@ -138,7 +140,7 @@ class Apuracao extends Model
                     COUNT(*) AS total,
                     SUM(tipo_prioridade = 'normal') AS total_normal,
                     SUM(tipo_prioridade = 'urgencia') AS total_urgencia,
-                    SUM(valor_calculado) AS valor_total
+                    SUM(valor_calculado) AS valor
              FROM apuracao_itens
              WHERE apuracao_id = ?
              GROUP BY modalidade
@@ -152,17 +154,68 @@ class Apuracao extends Model
     public function resumoPorMedico(int $apuracaoId): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT medico_nome, medico_crm,
+            "SELECT medico_nome AS medico, medico_crm,
                     COUNT(*) AS total,
                     SUM(tipo_prioridade = 'normal') AS total_normal,
                     SUM(tipo_prioridade = 'urgencia') AS total_urgencia,
-                    SUM(valor_calculado) AS valor_total
+                    SUM(valor_calculado) AS valor
              FROM apuracao_itens
              WHERE apuracao_id = ?
              GROUP BY medico_nome, medico_crm
              ORDER BY total DESC"
         );
         $stmt->execute([$apuracaoId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Resumo por unidade
+    public function resumoPorUnidade(int $apuracaoId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COALESCE(NULLIF(TRIM(unidade),''), 'Sem unidade') AS unidade,
+                    COUNT(*) AS total,
+                    SUM(tipo_prioridade = 'normal') AS total_normal,
+                    SUM(tipo_prioridade = 'urgencia') AS total_urgencia,
+                    SUM(valor_calculado) AS valor
+             FROM apuracao_itens
+             WHERE apuracao_id = ?
+             GROUP BY unidade
+             ORDER BY total DESC"
+        );
+        $stmt->execute([$apuracaoId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    public function findByContratoId(int $contratoId, int $usuarioId, array $filtros = []): array
+    {
+        $where  = ['a.contrato_id = :contrato_id', 'a.usuario_id = :usuario_id'];
+        $params = [':contrato_id' => $contratoId, ':usuario_id' => $usuarioId];
+
+        if (!empty($filtros['status'])) {
+            $where[] = 'a.status = :status';
+            $params[':status'] = $filtros['status'];
+        }
+        if (!empty($filtros['periodo_inicio'])) {
+            $where[] = 'a.periodo_inicio >= :periodo_inicio';
+            $params[':periodo_inicio'] = $filtros['periodo_inicio'];
+        }
+        if (!empty($filtros['periodo_fim'])) {
+            $where[] = 'a.periodo_fim <= :periodo_fim';
+            $params[':periodo_fim'] = $filtros['periodo_fim'];
+        }
+
+        $sql = "SELECT a.*,
+                       m.nome AS medico_nome, m.crm AS medico_crm,
+                       cl.razao_social AS cliente_nome,
+                       c.nome AS contrato_nome, c.numero AS contrato_numero
+                FROM {$this->table} a
+                LEFT JOIN medicos m ON m.id = a.medico_id
+                LEFT JOIN clientes cl ON cl.id = a.cliente_id
+                LEFT JOIN contratos c ON c.id = a.contrato_id
+                WHERE " . implode(' AND ', $where) . "
+                ORDER BY a.created_at DESC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 }

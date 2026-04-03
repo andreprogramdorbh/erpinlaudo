@@ -98,13 +98,15 @@ class ApuracaoController extends Controller
         $itens          = $this->itemModel->findByApuracaoId((int) $id);
         $resumoModal    = $this->apuracaoModel->resumoPorModalidade((int) $id);
         $resumoMedico   = $this->apuracaoModel->resumoPorMedico((int) $id);
+        $resumoUnidade  = $this->apuracaoModel->resumoPorUnidade((int) $id);
 
         View::render('apuracao/visualizar', [
-            'title'        => 'Apuração ' . $apuracao->numero,
-            'apuracao'     => $apuracao,
-            'itens'        => $itens,
-            'resumoModal'  => $resumoModal,
-            'resumoMedico' => $resumoMedico,
+            'title'         => 'Apuração ' . $apuracao->numero,
+            'apuracao'      => $apuracao,
+            'itens'         => $itens,
+            'resumoModal'   => $resumoModal,
+            'resumoMedico'  => $resumoMedico,
+            'resumoUnidade' => $resumoUnidade,
             '_layout' => 'erp',
         ]);
     }

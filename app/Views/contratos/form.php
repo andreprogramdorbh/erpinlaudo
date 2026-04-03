@@ -343,7 +343,44 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
 <?php if (($contrato->tipo_parte ?? '') === 'medico'): ?>
 <div id="tab-apuracao" class="tab-content-section <?php echo $activeTab !== 'apuracao' ? 'd-none' : ''; ?>">
 
-    <!-- Criar nova apuração -->
+    <!-- Filtros de apuração -->
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body py-3 px-4">
+            <form method="GET" action="/contratos/edit/<?php echo $cId; ?>" class="row g-2 align-items-end">
+                <input type="hidden" name="tab" value="apuracao">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted mb-1"><i class="fas fa-calendar-alt me-1"></i>Período De</label>
+                    <input type="date" name="filtro_periodo_inicio" class="form-control form-control-sm"
+                           value="<?php echo htmlspecialchars($_GET['filtro_periodo_inicio'] ?? ''); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted mb-1"><i class="fas fa-calendar-alt me-1"></i>Período Até</label>
+                    <input type="date" name="filtro_periodo_fim" class="form-control form-control-sm"
+                           value="<?php echo htmlspecialchars($_GET['filtro_periodo_fim'] ?? ''); ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted mb-1"><i class="fas fa-tag me-1"></i>Status</label>
+                    <select name="filtro_status" class="form-select form-select-sm">
+                        <option value="">Todos os status</option>
+                        <option value="rascunho"   <?php echo ($_GET['filtro_status'] ?? '') === 'rascunho'   ? 'selected' : ''; ?>>Rascunho</option>
+                        <option value="concluido"  <?php echo ($_GET['filtro_status'] ?? '') === 'concluido'  ? 'selected' : ''; ?>>Concluído</option>
+                        <option value="faturado"   <?php echo ($_GET['filtro_status'] ?? '') === 'faturado'   ? 'selected' : ''; ?>>Faturado</option>
+                        <option value="erro"       <?php echo ($_GET['filtro_status'] ?? '') === 'erro'       ? 'selected' : ''; ?>>Erro</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="fas fa-filter me-1"></i> Filtrar
+                    </button>
+                    <a href="/contratos/edit/<?php echo $cId; ?>?tab=apuracao" class="btn btn-outline-secondary btn-sm" title="Limpar filtros">
+                        <i class="fas fa-times"></i>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Lista de apurações -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
             <h6 class="mb-0 fw-bold"><i class="fas fa-calculator me-2 text-primary"></i>Apurações do Contrato</h6>
@@ -461,6 +498,20 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                             <label class="form-label fw-semibold">Arquivo (XLSX, XLS ou CSV)</label>
                             <input type="file" id="arquivo-apuracao" class="form-control"
                                    accept=".xlsx,.xls,.csv">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">
+                                <i class="fas fa-calendar-alt me-1 text-muted"></i>Período Inicial <span class="text-danger">*</span>
+                            </label>
+                            <input type="date" id="periodo-inicio-import" class="form-control">
+                            <small class="text-muted">Data de início do período apurado</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">
+                                <i class="fas fa-calendar-alt me-1 text-muted"></i>Período Final <span class="text-danger">*</span>
+                            </label>
+                            <input type="date" id="periodo-fim-import" class="form-control">
+                            <small class="text-muted">Data de fim do período apurado</small>
                         </div>
                     </div>
 
@@ -604,6 +655,15 @@ function abrirImportacao(apuracaoId, numero) {
     document.getElementById('btn-executar')?.classList.add('d-none');
     document.getElementById('btn-importar')?.classList.remove('d-none');
     document.getElementById('arquivo-apuracao').value = '';
+    // Sugerir período padrão: mês anterior
+    const hoje = new Date();
+    const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    const ultimoDia   = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+    const fmt = d => d.toISOString().split('T')[0];
+    document.getElementById('periodo-inicio-import').value = fmt(primeiroDia);
+    document.getElementById('periodo-fim-import').value    = fmt(ultimoDia);
+    document.querySelector('#modalImportacao .modal-title').innerHTML =
+        '<i class="fas fa-file-import me-2"></i>Importar Apuração <span class="badge bg-secondary font-monospace ms-1">' + numero + '</span>';
     const modal = new bootstrap.Modal(document.getElementById('modalImportacao'));
     modal.show();
 }
@@ -612,10 +672,23 @@ function importarArquivo() {
     const fileInput = document.getElementById('arquivo-apuracao');
     if (!fileInput.files.length) { alert('Selecione um arquivo.'); return; }
 
+    const periodoInicio = document.getElementById('periodo-inicio-import').value;
+    const periodoFim    = document.getElementById('periodo-fim-import').value;
+    if (!periodoInicio || !periodoFim) {
+        alert('Informe o Período Inicial e Final antes de importar.');
+        return;
+    }
+    if (periodoFim < periodoInicio) {
+        alert('O Período Final não pode ser anterior ao Período Inicial.');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('apuracao_id', currentApuracaoId);
     formData.append('layout_id', document.getElementById('select-layout').value);
     formData.append('arquivo_apuracao', fileInput.files[0]);
+    formData.append('periodo_inicio', periodoInicio);
+    formData.append('periodo_fim', periodoFim);
 
     document.getElementById('btn-importar').disabled = true;
     document.getElementById('btn-importar').innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Importando...';

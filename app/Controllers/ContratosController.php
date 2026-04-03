@@ -142,7 +142,13 @@ class ContratosController extends Controller
         $clientes  = (new Cliente())->findByUsuarioId($usuarioId);
         $exames    = (new TabelaExame())->findByUsuarioId($usuarioId);
         $anexos    = $this->anexoModel->findByContratoId((int) $id, $usuarioId);
-        $apuracoes = $this->apuracaoModel->findByUsuarioId($usuarioId, ['contrato_id_raw' => (int) $id]);
+        $filtrosApur = [
+            'contrato_id_raw' => (int) $id,
+            'status'          => $_GET['filtro_status'] ?? '',
+            'periodo_inicio'  => $_GET['filtro_periodo_inicio'] ?? '',
+            'periodo_fim'     => $_GET['filtro_periodo_fim'] ?? '',
+        ];
+        $apuracoes = $this->apuracaoModel->findByUsuarioId($usuarioId, $filtrosApur);
         $modalidades_contrato = $this->contratoModel->getModalidades((int) $id);
         $layouts   = (new LayoutExame())->findByUsuarioId($usuarioId);
 
@@ -341,12 +347,20 @@ class ContratosController extends Controller
         $destPath = $baseDir . '/' . $safeName;
         move_uploaded_file($file['tmp_name'], $destPath);
 
-        $relativePath = 'storage/uploads/apuracoes/' . $usuarioId . '/' . $apuracaoId . '/' . $safeName;
-        $this->apuracaoModel->update($apuracaoId, [
+        $relativePath  = 'storage/uploads/apuracoes/' . $usuarioId . '/' . $apuracaoId . '/' . $safeName;
+        $periodoInicio = trim($_POST['periodo_inicio'] ?? '');
+        $periodoFim    = trim($_POST['periodo_fim'] ?? '');
+        // Validar formato YYYY-MM-DD
+        $periodoInicio = preg_match('/^\d{4}-\d{2}-\d{2}$/', $periodoInicio) ? $periodoInicio : null;
+        $periodoFim    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $periodoFim)    ? $periodoFim    : null;
+        $updateData = [
             'usuario_id'     => $usuarioId,
             'arquivo_import' => $relativePath,
             'status'         => 'rascunho',
-        ]);
+        ];
+        if ($periodoInicio) $updateData['periodo_inicio'] = $periodoInicio;
+        if ($periodoFim)    $updateData['periodo_fim']    = $periodoFim;
+        $this->apuracaoModel->update($apuracaoId, $updateData);
 
         $layoutModel = new LayoutExame();
         $layout      = $layoutId ? $layoutModel->findById($layoutId) : $layoutModel->findAtivo($usuarioId);
