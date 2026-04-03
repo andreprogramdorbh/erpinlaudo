@@ -72,4 +72,14 @@ class View
         $token = $_SESSION['csrf_token'] ?? '';
         return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($token) . '">';
     }
+
+    /**
+     * Retorna apenas o valor do token CSRF (sem o campo HTML).
+     * Útil para uso em JavaScript via fetch/AJAX.
+     * @return string
+     */
+    public static function csrfToken(): string
+    {
+        return htmlspecialchars($_SESSION['csrf_token'] ?? '');
+    }
 }
