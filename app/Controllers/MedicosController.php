@@ -9,6 +9,8 @@ use App\Core\View;
 use App\Core\Audit\AuditLogger;
 use App\Models\Especialidade;
 use App\Models\Medico;
+use App\Models\MedicoExame;
+use App\Models\TabelaExame;
 
 class MedicosController extends Controller
 {
@@ -16,13 +18,17 @@ class MedicosController extends Controller
 
     private Medico $model;
     private Especialidade $especialidadeModel;
+    private MedicoExame $medicoExameModel;
+    private TabelaExame $tabelaExameModel;
     private Logger $logger;
 
     public function __construct()
     {
-        $this->model = new Medico();
+        $this->model              = new Medico();
         $this->especialidadeModel = new Especialidade();
-        $this->logger = new Logger();
+        $this->medicoExameModel   = new MedicoExame();
+        $this->tabelaExameModel   = new TabelaExame();
+        $this->logger             = new Logger();
     }
 
     public function index(): void
@@ -30,19 +36,19 @@ class MedicosController extends Controller
         try {
             $usuarioId = Auth::user()->id;
             $filtros = [
-                'status' => trim((string) ($_GET['status'] ?? 'ativo')),
+                'status'   => trim((string) ($_GET['status'] ?? 'ativo')),
                 'pesquisa' => trim((string) ($_GET['q'] ?? '')),
             ];
 
             $medicos = $this->model->findByUsuarioId($usuarioId, $filtros);
 
             View::render('medicos/index', [
-                '_layout' => 'erp',
-                'title' => 'Médicos',
+                '_layout'   => 'erp',
+                'title'     => 'Médicos',
                 'breadcrumb' => [
-                    'Cadastros' => '#',
+                    'Cadastros'    => '#',
                     'Corpo Clínico' => '#',
-                    0 => 'Médicos',
+                    0              => 'Médicos',
                 ],
                 'medicos' => $medicos,
                 'filtros' => $filtros,
@@ -59,15 +65,15 @@ class MedicosController extends Controller
         $usuarioId = Auth::user()->id;
 
         View::render('medicos/create', [
-            '_layout' => 'erp',
-            'title' => 'Novo Médico',
+            '_layout'   => 'erp',
+            'title'     => 'Novo Médico',
             'breadcrumb' => [
-                'Cadastros' => '#',
+                'Cadastros'    => '#',
                 'Corpo Clínico' => '#',
-                'Médicos' => self::BASE_ROUTE,
-                0 => 'Novo Médico',
+                'Médicos'      => self::BASE_ROUTE,
+                0              => 'Novo Médico',
             ],
-            'medico' => null,
+            'medico'        => null,
             'especialidades' => $this->especialidadeModel->listForSelect($usuarioId),
         ]);
     }
@@ -81,9 +87,9 @@ class MedicosController extends Controller
             $id = $this->model->create($dados);
             if ($id) {
                 AuditLogger::log('create_medico', [
-                    'id' => $id,
+                    'id'   => $id,
                     'nome' => $dados['nome'],
-                    'crm' => $dados['crm'],
+                    'crm'  => $dados['crm'],
                 ]);
                 header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?success=created");
             } else {
@@ -101,24 +107,32 @@ class MedicosController extends Controller
     public function edit($id): void
     {
         $usuarioId = Auth::user()->id;
-        $medico = $this->model->findById((int) $id);
+        $medico    = $this->model->findById((int) $id);
 
         if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
             header('Location: ' . self::BASE_ROUTE . '?error=not_found');
             exit();
         }
 
+        // Exames vinculados ao médico (com TAGs DICOM)
+        $medicoExames = $this->medicoExameModel->findByMedicoId((int) $id);
+
+        // Todos os exames da tabela (com TAGs DICOM) para o seletor
+        $tabelaExames = $this->tabelaExameModel->findAllWithTagsByUsuarioId($usuarioId);
+
         View::render('medicos/edit', [
-            '_layout' => 'erp',
-            'title' => 'Editar Médico',
+            '_layout'   => 'erp',
+            'title'     => 'Editar Médico',
             'breadcrumb' => [
-                'Cadastros' => '#',
+                'Cadastros'    => '#',
                 'Corpo Clínico' => '#',
-                'Médicos' => self::BASE_ROUTE,
-                0 => 'Editar Médico',
+                'Médicos'      => self::BASE_ROUTE,
+                0              => 'Editar Médico',
             ],
-            'medico' => $medico,
+            'medico'        => $medico,
             'especialidades' => $this->especialidadeModel->listForSelect($usuarioId),
+            'medicoExames'  => $medicoExames,
+            'tabelaExames'  => $tabelaExames,
         ]);
     }
 
@@ -126,7 +140,7 @@ class MedicosController extends Controller
     {
         try {
             $usuarioId = Auth::user()->id;
-            $medico = $this->model->findById((int) $id);
+            $medico    = $this->model->findById((int) $id);
 
             if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
                 header('Location: ' . self::BASE_ROUTE . '?error=unauthorized');
@@ -137,11 +151,11 @@ class MedicosController extends Controller
 
             if ($this->model->update((int) $id, $dados)) {
                 AuditLogger::log('update_medico', [
-                    'id' => (int) $id,
+                    'id'   => (int) $id,
                     'nome' => $dados['nome'],
-                    'crm' => $dados['crm'],
+                    'crm'  => $dados['crm'],
                 ]);
-                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?success=updated");
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?success=updated&tab=dados");
             } else {
                 header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=db_failure");
             }
@@ -154,18 +168,176 @@ class MedicosController extends Controller
         exit();
     }
 
+    // -------------------------------------------------------
+    // AJAX — Listar exames vinculados ao médico
+    // -------------------------------------------------------
+    public function getExames($medicoId): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $medico    = $this->model->findById((int) $medicoId);
+
+            if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Médico não encontrado.']);
+                exit();
+            }
+
+            $exames = $this->medicoExameModel->findByMedicoId((int) $medicoId);
+
+            echo json_encode(['success' => true, 'exames' => $exames]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao listar exames do médico: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // -------------------------------------------------------
+    // AJAX — Vincular/atualizar exame ao médico
+    // -------------------------------------------------------
+    public function saveExame($medicoId): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $medico    = $this->model->findById((int) $medicoId);
+
+            if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Médico não encontrado.']);
+                exit();
+            }
+
+            $tabelaExameId = (int) ($_POST['tabela_exame_id'] ?? 0);
+            $usaCustom     = (int) ($_POST['usa_valor_custom'] ?? 0);
+            $valorRotina   = $this->normalizarValor((string) ($_POST['valor_rotina'] ?? '0'));
+            $valorUrgencia = $this->normalizarValor((string) ($_POST['valor_urgencia'] ?? '0'));
+            $observacoes   = trim(strip_tags((string) ($_POST['observacoes'] ?? '')));
+
+            if ($tabelaExameId <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Selecione um exame válido.']);
+                exit();
+            }
+
+            // Verificar se o exame pertence ao tenant
+            $exame = $this->tabelaExameModel->findById($tabelaExameId);
+            if (!$exame || (int) ($exame->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Exame não encontrado.']);
+                exit();
+            }
+
+            $ok = $this->medicoExameModel->upsert([
+                'usuario_id'      => $usuarioId,
+                'medico_id'       => (int) $medicoId,
+                'tabela_exame_id' => $tabelaExameId,
+                'valor_rotina'    => $valorRotina,
+                'valor_urgencia'  => $valorUrgencia,
+                'usa_valor_custom' => $usaCustom,
+                'observacoes'     => $observacoes !== '' ? $observacoes : null,
+            ]);
+
+            if ($ok) {
+                AuditLogger::log('save_medico_exame', [
+                    'medico_id'       => (int) $medicoId,
+                    'tabela_exame_id' => $tabelaExameId,
+                ]);
+            }
+
+            echo json_encode(['success' => $ok]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao salvar exame do médico: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // -------------------------------------------------------
+    // AJAX — Remover vínculo de exame do médico
+    // -------------------------------------------------------
+    public function deleteExame($medicoId): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $medico    = $this->model->findById((int) $medicoId);
+
+            if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Médico não encontrado.']);
+                exit();
+            }
+
+            $tabelaExameId = (int) ($_POST['tabela_exame_id'] ?? 0);
+            if ($tabelaExameId <= 0) {
+                echo json_encode(['success' => false, 'message' => 'ID do exame inválido.']);
+                exit();
+            }
+
+            $ok = $this->medicoExameModel->deleteByMedicoAndExame((int) $medicoId, $tabelaExameId);
+
+            if ($ok) {
+                AuditLogger::log('delete_medico_exame', [
+                    'medico_id'       => (int) $medicoId,
+                    'tabela_exame_id' => $tabelaExameId,
+                ]);
+            }
+
+            echo json_encode(['success' => $ok]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao remover exame do médico: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // -------------------------------------------------------
+    // AJAX — Buscar dados de um exame da tabela (para preencher o formulário)
+    // -------------------------------------------------------
+    public function getExameTabela($exameId): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $exame     = $this->tabelaExameModel->findById((int) $exameId);
+
+            if (!$exame || (int) ($exame->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Exame não encontrado.']);
+                exit();
+            }
+
+            $tags = $this->tabelaExameModel->getTagsByExameId((int) $exameId);
+            $tagValores = array_values(array_filter(array_map(fn($t) => trim($t->tag_valor ?? ''), $tags)));
+
+            echo json_encode([
+                'success'        => true,
+                'exame'          => $exame,
+                'tags_dicom'     => $tagValores,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao buscar exame da tabela: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // -------------------------------------------------------
+    // Helpers privados
+    // -------------------------------------------------------
     private function validarDadosFormulario(int $usuarioId, ?object $medicoAtual = null): array
     {
-        $nome = trim(strip_tags((string) ($_POST['nome'] ?? '')));
-        $crm = trim(strip_tags((string) ($_POST['crm'] ?? '')));
-        $ufCrm = strtoupper(trim(strip_tags((string) ($_POST['uf_crm'] ?? ''))));
-        $cpf = preg_replace('/\D/', '', (string) ($_POST['cpf'] ?? ''));
-        $email = filter_var(trim((string) ($_POST['email'] ?? '')), FILTER_SANITIZE_EMAIL);
-        $telefone = preg_replace('/\D/', '', (string) ($_POST['telefone'] ?? ''));
+        $nome           = trim(strip_tags((string) ($_POST['nome'] ?? '')));
+        $crm            = trim(strip_tags((string) ($_POST['crm'] ?? '')));
+        $ufCrm          = strtoupper(trim(strip_tags((string) ($_POST['uf_crm'] ?? ''))));
+        $cpf            = preg_replace('/\D/', '', (string) ($_POST['cpf'] ?? ''));
+        $email          = filter_var(trim((string) ($_POST['email'] ?? '')), FILTER_SANITIZE_EMAIL);
+        $telefone       = preg_replace('/\D/', '', (string) ($_POST['telefone'] ?? ''));
         $especialidadeId = (int) ($_POST['especialidade_id'] ?? 0);
         $subespecialidade = trim(strip_tags((string) ($_POST['subespecialidade'] ?? '')));
-        $rqe = trim(strip_tags((string) ($_POST['rqe'] ?? '')));
-        $status = ($_POST['status'] ?? 'ativo') === 'inativo' ? 'inativo' : 'ativo';
+        $rqe            = trim(strip_tags((string) ($_POST['rqe'] ?? '')));
+        $status         = ($_POST['status'] ?? 'ativo') === 'inativo' ? 'inativo' : 'ativo';
 
         if ($nome === '' || $crm === '' || $ufCrm === '' || $cpf === '' || $email === '' || $telefone === '' || $especialidadeId <= 0) {
             throw new \InvalidArgumentException('missing_fields');
@@ -185,24 +357,39 @@ class MedicosController extends Controller
         }
 
         return [
-            'usuario_id' => $usuarioId,
-            'nome' => $nome,
-            'crm' => $crm,
-            'uf_crm' => $ufCrm,
-            'cpf' => $cpf,
-            'email' => $email,
-            'telefone' => $telefone,
+            'usuario_id'      => $usuarioId,
+            'nome'            => $nome,
+            'crm'             => $crm,
+            'uf_crm'          => $ufCrm,
+            'cpf'             => $cpf,
+            'email'           => $email,
+            'telefone'        => $telefone,
             'especialidade_id' => $especialidadeId,
             'subespecialidade' => $subespecialidade !== '' ? $subespecialidade : null,
-            'rqe' => $rqe !== '' ? $rqe : null,
+            'rqe'             => $rqe !== '' ? $rqe : null,
             'assinatura_digital' => $this->processarAssinaturaDigital($usuarioId, $medicoAtual),
-            'status' => $status,
+            'status'          => $status,
         ];
+    }
+
+    private function normalizarValor(string $valor): float
+    {
+        $valor = trim($valor);
+        $valor = preg_replace('/[^\d,.]/', '', $valor);
+
+        if (substr_count($valor, ',') === 1 && substr_count($valor, '.') >= 1) {
+            $valor = str_replace('.', '', $valor);
+            $valor = str_replace(',', '.', $valor);
+        } elseif (substr_count($valor, ',') === 1) {
+            $valor = str_replace(',', '.', $valor);
+        }
+
+        return (float) $valor;
     }
 
     private function processarAssinaturaDigital(int $usuarioId, ?object $medicoAtual = null): ?string
     {
-        $upload = $_FILES['assinatura_digital'] ?? null;
+        $upload         = $_FILES['assinatura_digital'] ?? null;
         $assinaturaAtual = $medicoAtual->assinatura_digital ?? null;
 
         if (!$upload || (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
@@ -214,12 +401,12 @@ class MedicosController extends Controller
         }
 
         $tmpPath = (string) ($upload['tmp_name'] ?? '');
-        $finfo = new \finfo(FILEINFO_MIME_TYPE);
-        $mime = $finfo->file($tmpPath) ?: '';
+        $finfo   = new \finfo(FILEINFO_MIME_TYPE);
+        $mime    = $finfo->file($tmpPath) ?: '';
 
         $allowed = [
-            'image/png' => 'png',
-            'image/jpeg' => 'jpg',
+            'image/png'       => 'png',
+            'image/jpeg'      => 'jpg',
             'application/pdf' => 'pdf',
         ];
 

@@ -14,6 +14,7 @@ use App\Models\LayoutExame;
 use App\Models\Medico;
 use App\Models\Cliente;
 use App\Models\TabelaExame;
+use App\Models\MedicoExame;
 use App\Models\ContaReceber;
 use App\Models\PlanoConta;
 use App\Services\ContaReceberRecorrenciaService;
@@ -425,6 +426,31 @@ class ContratosController extends Controller
                 }
             }
 
+            // Buscar valores específicos do médico (PRIORIDADE 0 — máxima)
+            // Índice: tabela_exame_id → {valor_rotina, valor_urgencia, usa_valor_custom}
+            $medicoExameModel = new MedicoExame();
+            $medicoId = (int) ($apuracao->medico_id ?? 0);
+            $valoresMedico = []; // [tabela_exame_id => {rotina, urgencia}]
+            if ($medicoId > 0) {
+                $examesMedico = $medicoExameModel->findByMedicoId($medicoId);
+                foreach ($examesMedico as $me) {
+                    $exId = (int) $me->tabela_exame_id;
+                    if ($me->usa_valor_custom) {
+                        $valoresMedico[$exId] = [
+                            'rotina'   => (float) $me->valor_rotina,
+                            'urgencia' => (float) $me->valor_urgencia,
+                            'fonte'    => 'medico_custom',
+                        ];
+                    } else {
+                        $valoresMedico[$exId] = [
+                            'rotina'   => (float) $me->tabela_valor_rotina,
+                            'urgencia' => (float) $me->tabela_valor_urgencia,
+                            'fonte'    => 'medico_tabela',
+                        ];
+                    }
+                }
+            }
+
             $this->itemModel->deleteByApuracaoId($apuracaoId);
             $itens         = [];
             $totalNormal   = 0;
@@ -489,9 +515,18 @@ class ContratosController extends Controller
                 }
 
                 if ($exameMatch) {
-                    $valorCalc  = $isUrgencia
-                        ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->valor_padrao)
-                        : (float) ($exameMatch->valor_rotina  ?: $exameMatch->valor_padrao);
+                    $exId = (int) $exameMatch->id;
+                    // PRIORIDADE 0: Valores específicos do médico (override)
+                    if (!empty($valoresMedico[$exId])) {
+                        $vm = $valoresMedico[$exId];
+                        $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
+                        $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
+                    } else {
+                        // Valores da tabela de exames (fallback)
+                        $valorCalc = $isUrgencia
+                            ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->valor_padrao)
+                            : (float) ($exameMatch->valor_rotina  ?: $exameMatch->valor_padrao);
+                    }
                     $statusItem = 'ok';
                     if ($obsItem === 'Sem correspondência na tabela de exames') $obsItem = null;
                 } else {

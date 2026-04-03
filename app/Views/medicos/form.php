@@ -2,22 +2,26 @@
 
 use App\Core\View;
 
-$medico = $medico ?? null;
+$medico        = $medico ?? null;
 $especialidades = $especialidades ?? [];
-$isEdit = ($formMode ?? 'create') === 'edit';
-$error = $_GET['error'] ?? '';
-$success = $_GET['success'] ?? '';
+$medicoExames  = $medicoExames ?? [];
+$tabelaExames  = $tabelaExames ?? [];
+$isEdit        = ($formMode ?? 'create') === 'edit';
+$medicoId      = (int) ($medico->id ?? 0);
+$error         = $_GET['error'] ?? '';
+$success       = $_GET['success'] ?? '';
+$activeTab     = $_GET['tab'] ?? 'dados';
 
 $errorMessages = [
-    'missing_fields' => 'Preencha todos os campos obrigatorios do medico.',
-    'invalid_uf' => 'Informe uma UF valida para o CRM.',
-    'invalid_email' => 'Informe um e-mail valido.',
+    'missing_fields'      => 'Preencha todos os campos obrigatorios do medico.',
+    'invalid_uf'          => 'Informe uma UF valida para o CRM.',
+    'invalid_email'       => 'Informe um e-mail valido.',
     'invalid_especialidade' => 'Selecione uma especialidade valida.',
-    'invalid_upload' => 'Nao foi possivel processar o upload da assinatura.',
-    'invalid_file_type' => 'A assinatura deve ser PNG, JPG ou PDF.',
-    'file_too_large' => 'A assinatura digital deve ter no maximo 5 MB.',
-    'db_failure' => 'Nao foi possivel salvar o cadastro no momento.',
-    'fatal' => 'Ocorreu um erro inesperado ao salvar o medico.',
+    'invalid_upload'      => 'Nao foi possivel processar o upload da assinatura.',
+    'invalid_file_type'   => 'A assinatura deve ser PNG, JPG ou PDF.',
+    'file_too_large'      => 'A assinatura digital deve ter no maximo 5 MB.',
+    'db_failure'          => 'Nao foi possivel salvar o cadastro no momento.',
+    'fatal'               => 'Ocorreu um erro inesperado ao salvar o medico.',
 ];
 ?>
 
@@ -32,13 +36,47 @@ $errorMessages = [
 </div>
 
 <?php if ($success === 'created'): ?>
-    <div class="alert alert-success border-0 shadow-sm">Medico cadastrado com sucesso.</div>
+    <div class="alert alert-success border-0 shadow-sm"><i class="fas fa-check-circle me-2"></i>Medico cadastrado com sucesso.</div>
 <?php elseif ($success === 'updated'): ?>
-    <div class="alert alert-success border-0 shadow-sm">Medico atualizado com sucesso.</div>
+    <div class="alert alert-success border-0 shadow-sm"><i class="fas fa-check-circle me-2"></i>Medico atualizado com sucesso.</div>
+<?php elseif ($success === 'exame_salvo'): ?>
+    <div class="alert alert-success border-0 shadow-sm"><i class="fas fa-check-circle me-2"></i>Serviço/Exame vinculado com sucesso.</div>
 <?php endif; ?>
 
 <?php if (isset($errorMessages[$error])): ?>
-    <div class="alert alert-danger border-0 shadow-sm"><?php echo $errorMessages[$error]; ?></div>
+    <div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-exclamation-circle me-2"></i><?php echo $errorMessages[$error]; ?></div>
+<?php endif; ?>
+
+<?php if ($isEdit): ?>
+<!-- ============================================================
+     ABAS (apenas no modo edição)
+     ============================================================ -->
+<ul class="nav nav-tabs mb-4 border-bottom" id="medicoTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link <?php echo $activeTab !== 'servicos' ? 'active' : ''; ?>"
+                id="tab-dados" data-bs-toggle="tab" data-bs-target="#pane-dados"
+                type="button" role="tab">
+            <i class="fas fa-user-md me-1"></i> Dados do Médico
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link <?php echo $activeTab === 'servicos' ? 'active' : ''; ?>"
+                id="tab-servicos" data-bs-toggle="tab" data-bs-target="#pane-servicos"
+                type="button" role="tab">
+            <i class="fas fa-stethoscope me-1"></i> Serviços / Exames
+            <?php if (!empty($medicoExames)): ?>
+                <span class="badge bg-primary rounded-pill ms-1"><?php echo count($medicoExames); ?></span>
+            <?php endif; ?>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="medicoTabsContent">
+
+<!-- ============================================================
+     PANE: Dados do Médico
+     ============================================================ -->
+<div class="tab-pane fade <?php echo $activeTab !== 'servicos' ? 'show active' : ''; ?>" id="pane-dados" role="tabpanel">
 <?php endif; ?>
 
 <form method="POST" action="<?php echo htmlspecialchars($formAction); ?>" enctype="multipart/form-data">
@@ -56,31 +94,26 @@ $errorMessages = [
                     <input type="text" class="form-control" id="nome" name="nome" required
                         value="<?php echo htmlspecialchars($medico->nome ?? ''); ?>">
                 </div>
-
                 <div class="col-md-3">
                     <label for="crm" class="form-label fw-semibold">CRM</label>
                     <input type="text" class="form-control" id="crm" name="crm" required
                         value="<?php echo htmlspecialchars($medico->crm ?? ''); ?>">
                 </div>
-
                 <div class="col-md-3">
                     <label for="uf_crm" class="form-label fw-semibold">UF CRM</label>
                     <input type="text" class="form-control text-uppercase" id="uf_crm" name="uf_crm" maxlength="2" required
                         value="<?php echo htmlspecialchars($medico->uf_crm ?? ''); ?>">
                 </div>
-
                 <div class="col-md-4">
                     <label for="cpf" class="form-label fw-semibold">CPF</label>
                     <input type="text" class="form-control" id="cpf" name="cpf" required
                         value="<?php echo htmlspecialchars($medico->cpf ?? ''); ?>">
                 </div>
-
                 <div class="col-md-4">
                     <label for="email" class="form-label fw-semibold">Email</label>
                     <input type="email" class="form-control" id="email" name="email" required
                         value="<?php echo htmlspecialchars($medico->email ?? ''); ?>">
                 </div>
-
                 <div class="col-md-4">
                     <label for="telefone" class="form-label fw-semibold">Telefone</label>
                     <input type="text" class="form-control" id="telefone" name="telefone" required
@@ -110,34 +143,26 @@ $errorMessages = [
                         <?php endforeach; ?>
                     </select>
                 </div>
-
                 <div class="col-md-6">
                     <label for="subespecialidade" class="form-label fw-semibold">Subespecialidade</label>
                     <input type="text" class="form-control" id="subespecialidade" name="subespecialidade"
                         value="<?php echo htmlspecialchars($medico->subespecialidade ?? ''); ?>">
                 </div>
-
                 <div class="col-md-4">
                     <label for="rqe" class="form-label fw-semibold">RQE</label>
                     <input type="text" class="form-control" id="rqe" name="rqe"
                         value="<?php echo htmlspecialchars($medico->rqe ?? ''); ?>">
                 </div>
-
                 <div class="col-md-4">
                     <label for="assinatura_digital" class="form-label fw-semibold">Assinatura digital</label>
-                    <input
-                        type="file"
-                        class="form-control"
-                        id="assinatura_digital"
-                        name="assinatura_digital"
+                    <input type="file" class="form-control" id="assinatura_digital" name="assinatura_digital"
                         accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf">
                     <div class="form-text">Formatos aceitos: PNG, JPG ou PDF.</div>
                 </div>
-
                 <div class="col-md-4">
                     <label for="status" class="form-label fw-semibold">Status</label>
                     <select class="form-select" id="status" name="status">
-                        <option value="ativo" <?php echo ($medico->status ?? 'ativo') === 'ativo' ? 'selected' : ''; ?>>Ativo</option>
+                        <option value="ativo"   <?php echo ($medico->status ?? 'ativo') === 'ativo'   ? 'selected' : ''; ?>>Ativo</option>
                         <option value="inativo" <?php echo ($medico->status ?? '') === 'inativo' ? 'selected' : ''; ?>>Inativo</option>
                     </select>
                 </div>
@@ -145,8 +170,7 @@ $errorMessages = [
 
             <?php if (!empty($medico->assinatura_digital)): ?>
                 <div class="alert alert-light border mt-3 mb-0">
-                    Arquivo atual:
-                    <strong><?php echo htmlspecialchars(basename((string) $medico->assinatura_digital)); ?></strong>
+                    Arquivo atual: <strong><?php echo htmlspecialchars(basename((string) $medico->assinatura_digital)); ?></strong>
                 </div>
             <?php endif; ?>
         </div>
@@ -160,3 +184,372 @@ $errorMessages = [
         </button>
     </div>
 </form>
+
+<?php if ($isEdit): ?>
+</div><!-- /pane-dados -->
+
+<!-- ============================================================
+     PANE: Serviços / Exames
+     ============================================================ -->
+<div class="tab-pane fade <?php echo $activeTab === 'servicos' ? 'show active' : ''; ?>" id="pane-servicos" role="tabpanel">
+
+    <!-- Card: Vincular novo exame -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
+            <i class="fas fa-plus-circle text-primary"></i>
+            <h5 class="mb-0 fw-semibold">Vincular Exame / Serviço</h5>
+        </div>
+        <div class="card-body p-4">
+            <p class="text-muted small mb-3">
+                Selecione um exame da tabela de preços. O sistema usará as TAGs DICOM vinculadas ao exame
+                para identificar automaticamente os itens nas apurações deste médico.
+            </p>
+
+            <div class="row g-3 align-items-end" id="form-vincular-exame">
+                <!-- Seletor de exame -->
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold small text-muted">Exame da Tabela de Preços</label>
+                    <select class="form-select" id="sel-tabela-exame">
+                        <option value="">— Selecione o exame —</option>
+                        <?php foreach ($tabelaExames as $te): ?>
+                            <option value="<?php echo (int) $te->id; ?>"
+                                    data-modalidade="<?php echo htmlspecialchars($te->modalidade ?? ''); ?>"
+                                    data-nome="<?php echo htmlspecialchars($te->nome_exame ?? '', ENT_QUOTES); ?>"
+                                    data-rotina="<?php echo number_format((float)($te->valor_rotina ?? $te->valor_padrao ?? 0), 2, '.', ''); ?>"
+                                    data-urgencia="<?php echo number_format((float)($te->valor_urgencia ?? $te->valor_padrao ?? 0), 2, '.', ''); ?>"
+                                    data-tags="<?php echo htmlspecialchars(implode(',', $te->tags_dicom ?? []), ENT_QUOTES); ?>">
+                                [<?php echo htmlspecialchars($te->modalidade); ?>] <?php echo htmlspecialchars($te->nome_exame); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Preview do exame selecionado -->
+                <div class="col-md-7" id="preview-exame" style="display:none;">
+                    <div class="card border bg-light">
+                        <div class="card-body p-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="badge bg-secondary" id="prev-modalidade"></span>
+                                <strong id="prev-nome" class="text-dark"></strong>
+                            </div>
+                            <div class="mb-2">
+                                <small class="text-muted fw-semibold">TAGs DICOM vinculadas:</small>
+                                <div id="prev-tags" class="d-flex flex-wrap gap-1 mt-1"></div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <small class="text-muted d-block">Valor Rotina (tabela)</small>
+                                    <span class="text-success fw-semibold" id="prev-rotina">—</span>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted d-block">Valor Urgência (tabela)</small>
+                                    <span class="text-warning fw-semibold" id="prev-urgencia">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Opção de valor customizado -->
+                <div class="col-12" id="bloco-custom" style="display:none;">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="chk-custom" value="1">
+                        <label class="form-check-label fw-semibold" for="chk-custom">
+                            Usar valores específicos para este médico (override)
+                        </label>
+                    </div>
+                    <div id="campos-custom" style="display:none;">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Valor Rotina (R$)</label>
+                                <input type="text" class="form-control" id="inp-rotina" placeholder="0,00">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Valor Urgência (R$)</label>
+                                <input type="text" class="form-control" id="inp-urgencia" placeholder="0,00">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">Observações</label>
+                                <input type="text" class="form-control" id="inp-obs" placeholder="Opcional">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12">
+                    <button type="button" class="btn btn-primary" id="btn-vincular-exame" disabled>
+                        <i class="fas fa-link me-1"></i> Vincular Exame
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card: Exames já vinculados -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between py-3">
+            <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-list text-primary"></i>
+                <h5 class="mb-0 fw-semibold">Exames Vinculados</h5>
+            </div>
+            <span class="badge bg-primary rounded-pill" id="badge-total-exames"><?php echo count($medicoExames); ?></span>
+        </div>
+        <div class="card-body p-0" id="tabela-exames-medico">
+            <?php if (!empty($medicoExames)): ?>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Exame</th>
+                            <th>Tipo de Exame</th>
+                            <th>TAGs DICOM</th>
+                            <th class="text-end">Valor Rotina</th>
+                            <th class="text-end">Valor Urgência</th>
+                            <th class="text-center">Override</th>
+                            <th class="text-center pe-4">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-exames">
+                        <?php foreach ($medicoExames as $me): ?>
+                        <tr id="row-me-<?php echo (int) $me->tabela_exame_id; ?>">
+                            <td class="ps-4 fw-semibold"><?php echo htmlspecialchars($me->nome_exame ?? ''); ?></td>
+                            <td>
+                                <span class="badge bg-light text-dark border"><?php echo htmlspecialchars($me->modalidade ?? ''); ?></span>
+                            </td>
+                            <td>
+                                <?php if (!empty($me->tags_dicom)): ?>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        <?php foreach ($me->tags_dicom as $tv): ?>
+                                            <span class="badge bg-primary" style="font-size:.7rem">
+                                                <i class="fas fa-tag me-1" style="font-size:.6rem"></i><?php echo htmlspecialchars($tv); ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="text-muted small">Nenhuma</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-end">
+                                <?php if ($me->usa_valor_custom): ?>
+                                    <span class="text-success fw-semibold">
+                                        R$ <?php echo number_format((float) $me->valor_rotina, 2, ',', '.'); ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-success">
+                                        R$ <?php echo number_format((float) $me->tabela_valor_rotina, 2, ',', '.'); ?>
+                                    </span>
+                                    <br><small class="text-muted">(tabela)</small>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-end">
+                                <?php if ($me->usa_valor_custom): ?>
+                                    <span class="text-warning fw-semibold">
+                                        R$ <?php echo number_format((float) $me->valor_urgencia, 2, ',', '.'); ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-warning">
+                                        R$ <?php echo number_format((float) $me->tabela_valor_urgencia, 2, ',', '.'); ?>
+                                    </span>
+                                    <br><small class="text-muted">(tabela)</small>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-center">
+                                <?php if ($me->usa_valor_custom): ?>
+                                    <span class="badge bg-warning text-dark" title="Valor específico deste médico">
+                                        <i class="fas fa-user-edit me-1"></i>Custom
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge bg-light text-muted border">Tabela</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-center pe-4">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger btn-remover-exame"
+                                        data-id="<?php echo (int) $me->tabela_exame_id; ?>"
+                                        data-nome="<?php echo htmlspecialchars($me->nome_exame ?? '', ENT_QUOTES); ?>"
+                                        title="Remover vínculo">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php else: ?>
+            <div class="p-5 text-center text-muted" id="empty-state">
+                <i class="fas fa-stethoscope fa-3x mb-3 opacity-25"></i>
+                <p class="mb-0">Nenhum exame vinculado ainda.<br>Use o formulário acima para vincular exames da tabela de preços.</p>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+</div><!-- /pane-servicos -->
+
+</div><!-- /tab-content -->
+
+<!-- ============================================================
+     JavaScript da aba Serviços / Exames
+     ============================================================ -->
+<script>
+(function () {
+    const medicoId = <?php echo $medicoId; ?>;
+    const csrfToken = '<?php echo View::csrfToken(); ?>';
+
+    // ── Seletor de exame ──────────────────────────────────────
+    const selExame   = document.getElementById('sel-tabela-exame');
+    const preview    = document.getElementById('preview-exame');
+    const blocoCustom = document.getElementById('bloco-custom');
+    const btnVincular = document.getElementById('btn-vincular-exame');
+    const chkCustom  = document.getElementById('chk-custom');
+    const camposCustom = document.getElementById('campos-custom');
+
+    selExame.addEventListener('change', function () {
+        const opt = this.options[this.selectedIndex];
+        if (!opt.value) {
+            preview.style.display = 'none';
+            blocoCustom.style.display = 'none';
+            btnVincular.disabled = true;
+            return;
+        }
+
+        const modalidade = opt.dataset.modalidade || '';
+        const nome       = opt.dataset.nome || '';
+        const rotina     = parseFloat(opt.dataset.rotina || '0');
+        const urgencia   = parseFloat(opt.dataset.urgencia || '0');
+        const tagsRaw    = opt.dataset.tags || '';
+        const tags       = tagsRaw ? tagsRaw.split(',').filter(t => t.trim()) : [];
+
+        document.getElementById('prev-modalidade').textContent = modalidade;
+        document.getElementById('prev-nome').textContent = nome;
+        document.getElementById('prev-rotina').textContent = 'R$ ' + rotina.toFixed(2).replace('.', ',');
+        document.getElementById('prev-urgencia').textContent = 'R$ ' + urgencia.toFixed(2).replace('.', ',');
+
+        const tagsDiv = document.getElementById('prev-tags');
+        tagsDiv.innerHTML = '';
+        if (tags.length > 0) {
+            tags.forEach(t => {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-primary';
+                badge.style.fontSize = '.7rem';
+                badge.innerHTML = '<i class="fas fa-tag me-1" style="font-size:.6rem"></i>' + t.trim();
+                tagsDiv.appendChild(badge);
+            });
+        } else {
+            tagsDiv.innerHTML = '<span class="text-muted small">Nenhuma TAG DICOM cadastrada</span>';
+        }
+
+        // Preencher campos custom com valores da tabela
+        document.getElementById('inp-rotina').value = rotina.toFixed(2).replace('.', ',');
+        document.getElementById('inp-urgencia').value = urgencia.toFixed(2).replace('.', ',');
+
+        preview.style.display = 'block';
+        blocoCustom.style.display = 'block';
+        btnVincular.disabled = false;
+    });
+
+    chkCustom.addEventListener('change', function () {
+        camposCustom.style.display = this.checked ? 'block' : 'none';
+    });
+
+    // ── Vincular exame ────────────────────────────────────────
+    btnVincular.addEventListener('click', function () {
+        const exameId    = selExame.value;
+        const usaCustom  = chkCustom.checked ? 1 : 0;
+        const rotina     = document.getElementById('inp-rotina').value;
+        const urgencia   = document.getElementById('inp-urgencia').value;
+        const obs        = document.getElementById('inp-obs').value;
+
+        if (!exameId) return;
+
+        btnVincular.disabled = true;
+        btnVincular.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Salvando...';
+
+        const body = new URLSearchParams({
+            _token: csrfToken,
+            tabela_exame_id: exameId,
+            usa_valor_custom: usaCustom,
+            valor_rotina: rotina.replace(',', '.'),
+            valor_urgencia: urgencia.replace(',', '.'),
+            observacoes: obs,
+        });
+
+        fetch(`/medicos/${medicoId}/exames/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // Recarregar a página na aba de serviços
+                window.location.href = `/medicos/edit/${medicoId}?tab=servicos&success=exame_salvo`;
+            } else {
+                alert('Erro ao vincular exame: ' + (data.message || 'Tente novamente.'));
+                btnVincular.disabled = false;
+                btnVincular.innerHTML = '<i class="fas fa-link me-1"></i> Vincular Exame';
+            }
+        })
+        .catch(() => {
+            alert('Erro de comunicação. Tente novamente.');
+            btnVincular.disabled = false;
+            btnVincular.innerHTML = '<i class="fas fa-link me-1"></i> Vincular Exame';
+        });
+    });
+
+    // ── Remover exame ─────────────────────────────────────────
+    document.querySelectorAll('.btn-remover-exame').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const exameId = this.dataset.id;
+            const nome    = this.dataset.nome;
+
+            if (!confirm(`Remover o vínculo com "${nome}"?\n\nIsso não afeta apurações já realizadas.`)) return;
+
+            const body = new URLSearchParams({
+                _token: csrfToken,
+                tabela_exame_id: exameId,
+            });
+
+            fetch(`/medicos/${medicoId}/exames/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const row = document.getElementById(`row-me-${exameId}`);
+                    if (row) row.remove();
+
+                    // Atualizar contador
+                    const badge = document.getElementById('badge-total-exames');
+                    const tbody = document.getElementById('tbody-exames');
+                    const total = tbody ? tbody.querySelectorAll('tr').length : 0;
+                    if (badge) badge.textContent = total;
+
+                    // Mostrar empty state se não houver mais linhas
+                    if (total === 0) {
+                        const container = document.getElementById('tabela-exames-medico');
+                        container.innerHTML = `
+                            <div class="p-5 text-center text-muted" id="empty-state">
+                                <i class="fas fa-stethoscope fa-3x mb-3 opacity-25"></i>
+                                <p class="mb-0">Nenhum exame vinculado ainda.</p>
+                            </div>`;
+                    }
+                } else {
+                    alert('Erro ao remover: ' + (data.message || 'Tente novamente.'));
+                }
+            })
+            .catch(() => alert('Erro de comunicação. Tente novamente.'));
+        });
+    });
+
+    // ── Ativar tooltip Bootstrap ──────────────────────────────
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el);
+    });
+})();
+</script>
+
+<?php endif; // $isEdit ?>
