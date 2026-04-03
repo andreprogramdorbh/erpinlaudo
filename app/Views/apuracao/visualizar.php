@@ -1,8 +1,10 @@
 <?php
 use App\Core\UI;
+use App\Core\View;
 
-$tipo    = $apuracao->tipo ?? 'prestador';
-$backUrl = $tipo === 'prestador' ? '/faturamento/apuracao-prestador' : '/faturamento/apuracao-cliente';
+$tipo       = $apuracao->tipo ?? 'prestador';
+$backUrl    = $tipo === 'prestador' ? '/faturamento/apuracao-prestador' : '/faturamento/apuracao-cliente';
+$isFaturado = ($apuracao->status ?? '') === 'faturado';
 
 $stClass = ['rascunho' => 'secondary', 'processando' => 'warning', 'concluido' => 'success', 'faturado' => 'primary', 'erro' => 'danger'];
 $stLabel = ['rascunho' => 'Rascunho', 'processando' => 'Processando', 'concluido' => 'Conclu&iacute;do', 'faturado' => 'Faturado', 'erro' => 'Erro'];
@@ -10,14 +12,27 @@ $stLabel = ['rascunho' => 'Rascunho', 'processando' => 'Processando', 'concluido
 $actions = [
     ['text' => 'Voltar', 'link' => $backUrl, 'icon' => 'fas fa-arrow-left', 'class' => 'btn-outline-secondary'],
 ];
+
+if (!$isFaturado && ($apuracao->status ?? '') !== 'rascunho') {
+    // Botão Recalcular — visível para concluido e erro (não para faturado)
+    $actions[] = [
+        'text'       => 'Recalcular Valores',
+        'link'       => '#',
+        'icon'       => 'fas fa-sync-alt',
+        'class'      => 'btn-outline-warning',
+        'attributes' => 'onclick="abrirModalRecalcular()" id="btn-recalcular"',
+    ];
+}
+
 if (($apuracao->status ?? '') === 'concluido') {
     $actions[] = [
         'text'  => 'Faturar Apura&ccedil;&atilde;o',
-        'link'  => '/faturamento/apuracao-prestador/faturar/' . $apuracao->id,
+        'link'  => '/faturamento/apuracao/faturar/' . $apuracao->id,
         'icon'  => 'fas fa-file-invoice-dollar',
         'class' => 'btn-success',
     ];
 }
+
 UI::sectionHeader(
     'Apura&ccedil;&atilde;o ' . htmlspecialchars($apuracao->numero),
     ($tipo === 'prestador'
@@ -26,6 +41,17 @@ UI::sectionHeader(
     $actions
 );
 ?>
+
+<?php if ($isFaturado): ?>
+<!-- Alerta de somente leitura -->
+<div class="alert alert-primary border-0 shadow-sm d-flex align-items-center mb-4" role="alert">
+    <i class="fas fa-lock me-3 fs-5"></i>
+    <div>
+        <strong>Apuração Faturada — Somente Leitura.</strong>
+        Esta apuração já gerou uma conta financeira e não pode ser alterada ou recalculada.
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ============================================================
      CABEÇALHO DA APURAÇÃO
@@ -59,6 +85,9 @@ UI::sectionHeader(
                         <span class="badge bg-<?php echo $stClass[$apuracao->status] ?? 'secondary'; ?>">
                             <?php echo $stLabel[$apuracao->status] ?? ucfirst($apuracao->status); ?>
                         </span>
+                        <?php if ($isFaturado): ?>
+                            <span class="badge bg-light text-dark border ms-1"><i class="fas fa-lock me-1"></i>Somente Leitura</span>
+                        <?php endif; ?>
                     </div>
 
                     <div class="col-md-4">
@@ -133,20 +162,20 @@ UI::sectionHeader(
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <span class="text-muted">Total de Exames</span>
-                    <span class="fw-bold fs-5"><?php echo number_format((int)$apuracao->total_exames); ?></span>
+                    <span class="fw-bold fs-5" id="resumo-total-exames"><?php echo number_format((int)$apuracao->total_exames); ?></span>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="text-muted"><i class="fas fa-circle text-success me-1" style="font-size:.6rem"></i>Normal</span>
-                    <span class="badge bg-success fs-6"><?php echo number_format((int)$apuracao->total_normal); ?></span>
+                    <span class="badge bg-success fs-6" id="resumo-total-normal"><?php echo number_format((int)$apuracao->total_normal); ?></span>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <span class="text-muted"><i class="fas fa-circle text-danger me-1" style="font-size:.6rem"></i>Urg&ecirc;ncia</span>
-                    <span class="badge bg-danger fs-6"><?php echo number_format((int)$apuracao->total_urgencia); ?></span>
+                    <span class="badge bg-danger fs-6" id="resumo-total-urgencia"><?php echo number_format((int)$apuracao->total_urgencia); ?></span>
                 </div>
                 <hr class="my-2">
                 <div class="d-flex justify-content-between align-items-center">
                     <span class="fw-bold">Valor Total</span>
-                    <span class="fw-bold text-success fs-4">R$&nbsp;<?php echo number_format((float)$apuracao->valor_total, 2, ',', '.'); ?></span>
+                    <span class="fw-bold text-success fs-4" id="resumo-valor-total">R$&nbsp;<?php echo number_format((float)$apuracao->valor_total, 2, ',', '.'); ?></span>
                 </div>
             </div>
         </div>
@@ -386,3 +415,141 @@ UI::sectionHeader(
         <?php endif; ?>
     </div>
 </div>
+
+<?php if (!$isFaturado): ?>
+<!-- ============================================================
+     MODAL DE CONFIRMAÇÃO — RECALCULAR
+     ============================================================ -->
+<div class="modal fade" id="modalRecalcular" tabindex="-1" aria-labelledby="modalRecalcularLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-bottom">
+                <h5 class="modal-title fw-bold" id="modalRecalcularLabel">
+                    <i class="fas fa-sync-alt me-2 text-warning"></i>Recalcular Valores
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">
+                    Esta ação irá <strong>recalcular todos os valores</strong> dos itens desta apuração com base na
+                    <strong>tabela de preços atual</strong>, sem reimportar o arquivo.
+                </p>
+                <ul class="text-muted small mb-3">
+                    <li>Os dados originais (médico, modalidade, datas, paciente) serão preservados.</li>
+                    <li>Apenas os valores calculados e o match de exame serão atualizados.</li>
+                    <li>O status voltará para <strong>Concluído</strong> após o recálculo.</li>
+                </ul>
+                <div class="alert alert-warning border-0 mb-0 small">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    Confirme apenas se a tabela de preços foi atualizada e deseja aplicar os novos valores.
+                </div>
+            </div>
+            <div class="modal-footer border-top">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-warning" id="btn-confirmar-recalcular" onclick="executarRecalculo()">
+                    <i class="fas fa-sync-alt me-1"></i>Sim, Recalcular
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     MODAL DE RESULTADO — RECALCULAR
+     ============================================================ -->
+<div class="modal fade" id="modalResultadoRecalculo" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-bottom">
+                <h5 class="modal-title fw-bold">
+                    <i class="fas fa-check-circle me-2 text-success"></i>Recálculo Concluído
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body" id="resultado-recalculo-body">
+                <!-- Preenchido via JS -->
+            </div>
+            <div class="modal-footer border-top">
+                <button type="button" class="btn btn-primary" onclick="location.reload()">
+                    <i class="fas fa-refresh me-1"></i>Atualizar Página
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const APURACAO_ID   = <?php echo (int) $apuracao->id; ?>;
+const CSRF_TOKEN    = '<?php echo View::csrfToken(); ?>';
+
+function abrirModalRecalcular() {
+    const modal = new bootstrap.Modal(document.getElementById('modalRecalcular'));
+    modal.show();
+}
+
+function executarRecalculo() {
+    const btnConfirmar = document.getElementById('btn-confirmar-recalcular');
+    btnConfirmar.disabled = true;
+    btnConfirmar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Recalculando...';
+
+    fetch('/faturamento/apuracao/recalcular/' + APURACAO_ID, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: 'csrf_token=' + encodeURIComponent(CSRF_TOKEN),
+    })
+    .then(r => r.json())
+    .then(data => {
+        // Fechar modal de confirmação
+        bootstrap.Modal.getInstance(document.getElementById('modalRecalcular')).hide();
+
+        if (data.success) {
+            // Atualizar resumo financeiro na página
+            const el = (id) => document.getElementById(id);
+            if (el('resumo-total-exames'))  el('resumo-total-exames').textContent  = data.total_exames;
+            if (el('resumo-total-normal'))  el('resumo-total-normal').textContent  = data.total_normal;
+            if (el('resumo-total-urgencia')) el('resumo-total-urgencia').textContent = data.total_urgencia;
+            if (el('resumo-valor-total'))   el('resumo-valor-total').innerHTML     = 'R$&nbsp;' + data.valor_total.replace('R$ ', '');
+
+            // Exibir resultado
+            document.getElementById('resultado-recalculo-body').innerHTML = `
+                <div class="row g-3 text-center mb-3">
+                    <div class="col-4">
+                        <div class="fw-bold fs-4">${data.total_exames}</div>
+                        <small class="text-muted">Total Exames</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="fw-bold fs-4 text-success">${data.total_normal}</div>
+                        <small class="text-muted">Normal</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="fw-bold fs-4 text-danger">${data.total_urgencia}</div>
+                        <small class="text-muted">Urgência</small>
+                    </div>
+                </div>
+                <div class="text-center mb-3">
+                    <span class="fw-bold text-success fs-3">${data.valor_total}</span>
+                    <div class="text-muted small">Novo Valor Total</div>
+                </div>
+                ${data.sem_match > 0 ? `<div class="alert alert-warning border-0 small"><i class="fas fa-exclamation-triangle me-1"></i>${data.sem_match} item(s) sem correspondência na tabela de exames.</div>` : ''}
+                ${data.log && data.log !== 'Recálculo concluído sem erros.' ? `<details class="mt-2"><summary class="text-muted small">Ver log</summary><pre class="small mt-1 text-muted" style="max-height:120px;overflow-y:auto">${data.log}</pre></details>` : ''}
+            `;
+            new bootstrap.Modal(document.getElementById('modalResultadoRecalculo')).show();
+        } else {
+            alert('Erro ao recalcular: ' + (data.message || 'Erro desconhecido'));
+            btnConfirmar.disabled = false;
+            btnConfirmar.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Sim, Recalcular';
+        }
+    })
+    .catch(err => {
+        alert('Erro de comunicação: ' + err.message);
+        btnConfirmar.disabled = false;
+        btnConfirmar.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Sim, Recalcular';
+    });
+}
+</script>
+<?php endif; ?>

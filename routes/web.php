@@ -355,6 +355,7 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::get("/faturamento/apuracao-cliente/visualizar/{id}", "ApuracaoController@visualizar");
     Router::get("/faturamento/apuracao/faturar/{id}", "ApuracaoController@faturar");
     Router::get("/faturamento/apuracao/delete/{id}", "ApuracaoController@delete");
+    Router::post("/faturamento/apuracao/recalcular/{id}", "ApuracaoController@recalcular");
 
     // Configurações (inclui gestão de usuários)
     Router::group(["middleware" => ["Permission:manage_settings"]], function () {

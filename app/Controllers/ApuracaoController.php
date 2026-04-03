@@ -11,6 +11,7 @@ use App\Models\ApuracaoItem;
 use App\Models\Medico;
 use App\Models\Cliente;
 use App\Models\TabelaExame;
+use App\Models\MedicoExame;
 
 class ApuracaoController extends Controller
 {
@@ -125,6 +126,201 @@ class ApuracaoController extends Controller
             'todasTagsDicom'    => $todasTagsDicom,
             '_layout' => 'erp',
         ]);
+    }
+
+    // =========================================================
+    // RECALCULAR APURAÇÃO → reprocessa valores sem reimportar arquivo
+    // POST /faturamento/apuracao/recalcular/{id}
+    // =========================================================
+    public function recalcular(string $id): void
+    {
+        $user      = Auth::user();
+        $usuarioId = (int) $user->id;
+        $apuracao  = $this->apuracaoModel->findById((int) $id);
+
+        if (!$apuracao || $apuracao->usuario_id != $usuarioId) {
+            $this->jsonError('Apuração não encontrada');
+            return;
+        }
+
+        // Bloqueio: apuração faturada não pode ser recalculada
+        if ($apuracao->status === 'faturado') {
+            $this->jsonError('Apuração faturada não pode ser recalculada.');
+            return;
+        }
+
+        // Buscar itens já importados
+        $itens = $this->itemModel->findByApuracaoId((int) $id);
+        if (empty($itens)) {
+            $this->jsonError('Nenhum item encontrado para recalcular. Importe o arquivo primeiro.');
+            return;
+        }
+
+        try {
+            // Montar índices de exames (mesma lógica do executarApuracao)
+            $tabelaExameModel = new TabelaExame();
+            $exames           = $tabelaExameModel->findAllWithTagsByUsuarioId($usuarioId);
+
+            $examesPorModalidade = [];
+            $examesPorTagDicom   = [];
+            foreach ($exames as $ex) {
+                $mod = strtoupper(trim($ex->modalidade ?? ''));
+                $examesPorModalidade[$mod][] = $ex;
+                foreach ($ex->tags_dicom as $tagVal) {
+                    $examesPorTagDicom[$tagVal][] = $ex;
+                }
+            }
+
+            // Valores específicos do médico (PRIORIDADE 0 — máxima)
+            $medicoExameModel = new MedicoExame();
+            $medicoId         = (int) ($apuracao->medico_id ?? 0);
+            $valoresMedico    = [];
+            if ($medicoId > 0) {
+                $examesMedico = $medicoExameModel->findByMedicoId($medicoId);
+                foreach ($examesMedico as $me) {
+                    $exId = (int) $me->tabela_exame_id;
+                    if ($me->usa_valor_custom) {
+                        $valoresMedico[$exId] = [
+                            'rotina'   => (float) $me->valor_rotina,
+                            'urgencia' => (float) $me->valor_urgencia,
+                            'fonte'    => 'medico_custom',
+                        ];
+                    } else {
+                        $valoresMedico[$exId] = [
+                            'rotina'   => (float) $me->tabela_valor_rotina,
+                            'urgencia' => (float) $me->tabela_valor_urgencia,
+                            'fonte'    => 'medico_tabela',
+                        ];
+                    }
+                }
+            }
+
+            $totalNormal   = 0;
+            $totalUrgencia = 0;
+            $valorTotal    = 0.0;
+            $semMatch      = 0;
+            $log           = [];
+
+            foreach ($itens as $item) {
+                $modalidade = strtoupper(trim($item->modalidade ?? ''));
+                $studyDesc  = trim($item->study_description ?? '');
+                $prioridade = strtolower(trim($item->prioridade ?? 'normal'));
+                $isUrgencia = str_contains($prioridade, 'urgent') || $prioridade === 'urgente';
+                $tipoPrior  = $isUrgencia ? 'urgencia' : 'normal';
+
+                $exameMatch = null;
+                $valorCalc  = 0.0;
+                $statusItem = 'sem_match';
+                $obsItem    = 'Sem correspondência na tabela de exames';
+
+                // PRIORIDADE 1: Match por TAG DICOM
+                if (!empty($examesPorTagDicom[$modalidade])) {
+                    $candidatos = $examesPorTagDicom[$modalidade];
+                    foreach ($candidatos as $ex) {
+                        $nomeEx = strtolower(trim($ex->nome_exame ?? ''));
+                        $nomeSD = strtolower($studyDesc);
+                        if ($nomeEx && $nomeSD && (str_contains($nomeSD, $nomeEx) || str_contains($nomeEx, $nomeSD))) {
+                            $exameMatch = $ex;
+                            $obsItem    = 'Match por TAG DICOM + nome';
+                            break;
+                        }
+                    }
+                    if (!$exameMatch) {
+                        $exameMatch = $candidatos[0];
+                        $obsItem    = 'Match por TAG DICOM (modalidade=' . $modalidade . ')';
+                    }
+                }
+
+                // PRIORIDADE 2: Match por modalidade da tabela
+                if (!$exameMatch && !empty($examesPorModalidade[$modalidade])) {
+                    foreach ($examesPorModalidade[$modalidade] as $ex) {
+                        $nomeEx = strtolower(trim($ex->nome_exame ?? ''));
+                        $nomeSD = strtolower($studyDesc);
+                        if ($nomeEx && $nomeSD && (str_contains($nomeSD, $nomeEx) || str_contains($nomeEx, $nomeSD))) {
+                            $exameMatch = $ex;
+                            $obsItem    = 'Match por modalidade + nome';
+                            break;
+                        }
+                    }
+                    if (!$exameMatch) {
+                        $exameMatch = $examesPorModalidade[$modalidade][0];
+                        $obsItem    = 'Match por modalidade (sem correspondência exata de nome)';
+                    }
+                }
+
+                if ($exameMatch) {
+                    $exId = (int) $exameMatch->id;
+                    // PRIORIDADE 0: Valores específicos do médico
+                    if (!empty($valoresMedico[$exId])) {
+                        $vm        = $valoresMedico[$exId];
+                        $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
+                        $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
+                    } else {
+                        $valorCalc = $isUrgencia
+                            ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->valor_padrao ?? 0)
+                            : (float) ($exameMatch->valor_rotina  ?: $exameMatch->valor_padrao ?? 0);
+                    }
+                    $statusItem = 'ok';
+                    if ($obsItem === 'Sem correspondência na tabela de exames') $obsItem = null;
+                } else {
+                    $semMatch++;
+                    $log[] = "Item #{$item->id} (linha {$item->linha_original}): sem match — modalidade={$modalidade}, exame={$studyDesc}";
+                }
+
+                if ($isUrgencia) $totalUrgencia++; else $totalNormal++;
+                $valorTotal += $valorCalc;
+
+                // Atualizar apenas os campos de valor/exame do item (preserva dados originais)
+                $this->itemModel->updateValores(
+                    (int) $item->id,
+                    $exameMatch ? (int) $exameMatch->id : null,
+                    $valorCalc,
+                    $tipoPrior,
+                    $statusItem,
+                    $obsItem
+                );
+            }
+
+            $totalExames = $totalNormal + $totalUrgencia;
+            $logStr      = empty($log) ? 'Recálculo concluído sem erros.' : implode("\n", $log);
+
+            $this->apuracaoModel->update((int) $id, [
+                'usuario_id'     => $usuarioId,
+                'status'         => 'concluido',
+                'total_exames'   => $totalExames,
+                'total_normal'   => $totalNormal,
+                'total_urgencia' => $totalUrgencia,
+                'valor_total'    => $valorTotal,
+                'log_execucao'   => $logStr,
+            ]);
+
+            AuditLogger::log('apuracao_recalculada', [
+                'apuracao_id'  => $id,
+                'total_exames' => $totalExames,
+                'valor_total'  => $valorTotal,
+                'sem_match'    => $semMatch,
+            ]);
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success'        => true,
+                'total_exames'   => $totalExames,
+                'total_normal'   => $totalNormal,
+                'total_urgencia' => $totalUrgencia,
+                'valor_total'    => 'R$ ' . number_format($valorTotal, 2, ',', '.'),
+                'sem_match'      => $semMatch,
+                'log'            => $logStr,
+            ]);
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[ApuracaoController] Erro ao recalcular', [
+                'apuracao_id' => $id,
+                'error'       => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+            $this->jsonError('Erro ao recalcular: ' . $e->getMessage());
+        }
+        exit();
     }
 
     // =========================================================
@@ -274,6 +470,17 @@ class ApuracaoController extends Controller
             header("Location: {$redirect}?error=db_error");
         }
 
+        exit();
+    }
+
+    // =========================================================
+    // HELPER: JSON error response
+    // =========================================================
+    private function jsonError(string $msg): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => $msg]);
         exit();
     }
 }

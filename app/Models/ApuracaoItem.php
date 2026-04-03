@@ -54,4 +54,36 @@ class ApuracaoItem extends Model
         $stmt->execute([$apuracaoId]);
         return (int) $stmt->fetchColumn();
     }
+
+    /**
+     * Atualiza os campos de valor/exame de um item já importado (usado no recálculo).
+     * Preserva todos os dados originais (medico_nome, modalidade, datas, etc.)
+     * e apenas recalcula exame_id, valor_calculado, tipo_prioridade, status_item e obs_item.
+     */
+    public function updateValores(
+        int $itemId,
+        ?int $exameId,
+        float $valorCalculado,
+        string $tipoPrioridade,
+        string $statusItem,
+        ?string $obsItem
+    ): bool {
+        $stmt = $this->pdo->prepare(
+            "UPDATE {$this->table}
+             SET exame_id        = :exame_id,
+                 valor_calculado = :valor_calculado,
+                 tipo_prioridade = :tipo_prioridade,
+                 status_item     = :status_item,
+                 obs_item        = :obs_item
+             WHERE id = :id"
+        );
+        return $stmt->execute([
+            ':exame_id'        => $exameId,
+            ':valor_calculado' => $valorCalculado,
+            ':tipo_prioridade' => $tipoPrioridade,
+            ':status_item'     => $statusItem,
+            ':obs_item'        => $obsItem,
+            ':id'              => $itemId,
+        ]);
+    }
 }

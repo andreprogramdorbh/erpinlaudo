@@ -13,11 +13,13 @@
         <div class="section-actions">
             <?php foreach ($actions as $action): ?>
                 <?php
-                $actionLink = $action['link'] ?? ($action['url'] ?? '#');
-                $actionText = $action['text'] ?? ($action['label'] ?? '');
+                $actionLink  = $action['link'] ?? ($action['url'] ?? '#');
+                $actionText  = $action['text'] ?? ($action['label'] ?? '');
+                $actionAttrs = $action['attributes'] ?? '';
                 ?>
                 <a href="<?php echo $actionLink; ?>"
-                    class="btn <?php echo $action['class'] ?? 'btn-primary'; ?> btn-sm ms-2">
+                    class="btn <?php echo $action['class'] ?? 'btn-primary'; ?> btn-sm ms-2"
+                    <?php echo $actionAttrs; ?>>
                     <?php if (isset($action['icon'])): ?><i class="<?php echo $action['icon']; ?> me-1"></i>
                     <?php endif; ?>
                     <?php echo $actionText; ?>
