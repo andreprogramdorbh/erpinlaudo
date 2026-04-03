@@ -180,6 +180,42 @@ class TabelaExame extends Model
     }
 
     // -------------------------------------------------------
+    // Busca por TAG DICOM — motor de apuração
+    // -------------------------------------------------------
+
+    /**
+     * Retorna todos os exames do usuário com suas tags DICOM agrupadas.
+     * Resultado: array de objetos exame, cada um com propriedade tags_dicom (array de strings uppercase).
+     * Usado pelo motor de apuração para match por TAG DICOM.
+     */
+    public function findAllWithTagsByUsuarioId(int $usuarioId): array
+    {
+        $exames = $this->findByUsuarioId($usuarioId);
+        if (empty($exames)) return [];
+
+        $ids = array_map(fn($e) => (int)$e->id, $exames);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->pdo->prepare(
+            "SELECT exame_id, UPPER(TRIM(tag_valor)) AS tag_valor_upper
+             FROM tabela_exames_tags
+             WHERE exame_id IN ({$placeholders})"
+        );
+        $stmt->execute($ids);
+        $tagRows = $stmt->fetchAll(PDO::FETCH_OBJ);
+
+        $tagsPorExame = [];
+        foreach ($tagRows as $row) {
+            $tagsPorExame[(int)$row->exame_id][] = $row->tag_valor_upper;
+        }
+
+        foreach ($exames as $exame) {
+            $exame->tags_dicom = $tagsPorExame[(int)$exame->id] ?? [];
+        }
+
+        return $exames;
+    }
+
+    // -------------------------------------------------------
     // TAGs DICOM
     // -------------------------------------------------------
     public function getTagsByExameId(int $exameId): array

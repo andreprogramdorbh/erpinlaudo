@@ -81,6 +81,24 @@ UI::sectionHeader(
                         <span class="fw-semibold"><?php echo htmlspecialchars($apuracao->contrato_nome ?? '&mdash;'); ?></span>
                     </div>
 
+                    <?php if (!empty($todasTagsDicom)): ?>
+                    <div class="col-12">
+                        <small class="text-muted d-block mb-1"><i class="fas fa-tag me-1"></i>Modalidades (TAGs DICOM cadastradas)</small>
+                        <div class="d-flex flex-wrap gap-1">
+                        <?php foreach ($todasTagsDicom as $tagVal): ?>
+                            <?php
+                                $examesDestaTg = $tagDicomParaExame[$tagVal] ?? [];
+                                $tooltipText   = implode(', ', $examesDestaTg);
+                            ?>
+                            <span class="badge bg-primary" title="Exame(s): <?php echo htmlspecialchars($tooltipText); ?>" data-bs-toggle="tooltip">
+                                <?php echo htmlspecialchars($tagVal); ?>
+                            </span>
+                        <?php endforeach; ?>
+                        </div>
+                        <small class="text-muted mt-1 d-block">Passe o mouse sobre a tag para ver o exame vinculado</small>
+                    </div>
+                    <?php endif; ?>
+
                     <div class="col-md-4">
                         <small class="text-muted d-block mb-1">Gerado em</small>
                         <span class="fw-semibold"><?php echo date('d/m/Y H:i', strtotime($apuracao->created_at ?? 'now')); ?></span>
@@ -306,7 +324,19 @@ UI::sectionHeader(
                         </td>
                         <td class="small"><?php echo htmlspecialchars($item->medico_nome ?? '&mdash;'); ?></td>
                         <td>
-                            <span class="badge bg-secondary"><?php echo htmlspecialchars($item->modalidade ?? '&mdash;'); ?></span>
+                            <?php
+                                $modItem = strtoupper(trim($item->modalidade ?? ''));
+                                $exameViaTag = !empty($tagDicomParaExame[$modItem])
+                                    ? implode(', ', $tagDicomParaExame[$modItem])
+                                    : null;
+                            ?>
+                            <span class="badge bg-secondary<?php echo $exameViaTag ? ' border border-primary' : ''; ?>"
+                                  <?php if ($exameViaTag): ?>title="Tipo de Exame: <?php echo htmlspecialchars($exameViaTag); ?>" data-bs-toggle="tooltip"<?php endif; ?>>
+                                <?php echo htmlspecialchars($item->modalidade ?? '&mdash;'); ?>
+                            </span>
+                            <?php if ($exameViaTag): ?>
+                                <i class="fas fa-link text-primary ms-1" style="font-size:.65rem" title="TAG DICOM vinculada a: <?php echo htmlspecialchars($exameViaTag); ?>"></i>
+                            <?php endif; ?>
                         </td>
                         <td class="small" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
                             title="<?php echo htmlspecialchars($item->study_description ?? ''); ?>">

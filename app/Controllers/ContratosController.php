@@ -408,13 +408,21 @@ class ContratosController extends Controller
 
             $dados = $this->lerArquivo($filePath, $ext, $mapeamento);
 
-            // Buscar tabela de exames para matching
+            // Buscar tabela de exames com tags DICOM para matching
             $tabelaExameModel = new TabelaExame();
-            $exames = $tabelaExameModel->findByUsuarioId($usuarioId);
+            $exames = $tabelaExameModel->findAllWithTagsByUsuarioId($usuarioId);
+
+            // Índice 1: por modalidade da tabela (ex: RX, TC)
             $examesPorModalidade = [];
+            // Índice 2: por TAG DICOM (ex: CR, DR, RX) — prioridade máxima
+            $examesPorTagDicom = [];
             foreach ($exames as $ex) {
                 $mod = strtoupper(trim($ex->modalidade ?? ''));
                 $examesPorModalidade[$mod][] = $ex;
+                // Indexar por cada valor de TAG DICOM cadastrada
+                foreach ($ex->tags_dicom as $tagVal) {
+                    $examesPorTagDicom[$tagVal][] = $ex;
+                }
             }
 
             $this->itemModel->deleteByApuracaoId($apuracaoId);
@@ -437,12 +445,41 @@ class ContratosController extends Controller
                 $statusItem = 'sem_match';
                 $obsItem    = 'Sem correspondência na tabela de exames';
 
-                if (!empty($examesPorModalidade[$modalidade])) {
+                // -------------------------------------------------------
+                // PRIORIDADE 1: Match por TAG DICOM (tag_valor = modalidade importada)
+                // Ex: modalidade=CR → busca exame com TAG DICOM valor=CR
+                // -------------------------------------------------------
+                if (!empty($examesPorTagDicom[$modalidade])) {
+                    $candidatos = $examesPorTagDicom[$modalidade];
+                    // Tentar match exato por nome do exame dentro dos candidatos por TAG
+                    foreach ($candidatos as $ex) {
+                        $nomeEx = strtolower(trim($ex->nome_exame ?? ''));
+                        $nomeSD = strtolower($studyDesc);
+                        if ($nomeEx && $nomeSD && (str_contains($nomeSD, $nomeEx) || str_contains($nomeEx, $nomeSD))) {
+                            $exameMatch = $ex;
+                            $obsItem    = 'Match por TAG DICOM + nome';
+                            break;
+                        }
+                    }
+                    if (!$exameMatch) {
+                        // Fallback: primeiro exame com essa TAG DICOM
+                        $exameMatch = $candidatos[0];
+                        $obsItem    = 'Match por TAG DICOM (modalidade=' . $modalidade . ')';
+                    }
+                }
+
+                // -------------------------------------------------------
+                // PRIORIDADE 2: Match por modalidade da tabela (campo modalidade)
+                // Ex: modalidade=RX → busca exame com modalidade=RX
+                // -------------------------------------------------------
+                if (!$exameMatch && !empty($examesPorModalidade[$modalidade])) {
                     foreach ($examesPorModalidade[$modalidade] as $ex) {
                         $nomeEx = strtolower(trim($ex->nome_exame ?? ''));
                         $nomeSD = strtolower($studyDesc);
                         if ($nomeEx && $nomeSD && (str_contains($nomeSD, $nomeEx) || str_contains($nomeEx, $nomeSD))) {
-                            $exameMatch = $ex; break;
+                            $exameMatch = $ex;
+                            $obsItem    = 'Match por modalidade + nome';
+                            break;
                         }
                     }
                     if (!$exameMatch) {
@@ -456,7 +493,7 @@ class ContratosController extends Controller
                         ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->valor_padrao)
                         : (float) ($exameMatch->valor_rotina  ?: $exameMatch->valor_padrao);
                     $statusItem = 'ok';
-                    $obsItem    = null;
+                    if ($obsItem === 'Sem correspondência na tabela de exames') $obsItem = null;
                 } else {
                     $semMatch++;
                     $log[] = "Linha {$linha['linha_original']}: sem match — modalidade={$modalidade}, exame={$studyDesc}";

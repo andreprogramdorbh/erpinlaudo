@@ -47,7 +47,19 @@ class CorpoClinicoController extends Controller
                 'modalidade' => trim((string) ($_GET['modalidade'] ?? '')),
             ];
 
-            $exames = $this->tabelaExameModel->findByUsuarioId($usuarioId, $filtros);
+            // Buscar exames com TAGs DICOM incluídas
+            $exames = $this->tabelaExameModel->findAllWithTagsByUsuarioId($usuarioId);
+            // Aplicar filtros manualmente
+            if (!empty($filtros['modalidade'])) {
+                $exames = array_values(array_filter($exames, fn($e) => $e->modalidade === $filtros['modalidade']));
+            }
+            if (!empty($filtros['pesquisa'])) {
+                $q = strtolower($filtros['pesquisa']);
+                $exames = array_values(array_filter($exames, fn($e) =>
+                    str_contains(strtolower($e->nome_exame ?? ''), $q) ||
+                    str_contains(strtolower($e->modalidade ?? ''), $q)
+                ));
+            }
 
             View::render('exames_tabela/index', [
                 '_layout' => 'erp',

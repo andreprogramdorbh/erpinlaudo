@@ -100,13 +100,29 @@ class ApuracaoController extends Controller
         $resumoMedico   = $this->apuracaoModel->resumoPorMedico((int) $id);
         $resumoUnidade  = $this->apuracaoModel->resumoPorUnidade((int) $id);
 
+        // Buscar exames com TAGs DICOM para exibir na view
+        $tabelaExameModel = new TabelaExame();
+        $examesComTags    = $tabelaExameModel->findAllWithTagsByUsuarioId($usuarioId);
+        // Montar mapa: tag_valor => nome_exame (para exibir na view)
+        $tagDicomParaExame = [];
+        foreach ($examesComTags as $ex) {
+            foreach ($ex->tags_dicom as $tagVal) {
+                $tagDicomParaExame[$tagVal][] = $ex->nome_exame;
+            }
+        }
+        // Todas as TAGs DICOM cadastradas (para exibir no cabeçalho)
+        $todasTagsDicom = array_keys($tagDicomParaExame);
+        sort($todasTagsDicom);
+
         View::render('apuracao/visualizar', [
-            'title'         => 'Apuração ' . $apuracao->numero,
-            'apuracao'      => $apuracao,
-            'itens'         => $itens,
-            'resumoModal'   => $resumoModal,
-            'resumoMedico'  => $resumoMedico,
-            'resumoUnidade' => $resumoUnidade,
+            'title'             => 'Apuração ' . $apuracao->numero,
+            'apuracao'          => $apuracao,
+            'itens'             => $itens,
+            'resumoModal'       => $resumoModal,
+            'resumoMedico'      => $resumoMedico,
+            'resumoUnidade'     => $resumoUnidade,
+            'tagDicomParaExame' => $tagDicomParaExame,
+            'todasTagsDicom'    => $todasTagsDicom,
             '_layout' => 'erp',
         ]);
     }

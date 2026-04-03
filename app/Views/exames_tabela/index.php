@@ -117,7 +117,7 @@ if (isset($erros[$error])) {
                 <thead class="table-light">
                     <tr>
                         <th class="ps-4">Nome do Exame</th>
-                        <th>Modalidade</th>
+                        <th>Tipo de Exame</th>
                         <th class="text-end">Valor Padrão</th>
                         <th class="text-end">Valor Rotina</th>
                         <th class="text-end">Valor Urgência</th>
@@ -135,9 +135,20 @@ if (isset($erros[$error])) {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <span class="badge bg-light text-dark border fw-semibold">
-                                <?php echo htmlspecialchars($exame->modalidade); ?>
-                            </span>
+                            <div class="d-flex flex-column gap-1">
+                                <span class="badge bg-light text-dark border fw-semibold">
+                                    <?php echo htmlspecialchars($exame->modalidade); ?>
+                                </span>
+                                <?php if (!empty($exame->tags_dicom)): ?>
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    <?php foreach ($exame->tags_dicom as $tagV): ?>
+                                        <span class="badge bg-primary" style="font-size:.65rem" title="TAG DICOM: <?php echo htmlspecialchars($tagV); ?>">
+                                            <i class="fas fa-tag me-1" style="font-size:.55rem"></i><?php echo htmlspecialchars($tagV); ?>
+                                        </span>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td class="text-end">
                             <span class="fw-semibold">R$ <?php echo number_format((float)($exame->valor_padrao ?? 0), 2, ',', '.'); ?></span>
