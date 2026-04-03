@@ -869,4 +869,218 @@ class ContasReceberController extends Controller
             exit();
         }
     }
+
+    // -----------------------------------------------------------------------
+    // POST /financeiro/contas-a-receber/receber-manual/{id}
+    // Executa o recebimento manual de um título em aberto:
+    //   1. Valida propriedade e status
+    //   2. Atualiza status para 'recebida' + data_recebimento = hoje
+    //   3. Libera NF vinculada no portal (se existir)
+    //   4. Envia e-mail de confirmação ao cliente (se e-mail configurado)
+    //   5. Gera próxima parcela (se conta recorrente)
+    //   6. Registra auditoria
+    // -----------------------------------------------------------------------
+    public function receberManual($id): void
+    {
+        ob_start();
+        $log = [];
+
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                ob_end_clean();
+                http_response_code(401);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Sessão expirada.']);
+                exit();
+            }
+
+            if (!Auth::can('edit_contas_receber')) {
+                ob_end_clean();
+                http_response_code(403);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Sem permissão para executar esta operação.']);
+                exit();
+            }
+
+            $usuarioId = (int) $user->id;
+            $conta     = $this->model->findById((int) $id);
+
+            if (!$conta || (int) $conta->usuario_id !== $usuarioId) {
+                ob_end_clean();
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Conta não encontrada ou sem permissão.']);
+                exit();
+            }
+
+            if (($conta->status ?? '') === 'recebida') {
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Esta conta já foi recebida anteriormente.']);
+                exit();
+            }
+
+            if (($conta->status ?? '') === 'cancelada') {
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Não é possível receber uma conta cancelada.']);
+                exit();
+            }
+
+            // Ler body JSON
+            $body          = json_decode(file_get_contents('php://input'), true) ?? [];
+            $meioPagamento = trim($body['meio_pagamento'] ?? 'outro');
+            $observacoes   = trim($body['observacoes']    ?? '');
+            $dataRecebimento = date('Y-m-d');
+
+            // ── 1. Atualizar status da conta ──────────────────────────────────
+            $dadosUpdate = [
+                'status'           => 'recebida',
+                'data_recebimento' => $dataRecebimento,
+                'meio_pagamento'   => $meioPagamento ?: null,
+                'observacoes'      => $observacoes   ?: ($conta->observacoes ?? null),
+            ];
+
+            if (!$this->model->update((int) $id, $dadosUpdate)) {
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Falha ao atualizar o status no banco de dados.']);
+                exit();
+            }
+
+            $log[] = 'status_atualizado';
+
+            // ── 2. Liberar NF vinculada no portal ─────────────────────────────
+            $nfLiberada = false;
+            try {
+                $nfModel = new \App\Models\NotaFiscal();
+                $nf      = $nfModel->findByContaReceberId((int) $id, $usuarioId);
+                if ($nf && in_array($nf->status ?? '', ['pendente', 'emitida', 'aprovada'], true)) {
+                    // Marca NF como liberada para download no portal
+                    $nfModel->update((int) $nf->id, [
+                        'portal_liberada'    => 1,
+                        'portal_liberada_em' => date('Y-m-d H:i:s'),
+                    ]);
+                    $nfLiberada = true;
+                    $log[]      = 'nf_liberada_id_' . $nf->id;
+                }
+            } catch (\Throwable $eNf) {
+                $this->logger->warning('[receberManual] Falha ao liberar NF: ' . $eNf->getMessage(), [
+                    'conta_id' => (int) $id,
+                ]);
+                $log[] = 'nf_erro: ' . $eNf->getMessage();
+            }
+
+            // ── 3. Enviar e-mail de confirmação ao cliente ──────────────────────
+            $emailEnviado = false;
+            try {
+                $cliente = $this->clienteModel->findById((int)($conta->cliente_id ?? 0));
+                $emailCliente = $cliente->email ?? '';
+                if ($emailCliente !== '') {
+                    $mail = $this->getMailService();
+                    $nomeCliente = $cliente->nome_fantasia ?: ($cliente->razao_social ?? 'Cliente');
+                    $valorFmt    = 'R$ ' . number_format((float)($conta->valor ?? 0), 2, ',', '.');
+                    $descFmt     = htmlspecialchars($conta->descricao ?? '');
+                    $dataFmt     = date('d/m/Y', strtotime($dataRecebimento));
+
+                    $assunto = "Pagamento Confirmado — {$descFmt}";
+                    $corpo   = "
+                        <p>Olá, <strong>{$nomeCliente}</strong>!</p>
+                        <p>Confirmamos o recebimento do seguinte título:</p>
+                        <table style='border-collapse:collapse;width:100%;max-width:480px'>
+                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Descrição</strong></td>
+                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>{$descFmt}</td></tr>
+                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Valor</strong></td>
+                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>{$valorFmt}</td></tr>
+                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Data de Recebimento</strong></td>
+                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>{$dataFmt}</td></tr>
+                            <tr><td style='padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb'><strong>Meio de Pagamento</strong></td>
+                                <td style='padding:6px 10px;border:1px solid #e5e7eb'>' . ucfirst($meioPagamento) . '</td></tr>
+                        </table>
+                        " . ($nfLiberada ? "<p style='margin-top:16px'>✅ Sua <strong>Nota Fiscal</strong> já está disponível no <a href='/portal'>Portal do Cliente</a>.</p>" : '') . "
+                        <p style='color:#6b7280;font-size:.85em;margin-top:24px'>Este é um e-mail automático. Não responda a esta mensagem.</p>
+                    ";
+
+                    $mail->send($emailCliente, $assunto, $corpo);
+                    $emailEnviado = true;
+                    $log[]        = 'email_enviado_para_' . $emailCliente;
+                }
+            } catch (\Throwable $eMail) {
+                $this->logger->warning('[receberManual] Falha ao enviar e-mail: ' . $eMail->getMessage(), [
+                    'conta_id' => (int) $id,
+                ]);
+                $log[] = 'email_erro: ' . $eMail->getMessage();
+            }
+
+            // ── 4. Gerar próxima parcela (se recorrente) ─────────────────────
+            $proximaGerada = false;
+            try {
+                if (!empty($conta->recorrente) && (int)$conta->recorrente === 1) {
+                    $svc = new ContaReceberRecorrenciaService();
+                    $svc->gerarProximaSeRecorrente($usuarioId, (int) $id);
+                    $proximaGerada = true;
+                    $log[]         = 'proxima_parcela_gerada';
+                }
+            } catch (\Throwable $eRec) {
+                $this->logger->warning('[receberManual] Falha ao gerar próxima parcela: ' . $eRec->getMessage(), [
+                    'conta_id' => (int) $id,
+                ]);
+                $log[] = 'recorrencia_erro: ' . $eRec->getMessage();
+            }
+
+            // ── 5. Auditoria ──────────────────────────────────────────────────
+            AuditLogger::log('receber_manual', [
+                'conta_id'       => (int) $id,
+                'usuario_id'     => $usuarioId,
+                'descricao'      => $conta->descricao ?? null,
+                'valor'          => $conta->valor ?? null,
+                'meio_pagamento' => $meioPagamento,
+                'nf_liberada'    => $nfLiberada,
+                'email_enviado'  => $emailEnviado,
+                'proxima_gerada' => $proximaGerada,
+                'log'            => $log,
+            ]);
+
+            $this->logger->info('[receberManual] Recebimento manual executado com sucesso', [
+                'conta_id' => (int) $id,
+                'log'      => $log,
+            ]);
+
+            // ── 6. Resposta JSON ──────────────────────────────────────────────
+            $extras = [];
+            if ($nfLiberada)    $extras[] = 'NF liberada no portal';
+            if ($emailEnviado)  $extras[] = 'e-mail enviado ao cliente';
+            if ($proximaGerada) $extras[] = 'próxima parcela gerada';
+
+            $mensagem = 'Recebimento registrado com sucesso.';
+            if (!empty($extras)) {
+                $mensagem .= ' (' . implode(', ', $extras) . ')';
+            }
+
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success'        => true,
+                'message'        => $mensagem,
+                'nf_liberada'    => $nfLiberada,
+                'email_enviado'  => $emailEnviado,
+                'proxima_gerada' => $proximaGerada,
+            ]);
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[receberManual] Erro fatal: ' . $e->getMessage(), [
+                'conta_id' => (int) $id,
+                'trace'    => $e->getTraceAsString(),
+            ]);
+            ob_end_clean();
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Erro interno ao processar o recebimento. Tente novamente.',
+            ]);
+        }
+        exit();
+    }
 }

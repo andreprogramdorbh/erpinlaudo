@@ -226,6 +226,9 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::group(["middleware" => ["Permission:delete_contas_receber"]], function () {
         Router::post("/financeiro/contas-a-receber/delete/{id}", "ContasReceberController@delete");
     });
+    Router::group(["middleware" => ["Permission:edit_contas_receber"]], function () {
+        Router::post("/financeiro/contas-a-receber/receber-manual/{id}", "ContasReceberController@receberManual");
+    });
 
     // Faturamento
     Router::group(["middleware" => ["Permission:view_faturamento"]], function () {
