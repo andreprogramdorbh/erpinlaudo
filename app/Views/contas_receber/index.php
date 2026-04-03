@@ -59,18 +59,19 @@ UI::sectionHeader('Contas a Receber', 'Acompanhe seus recebimentos e vencimentos
             $rawDate = $c->data_vencimento ?? '';
             if ($rawDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) {
                 [$y, $m, $d] = explode('-', $rawDate);
-                $venc = "{$d}/{$m}/{$y}";
+                $vencTexto = "{$d}/{$m}/{$y}"; // data pura — usada no data-venc do botão
             } else {
-                $venc = htmlspecialchars($rawDate);
+                $vencTexto = htmlspecialchars($rawDate);
             }
 
-            // Indicador visual de vencimento
+            // Indicador visual de vencimento (HTML com spans — usado apenas na célula da tabela)
+            $venc = $vencTexto;
             $hoje = date('Y-m-d');
             if ($status === 'aberta' && $rawDate !== '') {
                 if ($rawDate < $hoje) {
-                    $venc = '<span class="text-danger fw-bold" title="Vencida">' . $venc . ' <i class="fas fa-exclamation-circle"></i></span>';
+                    $venc = '<span class="text-danger fw-bold" title="Vencida">' . $vencTexto . ' <i class="fas fa-exclamation-circle"></i></span>';
                 } elseif ($rawDate === $hoje) {
-                    $venc = '<span class="text-warning fw-bold" title="Vence hoje">' . $venc . ' <i class="fas fa-clock"></i></span>';
+                    $venc = '<span class="text-warning fw-bold" title="Vence hoje">' . $vencTexto . ' <i class="fas fa-clock"></i></span>';
                 }
             }
 
@@ -98,9 +99,9 @@ UI::sectionHeader('Contas a Receber', 'Acompanhe seus recebimentos e vencimentos
                     . 'data-id="' . $id . '" '
                     . 'data-desc="' . htmlspecialchars($c->descricao ?? '', ENT_QUOTES) . '" '
                     . 'data-valor="R$ ' . $valor . '" '
-                    . 'data-venc="' . $venc . '" '
+                    . 'data-venc="' . htmlspecialchars($vencTexto, ENT_QUOTES) . '" '
                     . 'title="Receber Manualmente" style="padding:3px 8px">'
-                    . '<i class="fas fa-check-circle me-1"></i>Receber</button>';
+                    . '<i class="fas fa-check-circle me-1"></i> Receber</button>';
             }
 
             if (\App\Core\Auth::can('edit_contas_receber')) {
