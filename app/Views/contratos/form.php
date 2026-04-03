@@ -392,10 +392,34 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
             </form>
         </div>
         <div class="card-body p-0">
-            <?php if (empty($apuracoes)): ?>
-                <div class="text-center py-4 text-muted">
-                    <i class="fas fa-calculator fa-2x mb-2"></i>
-                    <p class="mb-0">Nenhuma apuração criada. Clique em "Nova Apuração" para iniciar.</p>
+            <?php
+            // Aplicar filtros localmente
+            $apFiltradas    = $apuracoes ?? [];
+            $apFiltroStatus = $_GET['filtro_status'] ?? '';
+            $apFiltroInicio = $_GET['filtro_periodo_inicio'] ?? '';
+            $apFiltroFim    = $_GET['filtro_periodo_fim'] ?? '';
+            if ($apFiltroStatus) {
+                $apFiltradas = array_filter($apFiltradas, fn($a) => $a->status === $apFiltroStatus);
+            }
+            if ($apFiltroInicio) {
+                $apFiltradas = array_filter($apFiltradas, fn($a) => !empty($a->periodo_inicio) && $a->periodo_inicio >= $apFiltroInicio);
+            }
+            if ($apFiltroFim) {
+                $apFiltradas = array_filter($apFiltradas, fn($a) => !empty($a->periodo_fim) && $a->periodo_fim <= $apFiltroFim);
+            }
+            $temFiltro = $apFiltroStatus || $apFiltroInicio || $apFiltroFim;
+            ?>
+            <?php if (empty($apFiltradas)): ?>
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-calculator fa-2x mb-2 d-block"></i>
+                    <?php if (empty($apuracoes)): ?>
+                        <p class="mb-0">Nenhuma apuração criada. Clique em "Nova Apuração" para iniciar.</p>
+                    <?php else: ?>
+                        <p class="mb-0">Nenhuma apuração encontrada com os filtros aplicados.</p>
+                        <a href="/contratos/edit/<?php echo $cId; ?>?tab=apuracao" class="btn btn-sm btn-outline-secondary mt-2">
+                            <i class="fas fa-times me-1"></i>Limpar Filtros
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
@@ -413,7 +437,11 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                             </tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($apuracoes as $ap): ?>
+                        <?php foreach ($apFiltradas as $ap): ?>
+                            <?php
+                            $stClass = ['rascunho' => 'secondary', 'processando' => 'warning', 'concluido' => 'success', 'faturado' => 'primary', 'erro' => 'danger'];
+                            $stLabel = ['rascunho' => 'Rascunho', 'processando' => 'Processando', 'concluido' => 'Concluído', 'faturado' => 'Faturado', 'erro' => 'Erro'];
+                            ?>
                             <tr class="<?php echo (($_GET['apuracao_id'] ?? 0) == $ap->id) ? 'table-primary' : ''; ?>">
                                 <td class="ps-4">
                                     <span class="badge bg-secondary font-monospace"><?php echo htmlspecialchars($ap->numero); ?></span>
@@ -422,22 +450,18 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                     <small class="text-muted">
                                         <?php
                                         if ($ap->periodo_inicio && $ap->periodo_fim) {
-                                            echo date('d/m/Y', strtotime($ap->periodo_inicio)) . ' → ' . date('d/m/Y', strtotime($ap->periodo_fim));
+                                            echo date('d/m/Y', strtotime($ap->periodo_inicio)) . ' &rarr; ' . date('d/m/Y', strtotime($ap->periodo_fim));
                                         } else {
-                                            echo '<span class="text-muted">—</span>';
+                                            echo '<span class="text-muted">&mdash;</span>';
                                         }
                                         ?>
                                     </small>
                                 </td>
-                                <td class="text-center fw-bold"><?php echo $ap->total_exames; ?></td>
-                                <td class="text-center"><span class="badge bg-success"><?php echo $ap->total_normal; ?></span></td>
-                                <td class="text-center"><span class="badge bg-danger"><?php echo $ap->total_urgencia; ?></span></td>
-                                <td class="text-end fw-semibold">R$ <?php echo number_format((float)$ap->valor_total, 2, ',', '.'); ?></td>
+                                <td class="text-center fw-bold"><?php echo number_format((int)$ap->total_exames); ?></td>
+                                <td class="text-center"><span class="badge bg-success"><?php echo number_format((int)$ap->total_normal); ?></span></td>
+                                <td class="text-center"><span class="badge bg-danger"><?php echo number_format((int)$ap->total_urgencia); ?></span></td>
+                                <td class="text-end fw-semibold">R$&nbsp;<?php echo number_format((float)$ap->valor_total, 2, ',', '.'); ?></td>
                                 <td>
-                                    <?php
-                                    $stClass = ['rascunho' => 'secondary', 'processando' => 'warning', 'concluido' => 'success', 'faturado' => 'primary', 'erro' => 'danger'];
-                                    $stLabel = ['rascunho' => 'Rascunho', 'processando' => 'Processando', 'concluido' => 'Concluído', 'faturado' => 'Faturado', 'erro' => 'Erro'];
-                                    ?>
                                     <span class="badge bg-<?php echo $stClass[$ap->status] ?? 'secondary'; ?>">
                                         <?php echo $stLabel[$ap->status] ?? ucfirst($ap->status); ?>
                                     </span>
@@ -450,10 +474,17 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                                 title="Importar arquivo">
                                             <i class="fas fa-file-import"></i>
                                         </button>
+                                        <a href="/faturamento/apuracao-prestador/excluir/<?php echo $ap->id; ?>"
+                                           class="btn btn-outline-danger"
+                                           title="Excluir apuração"
+                                           onclick="return confirm('Excluir esta apuração? Esta ação não pode ser desfeita.')">
+                                            <i class="fas fa-trash"></i>
+                                        </a>
                                         <?php endif; ?>
-                                        <?php if ($ap->status === 'concluido'): ?>
+                                        <?php if (in_array($ap->status, ['concluido', 'faturado'])): ?>
                                         <a href="/faturamento/apuracao-prestador/visualizar/<?php echo $ap->id; ?>"
-                                           class="btn btn-outline-info" title="Visualizar">
+                                           class="btn btn-outline-<?php echo $ap->status === 'faturado' ? 'success' : 'info'; ?>"
+                                           title="Visualizar apuração">
                                             <i class="fas fa-eye"></i>
                                         </a>
                                         <?php endif; ?>
@@ -467,7 +498,6 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
             <?php endif; ?>
         </div>
     </div>
-
     <!-- Modal de Importação -->
     <div class="modal fade" id="modalImportacao" tabindex="-1">
         <div class="modal-dialog modal-lg">
