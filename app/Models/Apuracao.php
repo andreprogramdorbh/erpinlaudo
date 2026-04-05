@@ -76,11 +76,11 @@ class Apuracao extends Model
         $sql = "INSERT INTO {$this->table}
                 (usuario_id, contrato_id, numero, tipo, medico_id, cliente_id,
                  periodo_inicio, periodo_fim, total_exames, total_normal, total_urgencia,
-                 valor_total, status, origem, arquivo_import, log_execucao)
+                 valor_total, valor_venda_total, status, origem, arquivo_import, log_execucao)
                 VALUES
                 (:usuario_id, :contrato_id, :numero, :tipo, :medico_id, :cliente_id,
                  :periodo_inicio, :periodo_fim, :total_exames, :total_normal, :total_urgencia,
-                 :valor_total, :status, :origem, :arquivo_import, :log_execucao)";
+                 :valor_total, :valor_venda_total, :status, :origem, :arquivo_import, :log_execucao)";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             ':usuario_id'     => $data['usuario_id'],
@@ -94,8 +94,9 @@ class Apuracao extends Model
             ':total_exames'   => $data['total_exames'] ?? 0,
             ':total_normal'   => $data['total_normal'] ?? 0,
             ':total_urgencia' => $data['total_urgencia'] ?? 0,
-            ':valor_total'    => $data['valor_total'] ?? 0,
-            ':status'         => $data['status'] ?? 'rascunho',
+            ':valor_total'       => $data['valor_total'] ?? 0,
+            ':valor_venda_total' => $data['valor_venda_total'] ?? 0,
+            ':status'            => $data['status'] ?? 'rascunho',
             ':origem'         => $data['origem'] ?? 'manual',
             ':arquivo_import' => $data['arquivo_import'] ?? null,
             ':log_execucao'   => $data['log_execucao'] ?? null,
@@ -107,8 +108,8 @@ class Apuracao extends Model
     {
         $campos = [];
         $params = [':id' => $id, ':usuario_id' => $data['usuario_id']];
-        $permitidos = ['status','total_exames','total_normal','total_urgencia','valor_total','log_execucao',
-                       'periodo_inicio','periodo_fim','arquivo_import'];
+        $permitidos = ['status','total_exames','total_normal','total_urgencia','valor_total','valor_venda_total',
+                       'log_execucao','periodo_inicio','periodo_fim','arquivo_import','cliente_id'];
         foreach ($permitidos as $campo) {
             if (array_key_exists($campo, $data)) {
                 $campos[] = "{$campo} = :{$campo}";

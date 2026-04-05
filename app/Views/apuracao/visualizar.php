@@ -173,9 +173,13 @@ UI::sectionHeader(
                     <span class="badge bg-danger fs-6" id="resumo-total-urgencia"><?php echo number_format((int)$apuracao->total_urgencia); ?></span>
                 </div>
                 <hr class="my-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold text-muted small"><i class="fas fa-hand-holding-usd me-1"></i>Custo (Prestador)</span>
+                    <span class="fw-semibold text-warning" id="resumo-valor-total">R$&nbsp;<?php echo number_format((float)$apuracao->valor_total, 2, ',', '.'); ?></span>
+                </div>
                 <div class="d-flex justify-content-between align-items-center">
-                    <span class="fw-bold">Valor Total</span>
-                    <span class="fw-bold text-success fs-4" id="resumo-valor-total">R$&nbsp;<?php echo number_format((float)$apuracao->valor_total, 2, ',', '.'); ?></span>
+                    <span class="fw-bold small"><i class="fas fa-tag me-1"></i>Venda (Cliente)</span>
+                    <span class="fw-bold text-success fs-5" id="resumo-valor-venda">R$&nbsp;<?php echo number_format((float)($apuracao->valor_venda_total ?? $apuracao->valor_total), 2, ',', '.'); ?></span>
                 </div>
             </div>
         </div>
@@ -514,6 +518,7 @@ function executarRecalculo() {
             if (el('resumo-total-normal'))  el('resumo-total-normal').textContent  = data.total_normal;
             if (el('resumo-total-urgencia')) el('resumo-total-urgencia').textContent = data.total_urgencia;
             if (el('resumo-valor-total'))   el('resumo-valor-total').innerHTML     = 'R$&nbsp;' + data.valor_total.replace('R$ ', '');
+            if (el('resumo-valor-venda') && data.valor_venda_total)  el('resumo-valor-venda').innerHTML  = 'R$&nbsp;' + data.valor_venda_total.replace('R$ ', '');
 
             // Exibir resultado
             document.getElementById('resultado-recalculo-body').innerHTML = `
@@ -528,12 +533,18 @@ function executarRecalculo() {
                     </div>
                     <div class="col-4">
                         <div class="fw-bold fs-4 text-danger">${data.total_urgencia}</div>
-                        <small class="text-muted">Urgência</small>
+                        <small class="text-muted">Urg\u00eancia</small>
                     </div>
                 </div>
-                <div class="text-center mb-3">
-                    <span class="fw-bold text-success fs-3">${data.valor_total}</span>
-                    <div class="text-muted small">Novo Valor Total</div>
+                <div class="row g-2 text-center mb-3">
+                    <div class="col-6">
+                        <span class="fw-bold text-warning fs-4">${data.valor_total}</span>
+                        <div class="text-muted small">Custo (Prestador)</div>
+                    </div>
+                    <div class="col-6">
+                        <span class="fw-bold text-success fs-4">${data.valor_venda_total || data.valor_total}</span>
+                        <div class="text-muted small">Venda (Cliente)</div>
+                    </div>
                 </div>
                 ${data.sem_match > 0 ? `<div class="alert alert-warning border-0 small"><i class="fas fa-exclamation-triangle me-1"></i>${data.sem_match} item(s) sem correspondência na tabela de exames.</div>` : ''}
                 ${data.log && data.log !== 'Recálculo concluído sem erros.' ? `<details class="mt-2"><summary class="text-muted small">Ver log</summary><pre class="small mt-1 text-muted" style="max-height:120px;overflow-y:auto">${data.log}</pre></details>` : ''}

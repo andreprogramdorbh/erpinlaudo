@@ -427,7 +427,7 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                         <thead class="table-light">
                             <tr>
                                 <th class="ps-4">Número</th>
-                                <th>Período</th>
+                                <th>Período / Parte</th>
                                 <th class="text-center">Total Exames</th>
                                 <th class="text-center">Normal</th>
                                 <th class="text-center">Urgência</th>
@@ -447,7 +447,7 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                     <span class="badge bg-secondary font-monospace"><?php echo htmlspecialchars($ap->numero); ?></span>
                                 </td>
                                 <td>
-                                    <small class="text-muted">
+                                    <small class="text-muted d-block">
                                         <?php
                                         if ($ap->periodo_inicio && $ap->periodo_fim) {
                                             echo date('d/m/Y', strtotime($ap->periodo_inicio)) . ' &rarr; ' . date('d/m/Y', strtotime($ap->periodo_fim));
@@ -456,6 +456,15 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                                         }
                                         ?>
                                     </small>
+                                    <?php if (!empty($ap->cliente_nome)): ?>
+                                    <small class="text-primary d-block mt-1" title="Cliente vinculado">
+                                        <i class="fas fa-building me-1"></i><?php echo htmlspecialchars($ap->cliente_nome); ?>
+                                    </small>
+                                    <?php elseif (!empty($ap->medico_nome)): ?>
+                                    <small class="text-secondary d-block mt-1" title="Médico vinculado">
+                                        <i class="fas fa-user-md me-1"></i><?php echo htmlspecialchars($ap->medico_nome); ?>
+                                    </small>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="text-center fw-bold"><?php echo number_format((int)$ap->total_exames); ?></td>
                                 <td class="text-center"><span class="badge bg-success"><?php echo number_format((int)$ap->total_normal); ?></span></td>
@@ -529,6 +538,20 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
                             <input type="file" id="arquivo-apuracao" class="form-control"
                                    accept=".xlsx,.xls,.csv">
                         </div>
+                        <?php if (($contrato->tipo_parte ?? '') === 'medico'): ?>
+                        <div class="col-md-12">
+                            <label class="form-label fw-semibold">
+                                <i class="fas fa-building me-1 text-muted"></i>Cliente / Unidade <span class="text-danger">*</span>
+                            </label>
+                            <select id="select-cliente-import" class="form-select">
+                                <option value="">-- Selecione o cliente/unidade --</option>
+                                <?php foreach ($clientes ?? [] as $cl): ?>
+                                    <option value="<?php echo $cl->id; ?>"><?php echo htmlspecialchars($cl->razao_social); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="text-muted">Selecione o cliente/unidade para o qual esta apuração será vinculada.</small>
+                        </div>
+                        <?php endif; ?>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">
                                 <i class="fas fa-calendar-alt me-1 text-muted"></i>Período Inicial <span class="text-danger">*</span>
@@ -713,12 +736,20 @@ function importarArquivo() {
         return;
     }
 
+    // Validar seleção de cliente (apenas para contratos de médico/prestador)
+    const clienteSelect = document.getElementById('select-cliente-import');
+    if (clienteSelect && !clienteSelect.value) {
+        alert('Selecione o cliente/unidade antes de importar.');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('apuracao_id', currentApuracaoId);
     formData.append('layout_id', document.getElementById('select-layout').value);
     formData.append('arquivo_apuracao', fileInput.files[0]);
     formData.append('periodo_inicio', periodoInicio);
     formData.append('periodo_fim', periodoFim);
+    if (clienteSelect) formData.append('cliente_id', clienteSelect.value);
 
     document.getElementById('btn-importar').disabled = true;
     document.getElementById('btn-importar').innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Importando...';

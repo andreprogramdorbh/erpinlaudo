@@ -195,11 +195,15 @@ class ApuracaoController extends Controller
                 }
             }
 
-            $totalNormal   = 0;
-            $totalUrgencia = 0;
-            $valorTotal    = 0.0;
-            $semMatch      = 0;
-            $log           = [];
+            // Determinar tipo da apuração para lógica de preços
+            $tipoApuracao = $apuracao->tipo ?? 'prestador';
+
+            $totalNormal     = 0;
+            $totalUrgencia   = 0;
+            $valorTotal      = 0.0; // valor de custo (prestador)
+            $valorVendaTotal = 0.0; // valor de venda (cliente)
+            $semMatch        = 0;
+            $log             = [];
 
             foreach ($itens as $item) {
                 $modalidade = strtoupper(trim($item->modalidade ?? ''));
@@ -248,18 +252,36 @@ class ApuracaoController extends Controller
                     }
                 }
 
+                $valorCalcVenda = 0.0;
+
                 if ($exameMatch) {
                     $exId = (int) $exameMatch->id;
-                    // PRIORIDADE 0: Valores específicos do médico
-                    if (!empty($valoresMedico[$exId])) {
+
+                    // Valor de venda (sempre da tabela: valor_rotina/valor_urgencia)
+                    $valorCalcVenda = $isUrgencia
+                        ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao ?? 0)
+                        : (float) ($exameMatch->valor_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao ?? 0);
+
+                    if ($tipoApuracao === 'cliente') {
+                        $valorCalc = $valorCalcVenda;
+                    } elseif (!empty($valoresMedico[$exId])) {
                         $vm        = $valoresMedico[$exId];
                         $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
                         $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
                     } else {
-                        $valorCalc = $isUrgencia
-                            ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->valor_padrao ?? 0)
-                            : (float) ($exameMatch->valor_rotina  ?: $exameMatch->valor_padrao ?? 0);
+                        // Prestador: preco_custo com percentuais de prioridade
+                        $precoCusto   = (float) ($exameMatch->preco_custo ?? 0);
+                        $percRotina   = (float) ($exameMatch->perc_rotina ?? 0);
+                        $percUrgencia = (float) ($exameMatch->perc_urgencia ?? 0);
+                        if ($precoCusto > 0) {
+                            $valorCalc = $isUrgencia
+                                ? $precoCusto * (1 + $percUrgencia / 100)
+                                : $precoCusto * (1 + $percRotina / 100);
+                        } else {
+                            $valorCalc = $valorCalcVenda;
+                        }
                     }
+
                     $statusItem = 'ok';
                     if ($obsItem === 'Sem correspondência na tabela de exames') $obsItem = null;
                 } else {
@@ -268,13 +290,15 @@ class ApuracaoController extends Controller
                 }
 
                 if ($isUrgencia) $totalUrgencia++; else $totalNormal++;
-                $valorTotal += $valorCalc;
+                $valorTotal      += $valorCalc;
+                $valorVendaTotal += $valorCalcVenda;
 
                 // Atualizar apenas os campos de valor/exame do item (preserva dados originais)
                 $this->itemModel->updateValores(
                     (int) $item->id,
                     $exameMatch ? (int) $exameMatch->id : null,
                     $valorCalc,
+                    $valorCalcVenda,
                     $tipoPrior,
                     $statusItem,
                     $obsItem
@@ -285,13 +309,14 @@ class ApuracaoController extends Controller
             $logStr      = empty($log) ? 'Recálculo concluído sem erros.' : implode("\n", $log);
 
             $this->apuracaoModel->update((int) $id, [
-                'usuario_id'     => $usuarioId,
-                'status'         => 'concluido',
-                'total_exames'   => $totalExames,
-                'total_normal'   => $totalNormal,
-                'total_urgencia' => $totalUrgencia,
-                'valor_total'    => $valorTotal,
-                'log_execucao'   => $logStr,
+                'usuario_id'       => $usuarioId,
+                'status'           => 'concluido',
+                'total_exames'     => $totalExames,
+                'total_normal'     => $totalNormal,
+                'total_urgencia'   => $totalUrgencia,
+                'valor_total'      => $valorTotal,
+                'valor_venda_total'=> $valorVendaTotal,
+                'log_execucao'     => $logStr,
             ]);
 
             AuditLogger::log('apuracao_recalculada', [
@@ -307,9 +332,10 @@ class ApuracaoController extends Controller
                 'total_exames'   => $totalExames,
                 'total_normal'   => $totalNormal,
                 'total_urgencia' => $totalUrgencia,
-                'valor_total'    => 'R$ ' . number_format($valorTotal, 2, ',', '.'),
-                'sem_match'      => $semMatch,
-                'log'            => $logStr,
+                'valor_total'       => 'R$ ' . number_format($valorTotal, 2, ',', '.'),
+                'valor_venda_total' => 'R$ ' . number_format($valorVendaTotal, 2, ',', '.'),
+                'sem_match'         => $semMatch,
+                'log'               => $logStr,
             ]);
 
         } catch (\Throwable $e) {
@@ -351,14 +377,19 @@ class ApuracaoController extends Controller
                 $descricao .= " ({$apuracao->total_exames} exames)";
 
                 $contaPagarModel->create([
-                    'usuario_id'    => $usuarioId,
-                    'descricao'     => $descricao,
-                    'valor'         => $apuracao->valor_total,
-                    'data_vencimento' => date('Y-m-d', strtotime('+30 days')),
-                    'status'        => 'pendente',
-                    'categoria'     => 'Honorários Médicos',
-                    'observacoes'   => "Gerado automaticamente pela apuração {$apuracao->numero}",
-                    'fornecedor_id' => null,
+                    'usuario_id'           => $usuarioId,
+                    'plano_conta_id'       => null,
+                    'fornecedor_id'        => null,
+                    'descricao'            => $descricao,
+                    'valor'                => $apuracao->valor_total,
+                    'data_vencimento'      => date('Y-m-d', strtotime('+30 days')),
+                    'data_pagamento'       => null,
+                    'codigo_barras'        => null,
+                    'recorrente'           => 0,
+                    'recorrencia_tipo'     => null,
+                    'recorrencia_intervalo'=> null,
+                    'status'               => 'aberta',
+                    'observacoes'          => "Gerado automaticamente pela apuração {$apuracao->numero}",
                 ]);
 
                 $redirect = '/faturamento/apuracao-prestador';
@@ -370,14 +401,19 @@ class ApuracaoController extends Controller
                 $descricao .= " ({$apuracao->total_exames} exames)";
 
                 $contaReceberModel->create([
-                    'usuario_id'    => $usuarioId,
-                    'descricao'     => $descricao,
-                    'valor'         => $apuracao->valor_total,
-                    'data_vencimento' => date('Y-m-d', strtotime('+30 days')),
-                    'status'        => 'pendente',
-                    'categoria'     => 'Serviços de Teleradiologia',
-                    'observacoes'   => "Gerado automaticamente pela apuração {$apuracao->numero}",
-                    'cliente_id'    => $apuracao->cliente_id,
+                    'usuario_id'           => $usuarioId,
+                    'cliente_id'           => $apuracao->cliente_id ?? null,
+                    'plano_conta_id'       => null,
+                    'descricao'            => $descricao,
+                    'valor'                => $apuracao->valor_total,
+                    'data_vencimento'      => date('Y-m-d', strtotime('+30 days')),
+                    'data_recebimento'     => null,
+                    'status'               => 'aberta',
+                    'observacoes'          => "Gerado automaticamente pela apuração {$apuracao->numero}",
+                    'meio_pagamento'       => null,
+                    'recorrente'           => 0,
+                    'recorrencia_tipo'     => null,
+                    'recorrencia_intervalo'=> null,
                 ]);
 
                 $redirect = '/faturamento/apuracao-cliente';

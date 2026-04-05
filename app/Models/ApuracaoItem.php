@@ -28,12 +28,14 @@ class ApuracaoItem extends Model
                 (apuracao_id, linha_original, unidade, medico_nome, medico_crm, revisor, data_revisao,
                  modalidade, study_description, paciente_nome, paciente_id, prioridade, origem,
                  registro, data_estudo, data_conclusao, sla, accession_number, visita, convenio,
-                 valor_importado, valor_exame_import, exame_id, valor_calculado, tipo_prioridade, status_item, obs_item)
+                 valor_importado, valor_exame_import, exame_id, valor_calculado, valor_calculado_venda,
+                 tipo_prioridade, status_item, obs_item)
                 VALUES
                 (:apuracao_id, :linha_original, :unidade, :medico_nome, :medico_crm, :revisor, :data_revisao,
                  :modalidade, :study_description, :paciente_nome, :paciente_id, :prioridade, :origem,
                  :registro, :data_estudo, :data_conclusao, :sla, :accession_number, :visita, :convenio,
-                 :valor_importado, :valor_exame_import, :exame_id, :valor_calculado, :tipo_prioridade, :status_item, :obs_item)";
+                 :valor_importado, :valor_exame_import, :exame_id, :valor_calculado, :valor_calculado_venda,
+                 :tipo_prioridade, :status_item, :obs_item)";
         $stmt = $this->pdo->prepare($sql);
         $count = 0;
         foreach ($itens as $item) {
@@ -64,26 +66,29 @@ class ApuracaoItem extends Model
         int $itemId,
         ?int $exameId,
         float $valorCalculado,
+        float $valorCalculadoVenda,
         string $tipoPrioridade,
         string $statusItem,
         ?string $obsItem
     ): bool {
         $stmt = $this->pdo->prepare(
             "UPDATE {$this->table}
-             SET exame_id        = :exame_id,
-                 valor_calculado = :valor_calculado,
-                 tipo_prioridade = :tipo_prioridade,
-                 status_item     = :status_item,
-                 obs_item        = :obs_item
+             SET exame_id               = :exame_id,
+                 valor_calculado        = :valor_calculado,
+                 valor_calculado_venda  = :valor_calculado_venda,
+                 tipo_prioridade        = :tipo_prioridade,
+                 status_item            = :status_item,
+                 obs_item               = :obs_item
              WHERE id = :id"
         );
         return $stmt->execute([
-            ':exame_id'        => $exameId,
-            ':valor_calculado' => $valorCalculado,
-            ':tipo_prioridade' => $tipoPrioridade,
-            ':status_item'     => $statusItem,
-            ':obs_item'        => $obsItem,
-            ':id'              => $itemId,
+            ':exame_id'               => $exameId,
+            ':valor_calculado'        => $valorCalculado,
+            ':valor_calculado_venda'  => $valorCalculadoVenda,
+            ':tipo_prioridade'        => $tipoPrioridade,
+            ':status_item'            => $statusItem,
+            ':obs_item'               => $obsItem,
+            ':id'                     => $itemId,
         ]);
     }
 }

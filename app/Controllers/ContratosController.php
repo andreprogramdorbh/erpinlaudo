@@ -351,6 +351,7 @@ class ContratosController extends Controller
         $relativePath  = 'storage/uploads/apuracoes/' . $usuarioId . '/' . $apuracaoId . '/' . $safeName;
         $periodoInicio = trim($_POST['periodo_inicio'] ?? '');
         $periodoFim    = trim($_POST['periodo_fim'] ?? '');
+        $clienteId     = (int) ($_POST['cliente_id'] ?? 0);
         // Validar formato YYYY-MM-DD
         $periodoInicio = preg_match('/^\d{4}-\d{2}-\d{2}$/', $periodoInicio) ? $periodoInicio : null;
         $periodoFim    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $periodoFim)    ? $periodoFim    : null;
@@ -359,8 +360,9 @@ class ContratosController extends Controller
             'arquivo_import' => $relativePath,
             'status'         => 'rascunho',
         ];
-        if ($periodoInicio) $updateData['periodo_inicio'] = $periodoInicio;
-        if ($periodoFim)    $updateData['periodo_fim']    = $periodoFim;
+        if ($periodoInicio)  $updateData['periodo_inicio'] = $periodoInicio;
+        if ($periodoFim)     $updateData['periodo_fim']    = $periodoFim;
+        if ($clienteId > 0)  $updateData['cliente_id']    = $clienteId;
         $this->apuracaoModel->update($apuracaoId, $updateData);
 
         $layoutModel = new LayoutExame();
@@ -451,13 +453,19 @@ class ContratosController extends Controller
                 }
             }
 
+            // Determinar tipo da apuração para lógica de preços
+            // Prestador: usa preco_custo (repasse ao médico)
+            // Cliente:   usa preco_venda (cobrado do cliente) = valor_rotina/valor_urgencia
+            $tipoApuracao = $apuracao->tipo ?? 'prestador';
+
             $this->itemModel->deleteByApuracaoId($apuracaoId);
-            $itens         = [];
-            $totalNormal   = 0;
-            $totalUrgencia = 0;
-            $valorTotal    = 0.0;
-            $log           = [];
-            $semMatch      = 0;
+            $itens           = [];
+            $totalNormal     = 0;
+            $totalUrgencia   = 0;
+            $valorTotal      = 0.0; // valor de custo (prestador)
+            $valorVendaTotal = 0.0; // valor de venda (cliente)
+            $log             = [];
+            $semMatch        = 0;
 
             foreach ($dados['linhas'] as $linha) {
                 $modalidade = strtoupper(trim($linha['modalidade'] ?? ''));
@@ -514,19 +522,49 @@ class ContratosController extends Controller
                     }
                 }
 
+                $valorCalcVenda = 0.0; // valor de venda por item
+
                 if ($exameMatch) {
                     $exId = (int) $exameMatch->id;
-                    // PRIORIDADE 0: Valores específicos do médico (override)
-                    if (!empty($valoresMedico[$exId])) {
+
+                    // -------------------------------------------------------
+                    // VALOR DE VENDA (sempre da tabela de exames: valor_rotina/valor_urgencia)
+                    // valor_rotina = preco_venda * (1 + perc_rotina/100)
+                    // valor_urgencia = preco_venda * (1 + perc_urgencia/100)
+                    // -------------------------------------------------------
+                    $valorCalcVenda = $isUrgencia
+                        ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao)
+                        : (float) ($exameMatch->valor_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao);
+
+                    // -------------------------------------------------------
+                    // VALOR DE CUSTO (repasse ao médico)
+                    // Para prestador: preco_custo * (1 + perc_rotina/100) ou preco_custo * (1 + perc_urgencia/100)
+                    // Para cliente: usa valor de venda (valor_rotina/valor_urgencia)
+                    // PRIORIDADE 0: Valores específicos do médico (override) — apenas para prestador
+                    // -------------------------------------------------------
+                    if ($tipoApuracao === 'cliente') {
+                        // Apuração cliente: valor calculado = valor de venda
+                        $valorCalc = $valorCalcVenda;
+                    } elseif (!empty($valoresMedico[$exId])) {
+                        // Apuração prestador com override do médico
                         $vm = $valoresMedico[$exId];
                         $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
                         $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
                     } else {
-                        // Valores da tabela de exames (fallback)
-                        $valorCalc = $isUrgencia
-                            ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->valor_padrao)
-                            : (float) ($exameMatch->valor_rotina  ?: $exameMatch->valor_padrao);
+                        // Apuração prestador: usa preco_custo com percentuais de prioridade
+                        $precoCusto    = (float) ($exameMatch->preco_custo ?? 0);
+                        $percRotina    = (float) ($exameMatch->perc_rotina ?? 0);
+                        $percUrgencia  = (float) ($exameMatch->perc_urgencia ?? 0);
+                        if ($precoCusto > 0) {
+                            $valorCalc = $isUrgencia
+                                ? $precoCusto * (1 + $percUrgencia / 100)
+                                : $precoCusto * (1 + $percRotina / 100);
+                        } else {
+                            // Fallback: se não há preco_custo, usa valor_rotina/urgencia (mesmo que venda)
+                            $valorCalc = $valorCalcVenda;
+                        }
                     }
+
                     $statusItem = 'ok';
                     if ($obsItem === 'Sem correspondência na tabela de exames') $obsItem = null;
                 } else {
@@ -535,7 +573,8 @@ class ContratosController extends Controller
                 }
 
                 if ($isUrgencia) $totalUrgencia++; else $totalNormal++;
-                $valorTotal += $valorCalc;
+                $valorTotal      += $valorCalc;
+                $valorVendaTotal += $valorCalcVenda;
 
                 $itens[] = [
                     ':apuracao_id'        => $apuracaoId,
@@ -561,8 +600,9 @@ class ContratosController extends Controller
                     ':valor_importado'    => $this->parseMoeda((string)($linha['valor'] ?? '0')),
                     ':valor_exame_import' => $this->parseMoeda((string)($linha['valor_exame'] ?? '0')),
                     ':exame_id'           => $exameMatch ? $exameMatch->id : null,
-                    ':valor_calculado'    => $valorCalc,
-                    ':tipo_prioridade'    => $tipoPrior,
+                    ':valor_calculado'       => $valorCalc,
+                    ':valor_calculado_venda'  => $valorCalcVenda,
+                    ':tipo_prioridade'        => $tipoPrior,
                     ':status_item'        => $statusItem,
                     ':obs_item'           => $obsItem,
                 ];
@@ -574,13 +614,14 @@ class ContratosController extends Controller
             $logStr = empty($log) ? 'Apuração concluída sem erros.' : implode("\n", $log);
 
             $this->apuracaoModel->update($apuracaoId, [
-                'usuario_id'     => $usuarioId,
-                'status'         => 'concluido',
-                'total_exames'   => $totalExames,
-                'total_normal'   => $totalNormal,
-                'total_urgencia' => $totalUrgencia,
-                'valor_total'    => $valorTotal,
-                'log_execucao'   => $logStr,
+                'usuario_id'       => $usuarioId,
+                'status'           => 'concluido',
+                'total_exames'     => $totalExames,
+                'total_normal'     => $totalNormal,
+                'total_urgencia'   => $totalUrgencia,
+                'valor_total'      => $valorTotal,
+                'valor_venda_total'=> $valorVendaTotal,
+                'log_execucao'     => $logStr,
             ]);
 
             AuditLogger::log('apuracao_executada', [
