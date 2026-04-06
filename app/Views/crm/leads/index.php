@@ -1,6 +1,9 @@
 <?php
 use App\Core\View;
 $hoje = date('Y-m-d');
+$isAdmin   = $isAdmin ?? false;
+$filtroUid = $filtroUid ?? 0;
+$usuariosComLeads = $usuariosComLeads ?? [];
 
 $statusColors = [
     'novo'        => 'secondary',
@@ -30,6 +33,7 @@ $statusIcons = [
 .crm-table-card{background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .crm-table-header{display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.25rem;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;gap:.75rem}
 .crm-filters{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.admin-user-selector{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:.5rem;padding:.35rem .75rem;display:flex;align-items:center;gap:.5rem;font-size:.8125rem;color:#1e40af}
 .crm-filters .form-select,.crm-filters .form-control{font-size:.8125rem;padding:.3rem .6rem;height:32px;border-radius:.4rem}
 .badge-status{font-size:.7rem;padding:.3em .7em;border-radius:20px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 .lead-row:hover{background:#f8fafc}
@@ -68,6 +72,19 @@ $statusIcons = [
       <div class="d-flex gap-2 align-items-center flex-wrap">
         <!-- Filtros -->
         <form method="GET" action="/crm/leads" class="crm-filters">
+          <?php if ($isAdmin && !empty($usuariosComLeads)): ?>
+          <div class="admin-user-selector">
+            <i class="fas fa-user-cog"></i>
+            <select name="uid" class="form-select form-select-sm border-0 bg-transparent p-0" style="width:160px;box-shadow:none" onchange="this.form.submit()" title="Filtrar por usuário">
+              <option value="0" <?php echo $filtroUid == 0 ? 'selected' : ''; ?>>Todos os usuários</option>
+              <?php foreach ($usuariosComLeads as $u): ?>
+              <option value="<?php echo $u->id; ?>" <?php echo (int)$filtroUid === (int)$u->id ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($u->name); ?>
+              </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <?php endif; ?>
           <input type="text" name="q" class="form-control" placeholder="Buscar..." value="<?php echo htmlspecialchars($filtros['q']); ?>" style="width:160px">
           <select name="status" class="form-select" style="width:130px" onchange="this.form.submit()">
             <option value="">Todos status</option>
@@ -82,8 +99,8 @@ $statusIcons = [
             <?php endforeach; ?>
           </select>
           <button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-search"></i></button>
-          <?php if ($filtros['q'] || $filtros['status'] || $filtros['segmento']): ?>
-          <a href="/crm/leads" class="btn btn-sm btn-outline-secondary"><i class="fas fa-times"></i></a>
+          <?php if ($filtros['q'] || $filtros['status'] || $filtros['segmento'] || ($isAdmin && $filtroUid > 0)): ?>
+          <a href="/crm/leads" class="btn btn-sm btn-outline-secondary" title="Limpar filtros"><i class="fas fa-times"></i></a>
           <?php endif; ?>
         </form>
         <a href="/crm/leads/create" class="btn btn-sm btn-primary">
@@ -104,6 +121,9 @@ $statusIcons = [
         <thead class="table-light">
           <tr>
             <th class="ps-3">Lead / Empresa</th>
+            <?php if ($isAdmin && $filtroUid == 0): ?>
+            <th>Responsável</th>
+            <?php endif; ?>
             <th>Segmento</th>
             <th>Origem</th>
             <th>Status</th>
@@ -121,7 +141,7 @@ $statusIcons = [
           <tr class="lead-row">
             <td class="ps-3">
               <div class="lead-name">
-                <?php echo htmlspecialchars($lead->nome_lead); ?>
+                <?php echo htmlspecialchars($lead->nome_lead ?? '—'); ?>
                 <?php if ($lead->convertido_em): ?>
                 <span class="badge bg-success-subtle text-success ms-1" style="font-size:.65rem">Convertido</span>
                 <?php endif; ?>
@@ -131,6 +151,13 @@ $statusIcons = [
                 <?php if ($lead->telefone): ?> &nbsp;·&nbsp; <i class="fas fa-phone me-1"></i><?php echo htmlspecialchars($lead->telefone); ?><?php endif; ?>
               </div>
             </td>
+            <?php if ($isAdmin && $filtroUid == 0): ?>
+            <td>
+              <span class="badge bg-secondary-subtle text-secondary" style="font-size:.7rem">
+                <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($lead->usuario_nome ?? '—'); ?>
+              </span>
+            </td>
+            <?php endif; ?>
             <td><?php echo htmlspecialchars($segmentos[$lead->segmento_principal] ?? '—'); ?></td>
             <td><?php echo htmlspecialchars($origens[$lead->origem] ?? '—'); ?></td>
             <td>

@@ -53,10 +53,19 @@ class CrmOportunidade extends Model
     // Consultas
     // ------------------------------------------------------------------
 
+    /**
+     * Busca oportunidades por usuário.
+     * Se $usuarioId = 0, retorna de todos os usuários (para admin/superadmin).
+     */
     public function findByUsuarioId(int $usuarioId, array $filtros = []): array
     {
-        $where  = ['o.usuario_id = :uid'];
-        $params = [':uid' => $usuarioId];
+        $where  = [];
+        $params = [];
+
+        if ($usuarioId > 0) {
+            $where[]       = 'o.usuario_id = :uid';
+            $params[':uid'] = $usuarioId;
+        }
 
         if (!empty($filtros['etapa'])) {
             $where[]          = 'o.etapa_funil = :etapa';
@@ -71,16 +80,20 @@ class CrmOportunidade extends Model
             $params[':q'] = '%' . $filtros['q'] . '%';
         }
 
+        $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+
         $sql = "SELECT o.*,
                        COALESCE(l.nome_lead, c.razao_social) AS nome_contato,
                        l.email AS lead_email,
                        l.telefone AS lead_telefone,
+                       u.name AS usuario_nome,
                        (SELECT COUNT(*) FROM crm_interacoes i
                         WHERE i.related_type = 'oportunidade' AND i.related_id = o.id) AS total_interacoes
                 FROM {$this->table} o
                 LEFT JOIN crm_leads l ON l.id = o.lead_id
                 LEFT JOIN clientes  c ON c.id = o.cliente_id
-                WHERE " . implode(' AND ', $where) . "
+                LEFT JOIN users     u ON u.id = o.usuario_id
+                {$whereClause}
                 ORDER BY o.data_proximo_contato ASC, o.data_fechamento_prevista ASC, o.created_at DESC";
 
         $stmt = $this->pdo->prepare($sql);
@@ -88,20 +101,40 @@ class CrmOportunidade extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
-    /** Retorna todas as oportunidades abertas agrupadas por etapa (para o Funil Kanban) */
+    /**
+     * Retorna todas as oportunidades abertas agrupadas por etapa (para o Funil Kanban).
+     * Se $usuarioId = 0, retorna de todos os usuários (para admin/superadmin).
+     */
     public function findAbertosByUsuarioId(int $usuarioId): array
     {
-        $stmt = $this->pdo->prepare(
-            "SELECT o.*,
-                    COALESCE(l.nome_lead, c.razao_social) AS nome_contato,
-                    l.email AS lead_email
-             FROM {$this->table} o
-             LEFT JOIN crm_leads l ON l.id = o.lead_id
-             LEFT JOIN clientes  c ON c.id = o.cliente_id
-             WHERE o.usuario_id = ? AND o.status_oportunidade = 'aberta'
-             ORDER BY o.valor_estimado DESC, o.created_at DESC"
-        );
-        $stmt->execute([$usuarioId]);
+        if ($usuarioId > 0) {
+            $sql    = "SELECT o.*,
+                              COALESCE(l.nome_lead, c.razao_social) AS nome_contato,
+                              l.email AS lead_email,
+                              u.name AS usuario_nome
+                       FROM {$this->table} o
+                       LEFT JOIN crm_leads l ON l.id = o.lead_id
+                       LEFT JOIN clientes  c ON c.id = o.cliente_id
+                       LEFT JOIN users     u ON u.id = o.usuario_id
+                       WHERE o.usuario_id = ? AND o.status_oportunidade = 'aberta'
+                       ORDER BY o.valor_estimado DESC, o.created_at DESC";
+            $params = [$usuarioId];
+        } else {
+            $sql    = "SELECT o.*,
+                              COALESCE(l.nome_lead, c.razao_social) AS nome_contato,
+                              l.email AS lead_email,
+                              u.name AS usuario_nome
+                       FROM {$this->table} o
+                       LEFT JOIN crm_leads l ON l.id = o.lead_id
+                       LEFT JOIN clientes  c ON c.id = o.cliente_id
+                       LEFT JOIN users     u ON u.id = o.usuario_id
+                       WHERE o.status_oportunidade = 'aberta'
+                       ORDER BY o.valor_estimado DESC, o.created_at DESC";
+            $params = [];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
 
         // Agrupa por etapa
@@ -194,18 +227,32 @@ class CrmOportunidade extends Model
         return $stmt->execute([$etapa, $id]);
     }
 
-    /** Totais por etapa para o resumo do funil */
+    /**
+     * Totais por etapa para o resumo do funil.
+     * Se $usuarioId = 0, agrega de todos os usuários.
+     */
     public function resumoFunilByUsuarioId(int $usuarioId): array
     {
-        $stmt = $this->pdo->prepare(
-            "SELECT etapa_funil,
-                    COUNT(*) AS total,
-                    COALESCE(SUM(valor_estimado), 0) AS valor_total
-             FROM {$this->table}
-             WHERE usuario_id = ? AND status_oportunidade = 'aberta'
-             GROUP BY etapa_funil"
-        );
-        $stmt->execute([$usuarioId]);
+        if ($usuarioId > 0) {
+            $sql    = "SELECT etapa_funil,
+                              COUNT(*) AS total,
+                              COALESCE(SUM(valor_estimado), 0) AS valor_total
+                       FROM {$this->table}
+                       WHERE usuario_id = ? AND status_oportunidade = 'aberta'
+                       GROUP BY etapa_funil";
+            $params = [$usuarioId];
+        } else {
+            $sql    = "SELECT etapa_funil,
+                              COUNT(*) AS total,
+                              COALESCE(SUM(valor_estimado), 0) AS valor_total
+                       FROM {$this->table}
+                       WHERE status_oportunidade = 'aberta'
+                       GROUP BY etapa_funil";
+            $params = [];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         $rows   = $stmt->fetchAll(PDO::FETCH_OBJ);
         $result = [];
         foreach (array_keys(self::ETAPAS) as $e) {
@@ -218,5 +265,21 @@ class CrmOportunidade extends Model
             ];
         }
         return $result;
+    }
+
+    /**
+     * Retorna lista de usuários que possuem oportunidades cadastradas.
+     * Usado pelo seletor de usuário para admin/superadmin.
+     */
+    public function findUsuariosComOportunidades(): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT DISTINCT u.id, u.name
+             FROM {$this->table} o
+             JOIN users u ON u.id = o.usuario_id
+             ORDER BY u.name ASC"
+        );
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 }

@@ -29,12 +29,24 @@ class CrmLeadsController extends Controller
         return (int) ($_SESSION['user_id'] ?? 0);
     }
 
+    private function isAdmin(): bool
+    {
+        $role = $_SESSION['user_role'] ?? '';
+        return in_array(strtolower($role), ['admin', 'superadmin'], true);
+    }
+
     // ---------------------------------------------------------------
     // GET /crm/leads
     // ---------------------------------------------------------------
     public function index(): void
     {
         $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+
+        // Admin pode filtrar por qualquer usuário; 0 = todos
+        $filtroUid = $isAdmin ? (int) ($_GET['uid'] ?? 0) : $uid;
+        $uidBusca  = ($isAdmin && $filtroUid === 0) ? 0 : ($isAdmin ? $filtroUid : $uid);
+
         $filtros = [
             'status'   => $_GET['status']   ?? '',
             'segmento' => $_GET['segmento'] ?? '',
@@ -42,10 +54,15 @@ class CrmLeadsController extends Controller
             'q'        => trim($_GET['q']   ?? ''),
         ];
 
-        $leads  = $this->leadModel->findByUsuarioId($uid, $filtros);
-        $counts = $this->leadModel->countByStatusAndUsuarioId($uid);
+        $leads  = $this->leadModel->findByUsuarioId($uidBusca, $filtros);
+        $counts = $this->leadModel->countByStatusAndUsuarioId($uidBusca);
 
-        $this->logger->info('[CRM] Leads listados', ['usuario_id' => $uid, 'total' => count($leads)]);
+        // Lista de usuários com leads (para o seletor do admin)
+        $usuariosComLeads = $isAdmin
+            ? $this->leadModel->findUsuariosComLeads()
+            : [];
+
+        $this->logger->info('[CRM] Leads listados', ['usuario_id' => $uid, 'filtro_uid' => $uidBusca, 'total' => count($leads)]);
 
         View::render('crm/leads/index', [
             'title'      => 'Leads',
@@ -54,6 +71,9 @@ class CrmLeadsController extends Controller
             'leads'      => $leads,
             'counts'     => $counts,
             'filtros'    => $filtros,
+            'isAdmin'    => $isAdmin,
+            'filtroUid'  => $filtroUid,
+            'usuariosComLeads' => $usuariosComLeads,
             'statusList' => CrmLead::STATUS,
             'segmentos'  => CrmLead::SEGMENTOS,
             'origens'    => CrmLead::ORIGENS,

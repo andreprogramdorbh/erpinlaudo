@@ -26,23 +26,39 @@ class CrmFunilController extends Controller
         return (int) ($_SESSION['user_id'] ?? 0);
     }
 
+    private function isAdmin(): bool
+    {
+        $role = $_SESSION['user_role'] ?? '';
+        return in_array(strtolower($role), ['admin', 'superadmin'], true);
+    }
+
     // ---------------------------------------------------------------
     // GET /crm/funil
     // ---------------------------------------------------------------
     public function index(): void
     {
-        $uid = $this->usuarioId();
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+
+        // Admin pode filtrar por qualquer usuário; 0 = todos
+        $filtroUid = $isAdmin ? (int) ($_GET['uid'] ?? 0) : $uid;
+        $uidBusca  = ($isAdmin && $filtroUid === 0) ? 0 : ($isAdmin ? $filtroUid : $uid);
 
         // Oportunidades abertas agrupadas por etapa
-        $colunas = $this->opModel->findAbertosByUsuarioId($uid);
+        $colunas = $this->opModel->findAbertosByUsuarioId($uidBusca);
 
         // Resumo por etapa (totais e valores)
-        $resumo = $this->opModel->resumoFunilByUsuarioId($uid);
+        $resumo = $this->opModel->resumoFunilByUsuarioId($uidBusca);
 
         // Contagem de leads por status
-        $leadsCount = $this->leadModel->countByStatusAndUsuarioId($uid);
+        $leadsCount = $this->leadModel->countByStatusAndUsuarioId($uidBusca);
 
-        $this->logger->info('[CRM] Funil acessado', ['usuario_id' => $uid]);
+        // Lista de usuários com oportunidades (para o seletor do admin)
+        $usuariosComOportunidades = $isAdmin
+            ? $this->opModel->findUsuariosComOportunidades()
+            : [];
+
+        $this->logger->info('[CRM] Funil acessado', ['usuario_id' => $uid, 'filtro_uid' => $uidBusca]);
 
         View::render('crm/funil/index', [
             'title'      => 'Funil de Vendas',
@@ -52,6 +68,9 @@ class CrmFunilController extends Controller
             'resumo'     => $resumo,
             'etapas'     => CrmOportunidade::ETAPAS,
             'leadsCount' => $leadsCount,
+            'isAdmin'    => $isAdmin,
+            'filtroUid'  => $filtroUid,
+            'usuariosComOportunidades' => $usuariosComOportunidades,
         ]);
     }
 }

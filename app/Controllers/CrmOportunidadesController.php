@@ -6,11 +6,13 @@ use App\Core\Controller;
 use App\Core\View;
 use App\Core\Logger;
 use App\Core\Audit\AuditLogger;
+use App\Core\Auth;
 use App\Models\CrmOportunidade;
 use App\Models\CrmLead;
 use App\Models\CrmInteracao;
 use App\Models\CrmOportunidadeModalidade;
 use App\Models\Cliente;
+use App\Models\User;
 
 class CrmOportunidadesController extends Controller
 {
@@ -33,21 +35,43 @@ class CrmOportunidadesController extends Controller
     }
 
     // ---------------------------------------------------------------
+    // Verifica se o usuário atual é admin ou superadmin
+    // ---------------------------------------------------------------
+    private function isAdmin(): bool
+    {
+        $role = $_SESSION['user_role'] ?? '';
+        return in_array(strtolower($role), ['admin', 'superadmin'], true);
+    }
+
+    // ---------------------------------------------------------------
     // GET /crm/oportunidades
     // ---------------------------------------------------------------
     public function index(): void
     {
         $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+
+        // Admin pode filtrar por qualquer usuário; 0 = todos
+        $filtroUid = $isAdmin ? (int) ($_GET['uid'] ?? 0) : $uid;
+
         $filtros = [
             'etapa'  => $_GET['etapa']  ?? '',
             'status' => $_GET['status'] ?? 'aberta',
             'q'      => trim($_GET['q'] ?? ''),
         ];
 
-        $oportunidades = $this->opModel->findByUsuarioId($uid, $filtros);
-        $resumo        = $this->opModel->resumoFunilByUsuarioId($uid);
+        // Para admin sem filtro de usuário específico, busca todos (uid=0)
+        $uidBusca = ($isAdmin && $filtroUid === 0) ? 0 : ($isAdmin ? $filtroUid : $uid);
 
-        $this->logger->info('[CRM] Oportunidades listadas', ['usuario_id' => $uid, 'total' => count($oportunidades)]);
+        $oportunidades = $this->opModel->findByUsuarioId($uidBusca, $filtros);
+        $resumo        = $this->opModel->resumoFunilByUsuarioId($uidBusca);
+
+        // Lista de usuários com oportunidades (para o seletor do admin)
+        $usuariosComOportunidades = $isAdmin
+            ? $this->opModel->findUsuariosComOportunidades()
+            : [];
+
+        $this->logger->info('[CRM] Oportunidades listadas', ['usuario_id' => $uid, 'filtro_uid' => $uidBusca, 'total' => count($oportunidades)]);
 
         View::render('crm/oportunidades/index', [
             'title'         => 'Oportunidades',
@@ -56,6 +80,9 @@ class CrmOportunidadesController extends Controller
             'oportunidades' => $oportunidades,
             'resumo'        => $resumo,
             'filtros'       => $filtros,
+            'isAdmin'       => $isAdmin,
+            'filtroUid'     => $filtroUid,
+            'usuariosComOportunidades' => $usuariosComOportunidades,
             'etapas'        => CrmOportunidade::ETAPAS,
             'statusList'    => CrmOportunidade::STATUS,
             'modalidades'   => CrmOportunidade::MODALIDADES,

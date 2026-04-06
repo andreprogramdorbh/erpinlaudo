@@ -23,7 +23,6 @@ function proximoContatoLabel(string|null $data): string {
     $fmt    = date('d/m/Y', strtotime($data));
 
     if ($dias < 0) {
-        // Atrasado
         return "<span class=\"badge bg-danger-subtle text-danger\" title=\"Atrasado {$diff}d\"><i class=\"fas fa-exclamation-circle me-1\"></i>{$fmt}</span>";
     } elseif ($dias === 0) {
         return "<span class=\"badge bg-warning-subtle text-warning\"><i class=\"fas fa-clock me-1\"></i>Hoje</span>";
@@ -33,6 +32,10 @@ function proximoContatoLabel(string|null $data): string {
         return "<span class=\"text-muted\" style=\"font-size:.8rem\">{$fmt}</span>";
     }
 }
+
+$isAdmin   = $isAdmin ?? false;
+$filtroUid = $filtroUid ?? 0;
+$usuariosComOportunidades = $usuariosComOportunidades ?? [];
 ?>
 <style>
 .crm-kpi-bar{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem}
@@ -54,6 +57,7 @@ function proximoContatoLabel(string|null $data): string {
 .prob-bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-top:3px}
 .prob-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#f59e0b,#10b981)}
 .proximo-contato-col{min-width:120px}
+.admin-user-selector{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:.5rem;padding:.4rem .75rem;display:flex;align-items:center;gap:.5rem;font-size:.8125rem;color:#1e40af}
 </style>
 
 <div class="container-fluid">
@@ -77,9 +81,37 @@ function proximoContatoLabel(string|null $data): string {
         <i class="fas fa-chart-line text-success"></i>
         <strong>Oportunidades</strong>
         <span class="badge bg-secondary"><?php echo count($oportunidades); ?></span>
+        <?php if ($isAdmin && $filtroUid > 0): ?>
+        <?php
+          $nomeUsuarioFiltrado = '';
+          foreach ($usuariosComOportunidades as $u) {
+              if ((int)$u->id === (int)$filtroUid) { $nomeUsuarioFiltrado = $u->name; break; }
+          }
+        ?>
+        <span class="badge bg-info-subtle text-info" style="font-size:.7rem">
+          <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($nomeUsuarioFiltrado); ?>
+        </span>
+        <?php elseif ($isAdmin): ?>
+        <span class="badge bg-primary-subtle text-primary" style="font-size:.7rem">
+          <i class="fas fa-users me-1"></i>Todos os usuários
+        </span>
+        <?php endif; ?>
       </div>
       <div class="d-flex gap-2 align-items-center flex-wrap">
         <form method="GET" action="/crm/oportunidades" class="d-flex gap-2 flex-wrap align-items-center">
+          <?php if ($isAdmin && !empty($usuariosComOportunidades)): ?>
+          <div class="admin-user-selector">
+            <i class="fas fa-user-cog"></i>
+            <select name="uid" class="form-select form-select-sm border-0 bg-transparent p-0" style="width:160px;box-shadow:none" onchange="this.form.submit()" title="Filtrar por usuário">
+              <option value="0" <?php echo $filtroUid == 0 ? 'selected' : ''; ?>>Todos os usuários</option>
+              <?php foreach ($usuariosComOportunidades as $u): ?>
+              <option value="<?php echo $u->id; ?>" <?php echo (int)$filtroUid === (int)$u->id ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($u->name); ?>
+              </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <?php endif; ?>
           <input type="text" name="q" class="form-control form-control-sm" placeholder="Buscar..." value="<?php echo htmlspecialchars($filtros['q']); ?>" style="width:160px">
           <select name="etapa" class="form-select form-select-sm" style="width:140px" onchange="this.form.submit()">
             <option value="">Todas etapas</option>
@@ -94,14 +126,14 @@ function proximoContatoLabel(string|null $data): string {
             <?php endforeach; ?>
           </select>
           <button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-search"></i></button>
-          <?php if ($filtros['q'] || $filtros['etapa'] || ($filtros['status'] && $filtros['status'] !== 'aberta')): ?>
-          <a href="/crm/oportunidades" class="btn btn-sm btn-outline-secondary"><i class="fas fa-times"></i></a>
+          <?php if ($filtros['q'] || $filtros['etapa'] || ($filtros['status'] && $filtros['status'] !== 'aberta') || ($isAdmin && $filtroUid > 0)): ?>
+          <a href="/crm/oportunidades" class="btn btn-sm btn-outline-secondary" title="Limpar filtros"><i class="fas fa-times"></i></a>
           <?php endif; ?>
         </form>
         <a href="/crm/oportunidades/create" class="btn btn-sm btn-success">
           <i class="fas fa-plus me-1"></i> Nova Oportunidade
         </a>
-        <a href="/crm/funil" class="btn btn-sm btn-outline-primary">
+        <a href="/crm/funil<?php echo $isAdmin && $filtroUid > 0 ? '?uid=' . $filtroUid : ''; ?>" class="btn btn-sm btn-outline-primary">
           <i class="fas fa-columns me-1"></i> Ver Funil
         </a>
       </div>
@@ -120,6 +152,9 @@ function proximoContatoLabel(string|null $data): string {
           <tr>
             <th class="ps-3">Oportunidade</th>
             <th>Contato</th>
+            <?php if ($isAdmin && $filtroUid == 0): ?>
+            <th>Responsável</th>
+            <?php endif; ?>
             <th>Etapa</th>
             <th>Valor Est.</th>
             <th>Probabilidade</th>
@@ -154,6 +189,13 @@ function proximoContatoLabel(string|null $data): string {
               <div class="op-sub"><?php echo htmlspecialchars($op->lead_email); ?></div>
               <?php endif; ?>
             </td>
+            <?php if ($isAdmin && $filtroUid == 0): ?>
+            <td>
+              <span class="badge bg-secondary-subtle text-secondary" style="font-size:.7rem">
+                <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($op->usuario_nome ?? '—'); ?>
+              </span>
+            </td>
+            <?php endif; ?>
             <td>
               <span class="badge-etapa bg-<?php echo $corEtapa; ?>-subtle text-<?php echo $corEtapa; ?>">
                 <?php echo $etapas[$op->etapa_funil] ?? $op->etapa_funil; ?>

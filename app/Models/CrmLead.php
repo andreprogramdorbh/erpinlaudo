@@ -62,10 +62,19 @@ class CrmLead extends Model
     // Consultas
     // ------------------------------------------------------------------
 
+    /**
+     * Busca leads por usuário.
+     * Se $usuarioId = 0, retorna de todos os usuários (para admin/superadmin).
+     */
     public function findByUsuarioId(int $usuarioId, array $filtros = []): array
     {
-        $where  = ['l.usuario_id = :uid'];
-        $params = [':uid' => $usuarioId];
+        $where  = [];
+        $params = [];
+
+        if ($usuarioId > 0) {
+            $where[]        = 'l.usuario_id = :uid';
+            $params[':uid'] = $usuarioId;
+        }
 
         if (!empty($filtros['status'])) {
             $where[]           = 'l.status_lead = :status';
@@ -84,11 +93,15 @@ class CrmLead extends Model
             $params[':q'] = '%' . $filtros['q'] . '%';
         }
 
+        $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+
         $sql = "SELECT l.*,
+                       u.name AS usuario_nome,
                        (SELECT COUNT(*) FROM crm_interacoes i
                         WHERE i.related_type = 'lead' AND i.related_id = l.id) AS total_interacoes
                 FROM {$this->table} l
-                WHERE " . implode(' AND ', $where) . "
+                LEFT JOIN users u ON u.id = l.usuario_id
+                {$whereClause}
                 ORDER BY l.data_proximo_contato ASC, l.created_at DESC";
 
         $stmt = $this->pdo->prepare($sql);
@@ -176,21 +189,42 @@ class CrmLead extends Model
         return $stmt->execute([$id]);
     }
 
-    /** Conta leads por status para o dashboard */
+    /**
+     * Conta leads por status para o dashboard.
+     * Se $usuarioId = 0, conta de todos os usuários.
+     */
     public function countByStatusAndUsuarioId(int $usuarioId): array
     {
-        $stmt = $this->pdo->prepare(
-            "SELECT status_lead, COUNT(*) AS total
-             FROM {$this->table}
-             WHERE usuario_id = ?
-             GROUP BY status_lead"
-        );
-        $stmt->execute([$usuarioId]);
+        if ($usuarioId > 0) {
+            $sql    = "SELECT status_lead, COUNT(*) AS total FROM {$this->table} WHERE usuario_id = ? GROUP BY status_lead";
+            $params = [$usuarioId];
+        } else {
+            $sql    = "SELECT status_lead, COUNT(*) AS total FROM {$this->table} GROUP BY status_lead";
+            $params = [];
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
         $rows   = $stmt->fetchAll(PDO::FETCH_OBJ);
         $result = array_fill_keys(array_keys(self::STATUS), 0);
         foreach ($rows as $r) {
             $result[$r->status_lead] = (int) $r->total;
         }
         return $result;
+    }
+
+    /**
+     * Retorna lista de usuários que possuem leads cadastrados.
+     * Usado pelo seletor de usuário para admin/superadmin.
+     */
+    public function findUsuariosComLeads(): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT DISTINCT u.id, u.name
+             FROM {$this->table} l
+             JOIN users u ON u.id = l.usuario_id
+             ORDER BY u.name ASC"
+        );
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 }

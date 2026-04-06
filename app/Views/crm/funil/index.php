@@ -1,4 +1,7 @@
 <?php
+$isAdmin   = $isAdmin ?? false;
+$filtroUid = $filtroUid ?? 0;
+$usuariosComOportunidades = $usuariosComOportunidades ?? [];
 $etapaConfig = [
     'qualificacao' => ['label' => 'Qualificação', 'color' => '#64748b', 'bg' => '#f1f5f9', 'icon' => 'fa-star'],
     'proposta'     => ['label' => 'Proposta',     'color' => '#0284c7', 'bg' => '#e0f2fe', 'icon' => 'fa-file-alt'],
@@ -54,6 +57,7 @@ $etapaConfig = [
 .leads-summary{background:#fff;border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem 1.25rem;margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center}
 .leads-summary-title{font-size:.8125rem;font-weight:600;color:#64748b;margin-right:.5rem}
 .leads-badge{font-size:.75rem;padding:.3em .75em;border-radius:20px;font-weight:600}
+.admin-user-selector{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:.5rem;padding:.35rem .75rem;display:flex;align-items:center;gap:.5rem;font-size:.8125rem;color:#1e40af}
 </style>
 
 <div class="funil-page">
@@ -63,15 +67,45 @@ $etapaConfig = [
     <div class="funil-title">
       <i class="fas fa-filter" style="color:#00529B"></i>
       Funil de Vendas
+      <?php if ($isAdmin && $filtroUid > 0): ?>
+      <?php
+        $nomeUsuarioFiltrado = '';
+        foreach ($usuariosComOportunidades as $u) {
+            if ((int)$u->id === (int)$filtroUid) { $nomeUsuarioFiltrado = $u->name; break; }
+        }
+      ?>
+      <span class="badge bg-info-subtle text-info" style="font-size:.7rem;font-weight:600">
+        <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($nomeUsuarioFiltrado); ?>
+      </span>
+      <?php elseif ($isAdmin): ?>
+      <span class="badge bg-primary-subtle text-primary" style="font-size:.7rem;font-weight:600">
+        <i class="fas fa-users me-1"></i>Todos
+      </span>
+      <?php endif; ?>
     </div>
-    <div class="funil-actions">
+    <div class="funil-actions d-flex align-items-center gap-2 flex-wrap">
+      <?php if ($isAdmin && !empty($usuariosComOportunidades)): ?>
+      <form method="GET" action="/crm/funil" class="m-0">
+        <div class="admin-user-selector">
+          <i class="fas fa-user-cog"></i>
+          <select name="uid" class="form-select form-select-sm border-0 bg-transparent p-0" style="width:160px;box-shadow:none" onchange="this.form.submit()" title="Filtrar por usuário">
+            <option value="0" <?php echo $filtroUid == 0 ? 'selected' : ''; ?>>Todos os usuários</option>
+            <?php foreach ($usuariosComOportunidades as $u): ?>
+            <option value="<?php echo $u->id; ?>" <?php echo (int)$filtroUid === (int)$u->id ? 'selected' : ''; ?>>
+              <?php echo htmlspecialchars($u->name); ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </form>
+      <?php endif; ?>
       <a href="/crm/leads/create" class="btn btn-sm btn-outline-primary">
         <i class="fas fa-user-plus me-1"></i> Novo Lead
       </a>
       <a href="/crm/oportunidades/create" class="btn btn-sm btn-success">
         <i class="fas fa-plus me-1"></i> Nova Oportunidade
       </a>
-      <a href="/crm/oportunidades" class="btn btn-sm btn-outline-secondary">
+      <a href="/crm/oportunidades<?php echo $isAdmin && $filtroUid > 0 ? '?uid=' . $filtroUid : ''; ?>" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-list me-1"></i> Lista
       </a>
     </div>
@@ -147,6 +181,13 @@ $etapaConfig = [
           </div>
 
           <div class="kanban-card-title"><?php echo htmlspecialchars($op->titulo_oportunidade); ?></div>
+
+          <?php if ($isAdmin && $filtroUid == 0 && !empty($op->usuario_nome)): ?>
+          <div class="kanban-card-contact" style="color:#6366f1">
+            <i class="fas fa-user"></i>
+            <?php echo htmlspecialchars($op->usuario_nome); ?>
+          </div>
+          <?php endif; ?>
 
           <?php if ($op->nome_contato): ?>
           <div class="kanban-card-contact">
