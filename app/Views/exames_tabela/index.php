@@ -13,9 +13,8 @@ if ($success === 'created') {
 }
 
 $erros = [
-    'missing_fields'     => 'Preencha nome do exame, modalidade e valor padrão.',
+    'missing_fields'     => 'Preencha nome do exame e modalidade.',
     'invalid_modalidade' => 'Selecione uma modalidade válida.',
-    'invalid_valor'      => 'Informe um valor padrão válido.',
     'db_failure'         => 'Não foi possível salvar o exame.',
     'fatal'              => 'Erro inesperado. Tente novamente.',
 ];
@@ -34,31 +33,43 @@ if (isset($erros[$error])) {
         <form method="POST" action="/exames-tabela/store" class="row g-3 align-items-end">
             <?php echo View::csrfField(); ?>
 
-            <div class="col-md-5">
+            <div class="col-md-4">
                 <label for="nome_exame" class="form-label fw-semibold small text-muted">Nome do Exame</label>
                 <input type="text" class="form-control" id="nome_exame" name="nome_exame"
                        placeholder="Ex: Tomografia de Crânio" required>
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="modalidade" class="form-label fw-semibold small text-muted">Modalidade</label>
                 <select class="form-select" id="modalidade" name="modalidade" required>
                     <option value="">Selecione</option>
-                    <option value="TC">TC — Tomografia Computadorizada</option>
-                    <option value="RM">RM — Ressonância Magnética</option>
+                    <option value="TC">TC — Tomografia</option>
+                    <option value="RM">RM — Ressonância</option>
                     <option value="RX">RX — Raio-X</option>
-                    <option value="US">US — Ultrassonografia</option>
+                    <option value="US">US — Ultrassom</option>
                     <option value="MG">MG — Mamografia</option>
                     <option value="PET">PET — PET-CT</option>
-                    <option value="NM">NM — Medicina Nuclear</option>
+                    <option value="NM">NM — Med. Nuclear</option>
                     <option value="OUT">OUT — Outros</option>
                 </select>
             </div>
 
             <div class="col-md-2">
-                <label for="valor_padrao" class="form-label fw-semibold small text-muted">Valor Padrão (R$)</label>
-                <input type="text" class="form-control" id="valor_padrao" name="valor_padrao"
-                       placeholder="0,00" required>
+                <label for="valor_rotina" class="form-label fw-semibold small text-muted">
+                    <i class="fas fa-circle text-success me-1" style="font-size:8px"></i>Valor Rotina (R$)
+                </label>
+                <input type="text" class="form-control" id="valor_rotina" name="valor_rotina"
+                       placeholder="0,00">
+                <div class="form-text">Valor repassado ao médico — rotina</div>
+            </div>
+
+            <div class="col-md-2">
+                <label for="valor_urgencia" class="form-label fw-semibold small text-muted">
+                    <i class="fas fa-circle text-warning me-1" style="font-size:8px"></i>Valor Urgência (R$)
+                </label>
+                <input type="text" class="form-control" id="valor_urgencia" name="valor_urgencia"
+                       placeholder="0,00">
+                <div class="form-text">Valor repassado ao médico — urgência</div>
             </div>
 
             <div class="col-md-2 d-grid">
@@ -118,10 +129,22 @@ if (isset($erros[$error])) {
                     <tr>
                         <th class="ps-4">Nome do Exame</th>
                         <th>Tipo de Exame</th>
-                        <th class="text-end">Valor Padrão</th>
-                        <th class="text-end">Valor Rotina</th>
-                        <th class="text-end">Valor Urgência</th>
-                        <th class="text-end">Preço de Venda</th>
+                        <th class="text-end">
+                            <i class="fas fa-circle text-success me-1" style="font-size:8px"></i>
+                            Rotina (Médico)
+                        </th>
+                        <th class="text-end">
+                            <i class="fas fa-circle text-warning me-1" style="font-size:8px"></i>
+                            Urgência (Médico)
+                        </th>
+                        <th class="text-end">
+                            <i class="fas fa-circle text-primary me-1" style="font-size:8px"></i>
+                            Venda Rotina
+                        </th>
+                        <th class="text-end">
+                            <i class="fas fa-circle text-info me-1" style="font-size:8px"></i>
+                            Venda Urgência
+                        </th>
                         <th class="text-center pe-4">Ações</th>
                     </tr>
                 </thead>
@@ -150,34 +173,48 @@ if (isset($erros[$error])) {
                                 <?php endif; ?>
                             </div>
                         </td>
+                        <!-- Rotina Médico (valor direto) -->
                         <td class="text-end">
-                            <span class="fw-semibold">R$ <?php echo number_format((float)($exame->valor_padrao ?? 0), 2, ',', '.'); ?></span>
-                        </td>
-                        <td class="text-end">
-                            <?php if (!empty($exame->perc_rotina)): ?>
+                            <?php if ((float)($exame->valor_rotina ?? 0) > 0): ?>
                                 <span class="text-success fw-semibold">
                                     R$ <?php echo number_format((float)($exame->valor_rotina ?? 0), 2, ',', '.'); ?>
                                 </span>
-                                <br><small class="text-muted">+<?php echo number_format((float)$exame->perc_rotina, 1); ?>%</small>
                             <?php else: ?>
                                 <span class="text-muted">—</span>
                             <?php endif; ?>
                         </td>
+                        <!-- Urgência Médico (valor direto) -->
                         <td class="text-end">
-                            <?php if (!empty($exame->perc_urgencia)): ?>
+                            <?php if ((float)($exame->valor_urgencia ?? 0) > 0): ?>
                                 <span class="text-warning fw-semibold">
                                     R$ <?php echo number_format((float)($exame->valor_urgencia ?? 0), 2, ',', '.'); ?>
                                 </span>
-                                <br><small class="text-muted">+<?php echo number_format((float)$exame->perc_urgencia, 1); ?>%</small>
                             <?php else: ?>
                                 <span class="text-muted">—</span>
                             <?php endif; ?>
                         </td>
+                        <!-- Venda Rotina (cliente) -->
                         <td class="text-end">
-                            <?php if (!empty($exame->preco_venda)): ?>
-                                <span class="text-primary fw-bold">
-                                    R$ <?php echo number_format((float)($exame->preco_venda ?? 0), 2, ',', '.'); ?>
+                            <?php if ((float)($exame->valor_venda_rotina ?? 0) > 0): ?>
+                                <span class="text-primary fw-semibold">
+                                    R$ <?php echo number_format((float)($exame->valor_venda_rotina ?? 0), 2, ',', '.'); ?>
                                 </span>
+                                <?php if ((float)($exame->perc_venda_rotina ?? 0) > 0): ?>
+                                <br><small class="text-muted">+<?php echo number_format((float)$exame->perc_venda_rotina, 1); ?>%</small>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <!-- Venda Urgência (cliente) -->
+                        <td class="text-end">
+                            <?php if ((float)($exame->valor_venda_urgencia ?? 0) > 0): ?>
+                                <span class="text-info fw-semibold">
+                                    R$ <?php echo number_format((float)($exame->valor_venda_urgencia ?? 0), 2, ',', '.'); ?>
+                                </span>
+                                <?php if ((float)($exame->perc_venda_urgencia ?? 0) > 0): ?>
+                                <br><small class="text-muted">+<?php echo number_format((float)$exame->perc_venda_urgencia, 1); ?>%</small>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span class="text-muted">—</span>
                             <?php endif; ?>
@@ -191,14 +228,16 @@ if (isset($erros[$error])) {
                                     data-id="<?php echo $exame->id; ?>"
                                     data-nome="<?php echo htmlspecialchars($exame->nome_exame, ENT_QUOTES); ?>"
                                     data-modalidade="<?php echo htmlspecialchars($exame->modalidade, ENT_QUOTES); ?>"
-                                    data-valor="<?php echo number_format((float)$exame->valor_padrao, 2, ',', '.'); ?>">
+                                    data-rotina="<?php echo number_format((float)($exame->valor_rotina ?? 0), 2, ',', '.'); ?>"
+                                    data-urgencia="<?php echo number_format((float)($exame->valor_urgencia ?? 0), 2, ',', '.'); ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 <!-- Configuração -->
                                 <button type="button"
                                     class="btn btn-outline-secondary btn-config-exame"
                                     title="Configuração"
-                                    data-id="<?php echo $exame->id; ?>">
+                                    data-id="<?php echo $exame->id; ?>"
+                                    data-nome="<?php echo htmlspecialchars($exame->nome_exame, ENT_QUOTES); ?>">
                                     <i class="fas fa-cog"></i>
                                 </button>
                                 <!-- Excluir -->
@@ -257,9 +296,21 @@ if (isset($erros[$error])) {
                         <option value="OUT">OUT — Outros</option>
                     </select>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold small text-muted">Valor Padrão (R$)</label>
-                    <input type="text" class="form-control" id="edit_valor_padrao" placeholder="0,00">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small text-muted">
+                            <i class="fas fa-circle text-success me-1" style="font-size:8px"></i>Valor Rotina (R$)
+                        </label>
+                        <input type="text" class="form-control" id="edit_valor_rotina" placeholder="0,00">
+                        <div class="form-text">Valor repassado ao médico</div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small text-muted">
+                            <i class="fas fa-circle text-warning me-1" style="font-size:8px"></i>Valor Urgência (R$)
+                        </label>
+                        <input type="text" class="form-control" id="edit_valor_urgencia" placeholder="0,00">
+                        <div class="form-text">Valor repassado ao médico</div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer border-top">
@@ -293,13 +344,13 @@ if (isset($erros[$error])) {
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active fw-semibold" id="tab-precos-btn"
                                 data-bs-toggle="tab" data-bs-target="#tab-precos" type="button" role="tab">
-                            <i class="fas fa-tags me-1"></i> Preços
+                            <i class="fas fa-tags me-1"></i> Preços (Médico)
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link fw-semibold" id="tab-secao-btn"
                                 data-bs-toggle="tab" data-bs-target="#tab-secao" type="button" role="tab">
-                            <i class="fas fa-calculator me-1"></i> Seção
+                            <i class="fas fa-calculator me-1"></i> Seção (Venda)
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -312,48 +363,55 @@ if (isset($erros[$error])) {
 
                 <div class="tab-content p-4" id="configTabsContent">
 
-                    <!-- ==================== ABA PREÇOS ==================== -->
+                    <!-- ==================== ABA PREÇOS (MÉDICO) ==================== -->
                     <div class="tab-pane fade show active" id="tab-precos" role="tabpanel">
+                        <div class="alert alert-info border-0 py-2 mb-3" style="font-size:.85rem">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Os valores de <strong>Rotina</strong> e <strong>Urgência</strong> são os valores <strong>diretos</strong> repassados ao médico.
+                            Sem cálculo percentual — o sistema usará estes valores exatamente como cadastrados na apuração de prestador.
+                        </div>
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold small text-muted">Nível</label>
                                 <input type="number" class="form-control" id="preco_nivel" min="1" max="10"
                                        placeholder="Ex: 1, 2, 3...">
-                                <div class="form-text">Nível do exame para regras de laudo.</div>
+                                <div class="form-text">Nível do exame para regras de contrato.</div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-semibold small text-muted">% Rotina</label>
+                                <label class="form-label fw-semibold small text-muted">
+                                    <i class="fas fa-circle text-success me-1" style="font-size:8px"></i>Valor Rotina (R$)
+                                </label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="preco_perc_rotina" placeholder="0,00">
-                                    <span class="input-group-text">%</span>
+                                    <span class="input-group-text">R$</span>
+                                    <input type="text" class="form-control" id="preco_valor_rotina" placeholder="0,00">
                                 </div>
+                                <div class="form-text">Valor direto repassado ao médico — rotina</div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-semibold small text-muted">% Urgência</label>
+                                <label class="form-label fw-semibold small text-muted">
+                                    <i class="fas fa-circle text-warning me-1" style="font-size:8px"></i>Valor Urgência (R$)
+                                </label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="preco_perc_urgencia" placeholder="0,00">
-                                    <span class="input-group-text">%</span>
+                                    <span class="input-group-text">R$</span>
+                                    <input type="text" class="form-control" id="preco_valor_urgencia" placeholder="0,00">
                                 </div>
+                                <div class="form-text">Valor direto repassado ao médico — urgência</div>
                             </div>
                         </div>
 
-                        <!-- Preview de cálculo em tempo real -->
+                        <!-- Preview -->
                         <div class="card bg-light border-0 mt-4">
                             <div class="card-body py-3">
                                 <div class="row text-center">
-                                    <div class="col-4 border-end">
-                                        <div class="small text-muted mb-1">Valor Padrão</div>
-                                        <div class="fw-bold fs-5" id="preview_valor_padrao">R$ 0,00</div>
-                                    </div>
-                                    <div class="col-4 border-end">
+                                    <div class="col-6 border-end">
                                         <div class="small text-muted mb-1">
-                                            <i class="fas fa-circle text-success me-1" style="font-size:8px"></i>Valor Rotina
+                                            <i class="fas fa-circle text-success me-1" style="font-size:8px"></i>Valor Rotina (Médico)
                                         </div>
                                         <div class="fw-bold fs-5 text-success" id="preview_valor_rotina">R$ 0,00</div>
                                     </div>
-                                    <div class="col-4">
+                                    <div class="col-6">
                                         <div class="small text-muted mb-1">
-                                            <i class="fas fa-circle text-warning me-1" style="font-size:8px"></i>Valor Urgência
+                                            <i class="fas fa-circle text-warning me-1" style="font-size:8px"></i>Valor Urgência (Médico)
                                         </div>
                                         <div class="fw-bold fs-5 text-warning" id="preview_valor_urgencia">R$ 0,00</div>
                                     </div>
@@ -368,8 +426,13 @@ if (isset($erros[$error])) {
                         </div>
                     </div>
 
-                    <!-- ==================== ABA SEÇÃO ==================== -->
+                    <!-- ==================== ABA SEÇÃO (VENDA/CLIENTE) ==================== -->
                     <div class="tab-pane fade" id="tab-secao" role="tabpanel">
+                        <div class="alert alert-success border-0 py-2 mb-3" style="font-size:.85rem">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Os valores desta seção definem o <strong>preço de venda ao cliente</strong>.
+                            Configure encargos, custos e margens de lucro independentes para <strong>Rotina</strong> e <strong>Urgência</strong>.
+                        </div>
 
                         <!-- Encargos e Impostos -->
                         <h6 class="fw-bold text-uppercase text-muted small mb-3 border-bottom pb-2">
@@ -382,7 +445,7 @@ if (isset($erros[$error])) {
                                     <input type="text" class="form-control secao-input" id="sec_icms" placeholder="0,00">
                                     <span class="input-group-text">%</span>
                                 </div>
-                                <div class="form-text">Serv. Teleradiologia: isento em alguns estados</div>
+                                <div class="form-text">Teleradiologia: isento em alguns estados</div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small fw-semibold text-muted">IPI (%)</label>
@@ -437,11 +500,39 @@ if (isset($erros[$error])) {
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small fw-semibold text-muted">Margem de Lucro (%)</label>
+                                <label class="form-label small fw-semibold text-muted">Margem de Lucro Base (%)</label>
                                 <div class="input-group input-group-sm">
                                     <input type="text" class="form-control secao-input" id="sec_margem" placeholder="0,00">
                                     <span class="input-group-text">%</span>
                                 </div>
+                                <div class="form-text">Aplicada sobre o preço de custo</div>
+                            </div>
+                        </div>
+
+                        <!-- Margens de Venda Independentes por Tipo -->
+                        <h6 class="fw-bold text-uppercase text-muted small mb-3 border-bottom pb-2">
+                            <i class="fas fa-percentage me-1"></i> Margem de Lucro por Tipo de Exame
+                        </h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold text-muted">
+                                    <i class="fas fa-circle text-primary me-1" style="font-size:8px"></i>% Margem Adicional — Rotina (Venda)
+                                </label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control secao-input" id="sec_perc_venda_rotina" placeholder="0,00">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="form-text">Aplicada sobre o preço de venda base para rotina</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold text-muted">
+                                    <i class="fas fa-circle text-info me-1" style="font-size:8px"></i>% Margem Adicional — Urgência (Venda)
+                                </label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control secao-input" id="sec_perc_venda_urgencia" placeholder="0,00">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="form-text">Aplicada sobre o preço de venda base para urgência</div>
                             </div>
                         </div>
 
@@ -450,8 +541,8 @@ if (isset($erros[$error])) {
                             <div class="card-body py-3">
                                 <div class="row text-center g-2">
                                     <div class="col-md-3 border-end">
-                                        <div class="small text-muted mb-1">Valor Padrão</div>
-                                        <div class="fw-bold" id="sec_preview_padrao">R$ 0,00</div>
+                                        <div class="small text-muted mb-1">Base Médico (Rotina)</div>
+                                        <div class="fw-bold text-success" id="sec_preview_base_medico">R$ 0,00</div>
                                     </div>
                                     <div class="col-md-3 border-end">
                                         <div class="small text-muted mb-1">Preço de Custo</div>
@@ -459,14 +550,13 @@ if (isset($erros[$error])) {
                                         <div class="small text-muted" id="sec_preview_custo_label"></div>
                                     </div>
                                     <div class="col-md-3 border-end">
-                                        <div class="small text-muted mb-1">+ Margem de Lucro</div>
+                                        <div class="small text-muted mb-1">Preço de Venda Base</div>
                                         <div class="fw-bold text-primary fs-5" id="sec_preview_venda">R$ 0,00</div>
-                                        <div class="small text-muted">Preço de Venda</div>
                                     </div>
                                     <div class="col-md-3">
-                                        <div class="small text-muted mb-1">Rotina / Urgência</div>
-                                        <div class="fw-semibold text-success small" id="sec_preview_rotina">R$ 0,00</div>
-                                        <div class="fw-semibold text-warning small" id="sec_preview_urgencia">R$ 0,00</div>
+                                        <div class="small text-muted mb-1">Venda Final</div>
+                                        <div class="fw-semibold text-primary small" id="sec_preview_venda_rotina">Rotina: R$ 0,00</div>
+                                        <div class="fw-semibold text-info small" id="sec_preview_venda_urgencia">Urgência: R$ 0,00</div>
                                     </div>
                                 </div>
                             </div>

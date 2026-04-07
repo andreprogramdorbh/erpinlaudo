@@ -67,10 +67,11 @@
     // -------------------------------------------------------
     document.querySelectorAll('.btn-editar-exame').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            document.getElementById('edit_exame_id').value     = this.dataset.id;
-            document.getElementById('edit_nome_exame').value   = this.dataset.nome;
-            document.getElementById('edit_modalidade').value   = this.dataset.modalidade;
-            document.getElementById('edit_valor_padrao').value = this.dataset.valor;
+            document.getElementById('edit_exame_id').value       = this.dataset.id;
+            document.getElementById('edit_nome_exame').value     = this.dataset.nome;
+            document.getElementById('edit_modalidade').value     = this.dataset.modalidade;
+            document.getElementById('edit_valor_rotina').value   = this.dataset.rotina;
+            document.getElementById('edit_valor_urgencia').value = this.dataset.urgencia;
             new bootstrap.Modal(document.getElementById('modalEditarExame')).show();
         });
     });
@@ -78,9 +79,10 @@
     document.getElementById('btnSalvarEdicao').addEventListener('click', function () {
         const id = document.getElementById('edit_exame_id').value;
         const data = {
-            nome_exame:   document.getElementById('edit_nome_exame').value,
-            modalidade:   document.getElementById('edit_modalidade').value,
-            valor_padrao: document.getElementById('edit_valor_padrao').value,
+            nome_exame:     document.getElementById('edit_nome_exame').value,
+            modalidade:     document.getElementById('edit_modalidade').value,
+            valor_rotina:   document.getElementById('edit_valor_rotina').value,
+            valor_urgencia: document.getElementById('edit_valor_urgencia').value,
         };
         postJSON('/exames-tabela/' + id + '/update', data, function (res) {
             if (res.success) {
@@ -116,9 +118,8 @@
     // -------------------------------------------------------
     // Modal Configuração
     // -------------------------------------------------------
-    var configValorPadrao = 0;
-    var configPercRotina  = 0;
-    var configPercUrgencia = 0;
+    var configValorRotina   = 0;
+    var configValorUrgencia = 0;
 
     document.querySelectorAll('.btn-config-exame').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -136,25 +137,26 @@
                 const e = res.exame;
                 document.getElementById('configExameNome').textContent = '— ' + e.nome_exame;
 
-                configValorPadrao  = parseFloat(e.valor_padrao || 0);
-                configPercRotina   = parseFloat(e.perc_rotina || 0);
-                configPercUrgencia = parseFloat(e.perc_urgencia || 0);
+                configValorRotina   = parseFloat(e.valor_rotina   || 0);
+                configValorUrgencia = parseFloat(e.valor_urgencia || 0);
 
-                // Aba Preços
-                document.getElementById('preco_nivel').value         = e.nivel || '';
-                document.getElementById('preco_perc_rotina').value   = formatBR(e.perc_rotina);
-                document.getElementById('preco_perc_urgencia').value = formatBR(e.perc_urgencia);
+                // Aba Preços (Médico) — valores DIRETOS
+                document.getElementById('preco_nivel').value          = e.nivel || '';
+                document.getElementById('preco_valor_rotina').value   = formatBR(e.valor_rotina);
+                document.getElementById('preco_valor_urgencia').value = formatBR(e.valor_urgencia);
                 atualizarPreviewPrecos();
 
-                // Aba Seção
-                document.getElementById('sec_icms').value       = formatBR(e.imposto_icms);
-                document.getElementById('sec_ipi').value        = formatBR(e.imposto_ipi);
-                document.getElementById('sec_pis_cofins').value = formatBR(e.imposto_pis_cofins);
-                document.getElementById('sec_simples').value    = formatBR(e.imposto_simples);
-                document.getElementById('sec_comissao').value   = formatBR(e.custo_comissao);
-                document.getElementById('sec_mo_direta').value  = formatBR(e.custo_mao_obra_direta);
-                document.getElementById('sec_mo_indireta').value= formatBR(e.custo_mao_obra_indireta);
-                document.getElementById('sec_margem').value     = formatBR(e.margem_lucro);
+                // Aba Seção (Venda)
+                document.getElementById('sec_icms').value                = formatBR(e.imposto_icms);
+                document.getElementById('sec_ipi').value                 = formatBR(e.imposto_ipi);
+                document.getElementById('sec_pis_cofins').value          = formatBR(e.imposto_pis_cofins);
+                document.getElementById('sec_simples').value             = formatBR(e.imposto_simples);
+                document.getElementById('sec_comissao').value            = formatBR(e.custo_comissao);
+                document.getElementById('sec_mo_direta').value           = formatBR(e.custo_mao_obra_direta);
+                document.getElementById('sec_mo_indireta').value         = formatBR(e.custo_mao_obra_indireta);
+                document.getElementById('sec_margem').value              = formatBR(e.margem_lucro);
+                document.getElementById('sec_perc_venda_rotina').value   = formatBR(e.perc_venda_rotina);
+                document.getElementById('sec_perc_venda_urgencia').value = formatBR(e.perc_venda_urgencia);
                 atualizarPreviewSecao();
 
                 // Aba TAGs DICOM
@@ -167,26 +169,26 @@
     });
 
     // -------------------------------------------------------
-    // Preview em tempo real — Aba Preços
+    // Preview em tempo real — Aba Preços (Médico) — valores DIRETOS
     // -------------------------------------------------------
     function atualizarPreviewPrecos() {
-        const percR = parseBR(document.getElementById('preco_perc_rotina').value);
-        const percU = parseBR(document.getElementById('preco_perc_urgencia').value);
-        const vR    = configValorPadrao + (configValorPadrao * percR / 100);
-        const vU    = configValorPadrao + (configValorPadrao * percU / 100);
-
-        document.getElementById('preview_valor_padrao').textContent  = 'R$ ' + formatBR(configValorPadrao);
-        document.getElementById('preview_valor_rotina').textContent  = 'R$ ' + formatBR(vR);
+        const vR = parseBR(document.getElementById('preco_valor_rotina').value);
+        const vU = parseBR(document.getElementById('preco_valor_urgencia').value);
+        document.getElementById('preview_valor_rotina').textContent   = 'R$ ' + formatBR(vR);
         document.getElementById('preview_valor_urgencia').textContent = 'R$ ' + formatBR(vU);
+        configValorRotina   = vR;
+        configValorUrgencia = vU;
+        atualizarPreviewSecao();
     }
 
-    ['preco_perc_rotina', 'preco_perc_urgencia'].forEach(function (id) {
+    ['preco_valor_rotina', 'preco_valor_urgencia'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', atualizarPreviewPrecos);
     });
 
     // -------------------------------------------------------
-    // Preview em tempo real — Aba Seção
+    // Preview em tempo real — Aba Seção (Venda/Cliente)
+    // Base = valor_rotina médico + encargos + margem geral + margens independentes
     // -------------------------------------------------------
     function atualizarPreviewSecao() {
         const icms       = parseBR(document.getElementById('sec_icms').value);
@@ -197,25 +199,27 @@
         const moDireta   = parseBR(document.getElementById('sec_mo_direta').value);
         const moIndireta = parseBR(document.getElementById('sec_mo_indireta').value);
         const margem     = parseBR(document.getElementById('sec_margem').value);
+        const percVendaR = parseBR(document.getElementById('sec_perc_venda_rotina').value);
+        const percVendaU = parseBR(document.getElementById('sec_perc_venda_urgencia').value);
 
-        const totalPerc = icms + ipi + pisCofins + simples + comissao + moDireta + moIndireta;
-        const precoCusto = configValorPadrao + (configValorPadrao * totalPerc / 100);
+        const valorBase  = configValorRotina;
+        const totalPerc  = icms + ipi + pisCofins + simples + comissao + moDireta + moIndireta;
+        const precoCusto = valorBase + (valorBase * totalPerc / 100);
         const precoVenda = precoCusto + (precoCusto * margem / 100);
+        const vendaR     = precoVenda + (precoVenda * percVendaR / 100);
+        const vendaU     = precoVenda + (precoVenda * percVendaU / 100);
 
-        const percR = parseBR(document.getElementById('preco_perc_rotina').value) || configPercRotina;
-        const percU = parseBR(document.getElementById('preco_perc_urgencia').value) || configPercUrgencia;
-        const vR = precoVenda + (precoVenda * percR / 100);
-        const vU = precoVenda + (precoVenda * percU / 100);
-
-        document.getElementById('sec_preview_padrao').textContent   = 'R$ ' + formatBR(configValorPadrao);
-        document.getElementById('sec_preview_custo').textContent    = 'R$ ' + formatBR(precoCusto);
-        document.getElementById('sec_preview_custo_label').textContent = '(encargos: ' + formatBR(totalPerc) + '%)';
-        document.getElementById('sec_preview_venda').textContent    = 'R$ ' + formatBR(precoVenda);
-        document.getElementById('sec_preview_rotina').textContent   = 'Rotina: R$ ' + formatBR(vR);
-        document.getElementById('sec_preview_urgencia').textContent = 'Urgência: R$ ' + formatBR(vU);
+        document.getElementById('sec_preview_base_medico').textContent    = 'R$ ' + formatBR(valorBase);
+        document.getElementById('sec_preview_custo').textContent          = 'R$ ' + formatBR(precoCusto);
+        document.getElementById('sec_preview_custo_label').textContent    = '(encargos: ' + formatBR(totalPerc) + '%)';
+        document.getElementById('sec_preview_venda').textContent          = 'R$ ' + formatBR(precoVenda);
+        document.getElementById('sec_preview_venda_rotina').textContent   = 'Rotina: R$ ' + formatBR(vendaR);
+        document.getElementById('sec_preview_venda_urgencia').textContent = 'Urgência: R$ ' + formatBR(vendaU);
     }
 
-    ['sec_icms','sec_ipi','sec_pis_cofins','sec_simples','sec_comissao','sec_mo_direta','sec_mo_indireta','sec_margem'].forEach(function (id) {
+    ['sec_icms','sec_ipi','sec_pis_cofins','sec_simples','sec_comissao',
+     'sec_mo_direta','sec_mo_indireta','sec_margem',
+     'sec_perc_venda_rotina','sec_perc_venda_urgencia'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', atualizarPreviewSecao);
     });
@@ -227,13 +231,13 @@
         const id = document.getElementById('config_exame_id').value;
         postJSON('/exames-tabela/' + id + '/save-precos', {
             nivel:          document.getElementById('preco_nivel').value,
-            perc_rotina:    document.getElementById('preco_perc_rotina').value,
-            perc_urgencia:  document.getElementById('preco_perc_urgencia').value,
+            valor_rotina:   document.getElementById('preco_valor_rotina').value,
+            valor_urgencia: document.getElementById('preco_valor_urgencia').value,
         }, function (res) {
             if (res.success) {
                 showToast('Preços salvos com sucesso!');
-                configPercRotina   = parseBR(document.getElementById('preco_perc_rotina').value);
-                configPercUrgencia = parseBR(document.getElementById('preco_perc_urgencia').value);
+                configValorRotina   = parseBR(document.getElementById('preco_valor_rotina').value);
+                configValorUrgencia = parseBR(document.getElementById('preco_valor_urgencia').value);
             } else {
                 showToast(res.message || 'Erro ao salvar preços.', 'danger');
             }
@@ -254,6 +258,8 @@
             custo_mao_obra_direta:   document.getElementById('sec_mo_direta').value,
             custo_mao_obra_indireta: document.getElementById('sec_mo_indireta').value,
             margem_lucro:            document.getElementById('sec_margem').value,
+            perc_venda_rotina:       document.getElementById('sec_perc_venda_rotina').value,
+            perc_venda_urgencia:     document.getElementById('sec_perc_venda_urgencia').value,
         }, function (res) {
             if (res.success) {
                 showToast('Seção salva com sucesso!');

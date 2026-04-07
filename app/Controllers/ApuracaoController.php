@@ -257,29 +257,30 @@ class ApuracaoController extends Controller
                 if ($exameMatch) {
                     $exId = (int) $exameMatch->id;
 
-                    // Valor de venda (sempre da tabela: valor_rotina/valor_urgencia)
+                    // -------------------------------------------------------
+                    // NOVA LÓGICA DE PREÇOS:
+                    // - valor_rotina / valor_urgencia = valores DIRETOS do médico (prestador)
+                    // - valor_venda_rotina / valor_venda_urgencia = valores de venda (cliente)
+                    // -------------------------------------------------------
+
+                    // Valor de venda (cliente): usa valor_venda_rotina/urgencia da tabela
                     $valorCalcVenda = $isUrgencia
-                        ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao ?? 0)
-                        : (float) ($exameMatch->valor_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao ?? 0);
+                        ? (float) ($exameMatch->valor_venda_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_urgencia ?: 0)
+                        : (float) ($exameMatch->valor_venda_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_rotina  ?: 0);
 
                     if ($tipoApuracao === 'cliente') {
+                        // Apuração cliente: usa valor de venda
                         $valorCalc = $valorCalcVenda;
                     } elseif (!empty($valoresMedico[$exId])) {
+                        // Prestador com override do médico
                         $vm        = $valoresMedico[$exId];
                         $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
                         $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
                     } else {
-                        // Prestador: preco_custo com percentuais de prioridade
-                        $precoCusto   = (float) ($exameMatch->preco_custo ?? 0);
-                        $percRotina   = (float) ($exameMatch->perc_rotina ?? 0);
-                        $percUrgencia = (float) ($exameMatch->perc_urgencia ?? 0);
-                        if ($precoCusto > 0) {
-                            $valorCalc = $isUrgencia
-                                ? $precoCusto * (1 + $percUrgencia / 100)
-                                : $precoCusto * (1 + $percRotina / 100);
-                        } else {
-                            $valorCalc = $valorCalcVenda;
-                        }
+                        // Prestador: usa valor_rotina/urgencia DIRETOS da tabela de exames
+                        $valorCalc = $isUrgencia
+                            ? (float) ($exameMatch->valor_urgencia ?: 0)
+                            : (float) ($exameMatch->valor_rotina  ?: 0);
                     }
 
                     $statusItem = 'ok';

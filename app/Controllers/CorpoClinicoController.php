@@ -43,12 +43,13 @@ class CorpoClinicoController extends Controller
         try {
             $usuarioId = Auth::user()->id;
             $filtros = [
-                'pesquisa' => trim((string) ($_GET['q'] ?? '')),
+                'pesquisa'   => trim((string) ($_GET['q'] ?? '')),
                 'modalidade' => trim((string) ($_GET['modalidade'] ?? '')),
             ];
 
             // Buscar exames com TAGs DICOM incluídas
             $exames = $this->tabelaExameModel->findAllWithTagsByUsuarioId($usuarioId);
+
             // Aplicar filtros manualmente
             if (!empty($filtros['modalidade'])) {
                 $exames = array_values(array_filter($exames, fn($e) => $e->modalidade === $filtros['modalidade']));
@@ -80,16 +81,17 @@ class CorpoClinicoController extends Controller
     }
 
     // -------------------------------------------------------
-    // Criar novo exame
+    // Criar novo exame — valores diretos de rotina e urgência
     // -------------------------------------------------------
     public function storeExameTabela(): void
     {
         try {
             $usuarioId = Auth::user()->id;
 
-            $nomeExame = trim(strip_tags((string) ($_POST['nome_exame'] ?? '')));
-            $modalidade = trim((string) ($_POST['modalidade'] ?? ''));
-            $valorPadrao = $this->normalizarValor((string) ($_POST['valor_padrao'] ?? '0'));
+            $nomeExame     = trim(strip_tags((string) ($_POST['nome_exame'] ?? '')));
+            $modalidade    = trim((string) ($_POST['modalidade'] ?? ''));
+            $valorRotina   = $this->normalizarValor((string) ($_POST['valor_rotina']   ?? '0'));
+            $valorUrgencia = $this->normalizarValor((string) ($_POST['valor_urgencia'] ?? '0'));
 
             if ($nomeExame === '') {
                 header('Location: ' . self::EXAMES_ROUTE . '?error=missing_fields');
@@ -101,21 +103,17 @@ class CorpoClinicoController extends Controller
                 exit();
             }
 
-            if ($valorPadrao < 0) {
-                header('Location: ' . self::EXAMES_ROUTE . '?error=invalid_valor');
-                exit();
-            }
-
             $id = $this->tabelaExameModel->create([
-                'usuario_id' => $usuarioId,
-                'nome_exame' => $nomeExame,
-                'modalidade' => $modalidade,
-                'valor_padrao' => $valorPadrao,
+                'usuario_id'     => $usuarioId,
+                'nome_exame'     => $nomeExame,
+                'modalidade'     => $modalidade,
+                'valor_rotina'   => $valorRotina,
+                'valor_urgencia' => $valorUrgencia,
             ]);
 
             if ($id) {
                 AuditLogger::log('create_tabela_exame', [
-                    'id' => $id,
+                    'id'         => $id,
                     'nome_exame' => $nomeExame,
                     'modalidade' => $modalidade,
                 ]);
@@ -131,16 +129,17 @@ class CorpoClinicoController extends Controller
     }
 
     // -------------------------------------------------------
-    // Editar exame (dados basicos) — via AJAX JSON
+    // Editar exame (dados básicos) — via AJAX JSON
     // -------------------------------------------------------
     public function updateExameTabela(int $id): void
     {
         ob_start(); ob_end_clean();
         header('Content-Type: application/json');
         try {
-            $nomeExame   = trim(strip_tags((string) ($_POST['nome_exame'] ?? '')));
-            $modalidade  = trim((string) ($_POST['modalidade'] ?? ''));
-            $valorPadrao = $this->normalizarValor((string) ($_POST['valor_padrao'] ?? '0'));
+            $nomeExame     = trim(strip_tags((string) ($_POST['nome_exame'] ?? '')));
+            $modalidade    = trim((string) ($_POST['modalidade'] ?? ''));
+            $valorRotina   = $this->normalizarValor((string) ($_POST['valor_rotina']   ?? '0'));
+            $valorUrgencia = $this->normalizarValor((string) ($_POST['valor_urgencia'] ?? '0'));
 
             if ($nomeExame === '' || !in_array($modalidade, ['TC', 'RM', 'RX', 'US', 'MG', 'PET', 'NM', 'OUT'], true)) {
                 echo json_encode(['success' => false, 'message' => 'Dados inválidos.']);
@@ -148,9 +147,10 @@ class CorpoClinicoController extends Controller
             }
 
             $ok = $this->tabelaExameModel->update($id, [
-                'nome_exame'   => $nomeExame,
-                'modalidade'   => $modalidade,
-                'valor_padrao' => $valorPadrao,
+                'nome_exame'     => $nomeExame,
+                'modalidade'     => $modalidade,
+                'valor_rotina'   => $valorRotina,
+                'valor_urgencia' => $valorUrgencia,
             ]);
 
             if ($ok) {
@@ -186,7 +186,7 @@ class CorpoClinicoController extends Controller
     }
 
     // -------------------------------------------------------
-    // Carregar dados de configuracao para o modal — AJAX JSON
+    // Carregar dados de configuração para o modal — AJAX JSON
     // -------------------------------------------------------
     public function getConfigExame(int $id): void
     {
@@ -212,7 +212,8 @@ class CorpoClinicoController extends Controller
     }
 
     // -------------------------------------------------------
-    // Salvar aba Precos — AJAX JSON
+    // Salvar aba Preços — AJAX JSON
+    // Valores DIRETOS de rotina e urgência (médico) — sem cálculo percentual
     // -------------------------------------------------------
     public function savePrecos(int $id): void
     {
@@ -226,22 +227,17 @@ class CorpoClinicoController extends Controller
             }
 
             $data = [
-                'valor_padrao'  => (float) $exame->valor_padrao,
-                'nivel'         => trim((string) ($_POST['nivel'] ?? '')),
-                'perc_rotina'   => $this->normalizarValor((string) ($_POST['perc_rotina'] ?? '0')),
-                'perc_urgencia' => $this->normalizarValor((string) ($_POST['perc_urgencia'] ?? '0')),
+                'nivel'          => trim((string) ($_POST['nivel'] ?? '')),
+                'valor_rotina'   => $this->normalizarValor((string) ($_POST['valor_rotina']   ?? '0')),
+                'valor_urgencia' => $this->normalizarValor((string) ($_POST['valor_urgencia'] ?? '0')),
             ];
 
             $ok = $this->tabelaExameModel->savePrecos($id, $data);
 
-            // Retornar valores calculados
-            $valorRotina   = $data['valor_padrao'] + ($data['valor_padrao'] * $data['perc_rotina'] / 100);
-            $valorUrgencia = $data['valor_padrao'] + ($data['valor_padrao'] * $data['perc_urgencia'] / 100);
-
             echo json_encode([
                 'success'        => $ok,
-                'valor_rotina'   => number_format($valorRotina, 2, ',', '.'),
-                'valor_urgencia' => number_format($valorUrgencia, 2, ',', '.'),
+                'valor_rotina'   => number_format($data['valor_rotina'],   2, ',', '.'),
+                'valor_urgencia' => number_format($data['valor_urgencia'], 2, ',', '.'),
             ]);
         } catch (\Throwable $e) {
             $this->logger->error('Erro ao salvar precos exame: ' . $e->getMessage());
@@ -251,7 +247,8 @@ class CorpoClinicoController extends Controller
     }
 
     // -------------------------------------------------------
-    // Salvar aba Secao — AJAX JSON
+    // Salvar aba Seção — AJAX JSON
+    // Encargos + margem geral + margens independentes por tipo (rotina/urgência) para venda
     // -------------------------------------------------------
     public function saveSecao(int $id): void
     {
@@ -265,35 +262,36 @@ class CorpoClinicoController extends Controller
             }
 
             $data = [
-                'imposto_icms'            => $this->normalizarValor((string) ($_POST['imposto_icms'] ?? '0')),
-                'imposto_ipi'             => $this->normalizarValor((string) ($_POST['imposto_ipi'] ?? '0')),
-                'imposto_pis_cofins'      => $this->normalizarValor((string) ($_POST['imposto_pis_cofins'] ?? '0')),
-                'imposto_simples'         => $this->normalizarValor((string) ($_POST['imposto_simples'] ?? '0')),
-                'custo_comissao'          => $this->normalizarValor((string) ($_POST['custo_comissao'] ?? '0')),
-                'custo_mao_obra_direta'   => $this->normalizarValor((string) ($_POST['custo_mao_obra_direta'] ?? '0')),
+                'imposto_icms'            => $this->normalizarValor((string) ($_POST['imposto_icms']            ?? '0')),
+                'imposto_ipi'             => $this->normalizarValor((string) ($_POST['imposto_ipi']             ?? '0')),
+                'imposto_pis_cofins'      => $this->normalizarValor((string) ($_POST['imposto_pis_cofins']      ?? '0')),
+                'imposto_simples'         => $this->normalizarValor((string) ($_POST['imposto_simples']         ?? '0')),
+                'custo_comissao'          => $this->normalizarValor((string) ($_POST['custo_comissao']          ?? '0')),
+                'custo_mao_obra_direta'   => $this->normalizarValor((string) ($_POST['custo_mao_obra_direta']   ?? '0')),
                 'custo_mao_obra_indireta' => $this->normalizarValor((string) ($_POST['custo_mao_obra_indireta'] ?? '0')),
-                'margem_lucro'            => $this->normalizarValor((string) ($_POST['margem_lucro'] ?? '0')),
+                'margem_lucro'            => $this->normalizarValor((string) ($_POST['margem_lucro']            ?? '0')),
+                'perc_venda_rotina'       => $this->normalizarValor((string) ($_POST['perc_venda_rotina']       ?? '0')),
+                'perc_venda_urgencia'     => $this->normalizarValor((string) ($_POST['perc_venda_urgencia']     ?? '0')),
             ];
 
             $ok = $this->tabelaExameModel->saveSecao($id, $data);
 
-            // Recalcular para retornar
-            $valorBase  = (float) $exame->valor_padrao;
-            $totalPerc  = array_sum(array_slice(array_values($data), 0, 7));
-            $precoCusto = $valorBase + ($valorBase * $totalPerc / 100);
-            $precoVenda = $precoCusto + ($precoCusto * $data['margem_lucro'] / 100);
-
-            $percRotina   = (float) ($exame->perc_rotina ?? 0);
-            $percUrgencia = (float) ($exame->perc_urgencia ?? 0);
-            $valorRotina   = $precoVenda + ($precoVenda * $percRotina / 100);
-            $valorUrgencia = $precoVenda + ($precoVenda * $percUrgencia / 100);
+            // Recalcular para retornar ao frontend
+            $valorBaseCusto = (float) ($exame->valor_rotina ?? 0);
+            $totalPerc      = $data['imposto_icms'] + $data['imposto_ipi'] + $data['imposto_pis_cofins']
+                            + $data['imposto_simples'] + $data['custo_comissao']
+                            + $data['custo_mao_obra_direta'] + $data['custo_mao_obra_indireta'];
+            $precoCusto     = $valorBaseCusto + ($valorBaseCusto * $totalPerc / 100);
+            $precoVenda     = $precoCusto + ($precoCusto * $data['margem_lucro'] / 100);
+            $valorVendaR    = $precoVenda + ($precoVenda * $data['perc_venda_rotina']   / 100);
+            $valorVendaU    = $precoVenda + ($precoVenda * $data['perc_venda_urgencia'] / 100);
 
             echo json_encode([
-                'success'        => $ok,
-                'preco_custo'    => number_format($precoCusto, 2, ',', '.'),
-                'preco_venda'    => number_format($precoVenda, 2, ',', '.'),
-                'valor_rotina'   => number_format($valorRotina, 2, ',', '.'),
-                'valor_urgencia' => number_format($valorUrgencia, 2, ',', '.'),
+                'success'              => $ok,
+                'preco_custo'          => number_format($precoCusto,  2, ',', '.'),
+                'preco_venda'          => number_format($precoVenda,  2, ',', '.'),
+                'valor_venda_rotina'   => number_format($valorVendaR, 2, ',', '.'),
+                'valor_venda_urgencia' => number_format($valorVendaU, 2, ',', '.'),
             ]);
         } catch (\Throwable $e) {
             $this->logger->error('Erro ao salvar secao exame: ' . $e->getMessage());

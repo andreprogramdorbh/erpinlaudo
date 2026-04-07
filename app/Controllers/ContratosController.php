@@ -528,41 +528,31 @@ class ContratosController extends Controller
                     $exId = (int) $exameMatch->id;
 
                     // -------------------------------------------------------
-                    // VALOR DE VENDA (sempre da tabela de exames: valor_rotina/valor_urgencia)
-                    // valor_rotina = preco_venda * (1 + perc_rotina/100)
-                    // valor_urgencia = preco_venda * (1 + perc_urgencia/100)
+                    // NOVA LÓGICA DE PREÇOS:
+                    // - valor_rotina / valor_urgencia = valores DIRETOS do médico (prestador)
+                    // - valor_venda_rotina / valor_venda_urgencia = valores de venda (cliente)
                     // -------------------------------------------------------
-                    $valorCalcVenda = $isUrgencia
-                        ? (float) ($exameMatch->valor_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao)
-                        : (float) ($exameMatch->valor_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_padrao);
 
-                    // -------------------------------------------------------
-                    // VALOR DE CUSTO (repasse ao médico)
-                    // Para prestador: preco_custo * (1 + perc_rotina/100) ou preco_custo * (1 + perc_urgencia/100)
-                    // Para cliente: usa valor de venda (valor_rotina/valor_urgencia)
+                    // VALOR DE VENDA (cliente): usa valor_venda_rotina/urgencia da tabela
+                    $valorCalcVenda = $isUrgencia
+                        ? (float) ($exameMatch->valor_venda_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_urgencia ?: 0)
+                        : (float) ($exameMatch->valor_venda_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_rotina  ?: 0);
+
+                    // VALOR DE CUSTO (médico/prestador): usa valor_rotina/urgencia DIRETOS
                     // PRIORIDADE 0: Valores específicos do médico (override) — apenas para prestador
-                    // -------------------------------------------------------
                     if ($tipoApuracao === 'cliente') {
-                        // Apuração cliente: valor calculado = valor de venda
+                        // Apuração cliente: usa valor de venda
                         $valorCalc = $valorCalcVenda;
                     } elseif (!empty($valoresMedico[$exId])) {
-                        // Apuração prestador com override do médico
+                        // Apuração prestador com override do médico (valores específicos do contrato)
                         $vm = $valoresMedico[$exId];
                         $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
                         $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
                     } else {
-                        // Apuração prestador: usa preco_custo com percentuais de prioridade
-                        $precoCusto    = (float) ($exameMatch->preco_custo ?? 0);
-                        $percRotina    = (float) ($exameMatch->perc_rotina ?? 0);
-                        $percUrgencia  = (float) ($exameMatch->perc_urgencia ?? 0);
-                        if ($precoCusto > 0) {
-                            $valorCalc = $isUrgencia
-                                ? $precoCusto * (1 + $percUrgencia / 100)
-                                : $precoCusto * (1 + $percRotina / 100);
-                        } else {
-                            // Fallback: se não há preco_custo, usa valor_rotina/urgencia (mesmo que venda)
-                            $valorCalc = $valorCalcVenda;
-                        }
+                        // Apuração prestador: usa valor_rotina/urgencia DIRETOS da tabela de exames
+                        $valorCalc = $isUrgencia
+                            ? (float) ($exameMatch->valor_urgencia ?: 0)
+                            : (float) ($exameMatch->valor_rotina  ?: 0);
                     }
 
                     $statusItem = 'ok';
