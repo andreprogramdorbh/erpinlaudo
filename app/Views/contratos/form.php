@@ -45,6 +45,15 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
             <?php endif; ?>
         </a>
     </li>
+    <li class="nav-item">
+        <a class="nav-link <?php echo $activeTab === 'servicos' ? 'active' : ''; ?>"
+           href="/contratos/edit/<?php echo $cId; ?>?tab=servicos">
+            <i class="fas fa-stethoscope me-1"></i> Serviços/Exames
+            <?php if (!empty($contrato_exames)): ?>
+                <span class="badge bg-info ms-1"><?php echo count($contrato_exames); ?></span>
+            <?php endif; ?>
+        </a>
+    </li>
     <?php if (($contrato->tipo_parte ?? '') === 'medico'): ?>
     <li class="nav-item">
         <a class="nav-link <?php echo $activeTab === 'apuracao' ? 'active' : ''; ?>"
@@ -336,6 +345,188 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
         </div>
     </div>
 </div>
+
+<!-- ============================================================ -->
+<!-- ABA: SERVIÇOS/EXAMES -->
+<!-- ============================================================ -->
+<?php
+$tipoParte = $contrato->tipo_parte ?? 'medico';
+$ehMedico  = $tipoParte === 'medico';
+?>
+<div id="tab-servicos" class="tab-content-section <?php echo $activeTab !== 'servicos' ? 'd-none' : ''; ?>">
+
+    <!-- Formulário para adicionar exame -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-bottom py-3">
+            <h6 class="mb-0"><i class="fas fa-plus-circle text-primary me-2"></i>Adicionar Exame ao Contrato</h6>
+            <small class="text-muted">
+                <?php if ($ehMedico): ?>Selecione o exame e ajuste os valores de repasse ao médico (Rotina/Urgência).
+                <?php else: ?>Selecione o exame e ajuste os valores de venda ao cliente (Rotina/Urgência).
+                <?php endif; ?>
+                Se os valores forem alterados e salvos, passam a ser a <strong>base contábil</strong> deste contrato.
+            </small>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <!-- Seletor de exame -->
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">Exame / Serviço <span class="text-danger">*</span></label>
+                    <select id="ce-exame-select" class="form-select" onchange="carregarValoresExame(this.value)">
+                        <option value="">Selecione o exame...</option>
+                        <?php foreach ($exames as $ex): ?>
+                        <option value="<?php echo $ex->id; ?>"
+                                data-rotina="<?php echo number_format((float)($ex->valor_rotina ?? 0), 2, '.', ''); ?>"
+                                data-urgencia="<?php echo number_format((float)($ex->valor_urgencia ?? 0), 2, '.', ''); ?>"
+                                data-venda-rotina="<?php echo number_format((float)($ex->valor_venda_rotina ?? 0), 2, '.', ''); ?>"
+                                data-venda-urgencia="<?php echo number_format((float)($ex->valor_venda_urgencia ?? 0), 2, '.', ''); ?>">
+                            <?php echo htmlspecialchars($ex->nome_exame); ?>
+                            <?php if ($ex->modalidade): ?>(<?php echo htmlspecialchars($ex->modalidade); ?>)<?php endif; ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <?php if ($ehMedico): ?>
+                <!-- Valores para médico (prestador) -->
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold text-success"><i class="fas fa-tag me-1"></i>Rotina (Médico)</label>
+                    <div class="input-group">
+                        <span class="input-group-text">R$</span>
+                        <input type="number" id="ce-valor-rotina" class="form-control" step="0.01" min="0" placeholder="0,00">
+                    </div>
+                    <small class="text-muted" id="ce-hint-rotina"></small>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold text-warning"><i class="fas fa-bolt me-1"></i>Urgência (Médico)</label>
+                    <div class="input-group">
+                        <span class="input-group-text">R$</span>
+                        <input type="number" id="ce-valor-urgencia" class="form-control" step="0.01" min="0" placeholder="0,00">
+                    </div>
+                    <small class="text-muted" id="ce-hint-urgencia"></small>
+                </div>
+                <?php else: ?>
+                <!-- Valores para cliente (venda) -->
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold text-success"><i class="fas fa-tag me-1"></i>Venda Rotina</label>
+                    <div class="input-group">
+                        <span class="input-group-text">R$</span>
+                        <input type="number" id="ce-valor-venda-rotina" class="form-control" step="0.01" min="0" placeholder="0,00">
+                    </div>
+                    <small class="text-muted" id="ce-hint-venda-rotina"></small>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold text-warning"><i class="fas fa-bolt me-1"></i>Venda Urgência</label>
+                    <div class="input-group">
+                        <span class="input-group-text">R$</span>
+                        <input type="number" id="ce-valor-venda-urgencia" class="form-control" step="0.01" min="0" placeholder="0,00">
+                    </div>
+                    <small class="text-muted" id="ce-hint-venda-urgencia"></small>
+                </div>
+                <?php endif; ?>
+
+                <div class="col-md-2">
+                    <div class="form-check mt-4">
+                        <input class="form-check-input" type="checkbox" id="ce-usa-custom" checked>
+                        <label class="form-check-label" for="ce-usa-custom">
+                            Usar valores do contrato
+                        </label>
+                    </div>
+                </div>
+
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-primary w-100" onclick="salvarExameContrato()">
+                        <i class="fas fa-plus me-1"></i> Adicionar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabela de exames vinculados -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-list text-primary me-2"></i>Exames Vinculados ao Contrato</h6>
+            <span class="badge bg-secondary"><?php echo count($contrato_exames ?? []); ?> exame(s)</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="tabela-contrato-exames">
+                <thead class="table-light">
+                    <tr>
+                        <th>Exame / Serviço</th>
+                        <th>Modalidade</th>
+                        <?php if ($ehMedico): ?>
+                        <th class="text-success">Rotina (Médico)</th>
+                        <th class="text-warning">Urgência (Médico)</th>
+                        <th>Tabela Rotina</th>
+                        <th>Tabela Urgência</th>
+                        <?php else: ?>
+                        <th class="text-success">Venda Rotina</th>
+                        <th class="text-warning">Venda Urgência</th>
+                        <th>Tabela Venda Rotina</th>
+                        <th>Tabela Venda Urgência</th>
+                        <?php endif; ?>
+                        <th>Base Contábil</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($contrato_exames)): ?>
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <i class="fas fa-stethoscope fa-2x mb-2 d-block opacity-25"></i>
+                            Nenhum exame vinculado. Adicione exames acima.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($contrato_exames as $ce): ?>
+                    <tr id="ce-row-<?php echo $ce->tabela_exame_id; ?>">
+                        <td><strong><?php echo htmlspecialchars($ce->nome_exame); ?></strong></td>
+                        <td><span class="badge bg-secondary"><?php echo htmlspecialchars($ce->modalidade ?? '-'); ?></span></td>
+                        <?php if ($ehMedico): ?>
+                        <td class="text-success fw-semibold">R$ <?php echo number_format((float)$ce->valor_rotina, 2, ',', '.'); ?></td>
+                        <td class="text-warning fw-semibold">R$ <?php echo number_format((float)$ce->valor_urgencia, 2, ',', '.'); ?></td>
+                        <td class="text-muted small">R$ <?php echo number_format((float)$ce->tabela_valor_rotina, 2, ',', '.'); ?></td>
+                        <td class="text-muted small">R$ <?php echo number_format((float)$ce->tabela_valor_urgencia, 2, ',', '.'); ?></td>
+                        <?php else: ?>
+                        <td class="text-success fw-semibold">R$ <?php echo number_format((float)$ce->valor_venda_rotina, 2, ',', '.'); ?></td>
+                        <td class="text-warning fw-semibold">R$ <?php echo number_format((float)$ce->valor_venda_urgencia, 2, ',', '.'); ?></td>
+                        <td class="text-muted small">R$ <?php echo number_format((float)$ce->tabela_valor_venda_rotina, 2, ',', '.'); ?></td>
+                        <td class="text-muted small">R$ <?php echo number_format((float)$ce->tabela_valor_venda_urgencia, 2, ',', '.'); ?></td>
+                        <?php endif; ?>
+                        <td>
+                            <?php if ($ce->usa_valor_custom): ?>
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i>Contrato</span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary">Tabela</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" title="Remover"
+                                    onclick="removerExameContrato(<?php echo $ce->tabela_exame_id; ?>, '<?php echo htmlspecialchars(addslashes($ce->nome_exame)); ?>')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Alerta informativo -->
+    <div class="alert alert-info border-0 mt-3 shadow-sm">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Regra de prioridade nas apurações:</strong>
+        <?php if ($ehMedico): ?>
+        Os valores definidos aqui (marcados como <em>Base Contábil: Contrato</em>) terão <strong>prioridade máxima</strong> sobre a tabela de exames ao calcular a apuração do médico.
+        <?php else: ?>
+        Os valores de venda definidos aqui terão <strong>prioridade máxima</strong> sobre a tabela de exames ao calcular a apuração do cliente.
+        <?php endif; ?>
+    </div>
+
+</div>
+<!-- FIM ABA SERVIÇOS/EXAMES -->
 
 <!-- ============================================================ -->
 <!-- ABA: APURAÇÃO (apenas médico) -->
@@ -825,5 +1016,102 @@ function executarApuracao() {
             document.getElementById('exec-status').classList.add('d-none');
             alert('Erro de conexão: ' + e.message);
         });
+}
+
+// ============================================================
+// SERVIÇOS/EXAMES DO CONTRATO
+// ============================================================
+const CONTRATO_ID   = <?php echo $cId; ?>;
+const TIPO_PARTE    = '<?php echo $tipoParte ?? 'medico'; ?>';
+const EH_MEDICO     = TIPO_PARTE === 'medico';
+
+/**
+ * Carrega os valores da tabela de exames ao selecionar um exame.
+ */
+function carregarValoresExame(exameId) {
+    if (!exameId) return;
+    const opt = document.querySelector('#ce-exame-select option[value="' + exameId + '"]');
+    if (!opt) return;
+
+    if (EH_MEDICO) {
+        const rotina   = parseFloat(opt.dataset.rotina || 0).toFixed(2);
+        const urgencia = parseFloat(opt.dataset.urgencia || 0).toFixed(2);
+        const r = document.getElementById('ce-valor-rotina');
+        const u = document.getElementById('ce-valor-urgencia');
+        if (r) { r.value = rotina; document.getElementById('ce-hint-rotina').textContent = 'Tabela: R$ ' + rotina; }
+        if (u) { u.value = urgencia; document.getElementById('ce-hint-urgencia').textContent = 'Tabela: R$ ' + urgencia; }
+    } else {
+        const vRotina   = parseFloat(opt.dataset.vendaRotina || 0).toFixed(2);
+        const vUrgencia = parseFloat(opt.dataset.vendaUrgencia || 0).toFixed(2);
+        const r = document.getElementById('ce-valor-venda-rotina');
+        const u = document.getElementById('ce-valor-venda-urgencia');
+        if (r) { r.value = vRotina; document.getElementById('ce-hint-venda-rotina').textContent = 'Tabela: R$ ' + vRotina; }
+        if (u) { u.value = vUrgencia; document.getElementById('ce-hint-venda-urgencia').textContent = 'Tabela: R$ ' + vUrgencia; }
+    }
+}
+
+/**
+ * Salva (upsert) um exame no contrato via AJAX.
+ */
+function salvarExameContrato() {
+    const select = document.getElementById('ce-exame-select');
+    const exameId = select ? select.value : '';
+    if (!exameId) {
+        alert('Selecione um exame.');
+        return;
+    }
+
+    const usaCustom = document.getElementById('ce-usa-custom')?.checked ? 1 : 0;
+    const formData  = new FormData();
+    formData.append('contrato_id',    CONTRATO_ID);
+    formData.append('tabela_exame_id', exameId);
+    formData.append('usa_valor_custom', usaCustom);
+
+    if (EH_MEDICO) {
+        formData.append('valor_rotina',         document.getElementById('ce-valor-rotina')?.value || 0);
+        formData.append('valor_urgencia',       document.getElementById('ce-valor-urgencia')?.value || 0);
+        formData.append('valor_venda_rotina',   0);
+        formData.append('valor_venda_urgencia', 0);
+    } else {
+        formData.append('valor_rotina',         0);
+        formData.append('valor_urgencia',       0);
+        formData.append('valor_venda_rotina',   document.getElementById('ce-valor-venda-rotina')?.value || 0);
+        formData.append('valor_venda_urgencia', document.getElementById('ce-valor-venda-urgencia')?.value || 0);
+    }
+
+    fetch('/contratos/exames/salvar', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                // Recarregar a aba de serviços
+                window.location.href = '/contratos/edit/' + CONTRATO_ID + '?tab=servicos';
+            } else {
+                alert('Erro: ' + (data.message || 'Falha ao salvar exame.'));
+            }
+        })
+        .catch(e => alert('Erro de conexão: ' + e.message));
+}
+
+/**
+ * Remove um exame vinculado ao contrato.
+ */
+function removerExameContrato(tabelaExameId, nomeExame) {
+    if (!confirm('Remover o exame "' + nomeExame + '" deste contrato?')) return;
+
+    const formData = new FormData();
+    formData.append('contrato_id',    CONTRATO_ID);
+    formData.append('tabela_exame_id', tabelaExameId);
+
+    fetch('/contratos/exames/remover', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const row = document.getElementById('ce-row-' + tabelaExameId);
+                if (row) row.remove();
+            } else {
+                alert('Erro: ' + (data.message || 'Falha ao remover exame.'));
+            }
+        })
+        .catch(e => alert('Erro de conexão: ' + e.message));
 }
 </script>

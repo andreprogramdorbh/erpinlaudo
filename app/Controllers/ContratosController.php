@@ -15,6 +15,7 @@ use App\Models\Medico;
 use App\Models\Cliente;
 use App\Models\TabelaExame;
 use App\Models\MedicoExame;
+use App\Models\ContratoExame;
 use App\Models\ContaReceber;
 use App\Models\PlanoConta;
 use App\Services\ContaReceberRecorrenciaService;
@@ -25,15 +26,17 @@ class ContratosController extends Controller
     private ContratoAnexo $anexoModel;
     private Apuracao      $apuracaoModel;
     private ApuracaoItem  $itemModel;
+    private ContratoExame $contratoExameModel;
     private Logger        $logger;
 
     public function __construct()
     {
-        $this->contratoModel = new Contrato();
-        $this->anexoModel    = new ContratoAnexo();
-        $this->apuracaoModel = new Apuracao();
-        $this->itemModel     = new ApuracaoItem();
-        $this->logger        = new Logger();
+        $this->contratoModel      = new Contrato();
+        $this->anexoModel         = new ContratoAnexo();
+        $this->apuracaoModel      = new Apuracao();
+        $this->itemModel          = new ApuracaoItem();
+        $this->contratoExameModel = new ContratoExame();
+        $this->logger             = new Logger();
     }
 
     // =========================================================
@@ -152,6 +155,7 @@ class ContratosController extends Controller
         $apuracoes = $this->apuracaoModel->findByUsuarioId($usuarioId, $filtrosApur);
         $modalidades_contrato = $this->contratoModel->getModalidades((int) $id);
         $layouts   = (new LayoutExame())->findByUsuarioId($usuarioId);
+        $contrato_exames = $this->contratoExameModel->findByContratoId((int) $id);
 
         View::render('contratos/form', [
             'title'    => 'Editar Contrato — ' . $contrato->nome,
@@ -163,6 +167,7 @@ class ContratosController extends Controller
             'apuracoes'=> $apuracoes ?? [],
             'modalidades_contrato' => $modalidades_contrato,
             'layouts'  => $layouts ?? [],
+            'contrato_exames' => $contrato_exames ?? [],
             'active_tab' => $_GET['tab'] ?? 'dados',
             '_layout' => 'erp',
         ]);
@@ -428,7 +433,15 @@ class ContratosController extends Controller
                 }
             }
 
-            // Buscar valores específicos do médico (PRIORIDADE 0 — máxima)
+            // Buscar valores do CONTRATO (PRIORIDADE MÁXIMA — sobrepõe tudo)
+            // Índice: tabela_exame_id → {rotina, urgencia, venda_rotina, venda_urgencia}
+            $contratoId = (int) ($apuracao->contrato_id ?? 0);
+            $valoresContrato = []; // [tabela_exame_id => objeto]
+            if ($contratoId > 0) {
+                $valoresContrato = $this->contratoExameModel->findMapByContratoId($contratoId);
+            }
+
+            // Buscar valores específicos do médico (PRIORIDADE 1 — abaixo do contrato)
             // Índice: tabela_exame_id → {valor_rotina, valor_urgencia, usa_valor_custom}
             $medicoExameModel = new MedicoExame();
             $medicoId = (int) ($apuracao->medico_id ?? 0);
@@ -533,23 +546,47 @@ class ContratosController extends Controller
                     // - valor_venda_rotina / valor_venda_urgencia = valores de venda (cliente)
                     // -------------------------------------------------------
 
-                    // VALOR DE VENDA (cliente): usa valor_venda_rotina/urgencia da tabela
-                    $valorCalcVenda = $isUrgencia
-                        ? (float) ($exameMatch->valor_venda_urgencia ?: $exameMatch->preco_venda ?: $exameMatch->valor_urgencia ?: 0)
-                        : (float) ($exameMatch->valor_venda_rotina  ?: $exameMatch->preco_venda ?: $exameMatch->valor_rotina  ?: 0);
+                    // -------------------------------------------------------
+                    // HIERARQUIA DE PREÇOS (do maior para menor prioridade):
+                    // P0: Valores do CONTRATO (contrato_exames) — base contábil definitiva
+                    // P1: Valores do MÉDICO (medico_exames) — override individual
+                    // P2: Valores da TABELA DE EXAMES — padrão do sistema
+                    // -------------------------------------------------------
 
-                    // VALOR DE CUSTO (médico/prestador): usa valor_rotina/urgencia DIRETOS
-                    // PRIORIDADE 0: Valores específicos do médico (override) — apenas para prestador
-                    if ($tipoApuracao === 'cliente') {
-                        // Apuração cliente: usa valor de venda
-                        $valorCalc = $valorCalcVenda;
-                    } elseif (!empty($valoresMedico[$exId])) {
-                        // Apuração prestador com override do médico (valores específicos do contrato)
+                    // VALOR DE VENDA BASE (tabela de exames)
+                    $valorCalcVenda = $isUrgencia
+                        ? (float) ($exameMatch->valor_venda_urgencia ?: $exameMatch->valor_urgencia ?: 0)
+                        : (float) ($exameMatch->valor_venda_rotina  ?: $exameMatch->valor_rotina  ?: 0);
+
+                    // P0: Contrato tem valores definidos para este exame?
+                    if (!empty($valoresContrato[$exId]) && $valoresContrato[$exId]->usa_valor_custom) {
+                        $vc = $valoresContrato[$exId];
+                        if ($tipoApuracao === 'cliente') {
+                            // Contrato cliente: usa valor_venda_rotina/urgencia do contrato
+                            $valorCalc      = $isUrgencia ? (float)$vc->valor_venda_urgencia : (float)$vc->valor_venda_rotina;
+                            $valorCalcVenda = $valorCalc; // venda = o próprio valor do contrato cliente
+                        } else {
+                            // Contrato prestador: usa valor_rotina/urgencia do contrato
+                            $valorCalc = $isUrgencia ? (float)$vc->valor_urgencia : (float)$vc->valor_rotina;
+                            // Venda: se o contrato também tiver venda definida, usa; senão usa tabela
+                            if ((float)$vc->valor_venda_rotina > 0 || (float)$vc->valor_venda_urgencia > 0) {
+                                $valorCalcVenda = $isUrgencia ? (float)$vc->valor_venda_urgencia : (float)$vc->valor_venda_rotina;
+                            }
+                        }
+                        $obsItem = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: contrato_custom';
+
+                    // P1: Médico tem valores específicos? (apenas para prestador)
+                    } elseif ($tipoApuracao !== 'cliente' && !empty($valoresMedico[$exId])) {
                         $vm = $valoresMedico[$exId];
                         $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
                         $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
+
+                    // P2: Tabela de exames (padrão)
+                    } elseif ($tipoApuracao === 'cliente') {
+                        // Apuração cliente: usa valor de venda da tabela
+                        $valorCalc = $valorCalcVenda;
                     } else {
-                        // Apuração prestador: usa valor_rotina/urgencia DIRETOS da tabela de exames
+                        // Apuração prestador: usa valor_rotina/urgencia DIRETOS da tabela
                         $valorCalc = $isUrgencia
                             ? (float) ($exameMatch->valor_urgencia ?: 0)
                             : (float) ($exameMatch->valor_rotina  ?: 0);
@@ -1061,6 +1098,152 @@ class ContratosController extends Controller
             $this->logger->error('[Contratos] Erro ao listar cobranças: ' . $e->getMessage());
             ob_end_clean(); header('Content-Type: application/json');
             echo json_encode(['success' => false, 'cobrancas' => []]);
+        }
+        exit();
+    }
+
+    // =========================================================
+    // EXAMES DO CONTRATO (Serviços/Exames)
+    // =========================================================
+
+    /**
+     * POST /contratos/exames/salvar
+     * Salva (upsert) um exame vinculado ao contrato com valores customizados.
+     */
+    public function salvarExameContrato(): void
+    {
+        ob_start();
+        try {
+            $user      = Auth::user();
+            $usuarioId = (int) $user->id;
+
+            $contratoId    = (int) ($_POST['contrato_id'] ?? 0);
+            $tabelaExameId = (int) ($_POST['tabela_exame_id'] ?? 0);
+
+            if (!$contratoId || !$tabelaExameId) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Dados inválidos.']);
+                exit();
+            }
+
+            // Verificar se o contrato pertence ao usuário
+            $contrato = $this->contratoModel->findById($contratoId);
+            if (!$contrato || $contrato->usuario_id != $usuarioId) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Contrato não encontrado.']);
+                exit();
+            }
+
+            $parseMoeda = fn($v) => (float) str_replace(['.', ','], ['', '.'], $v ?? '0');
+
+            $data = [
+                'usuario_id'           => $usuarioId,
+                'contrato_id'          => $contratoId,
+                'tabela_exame_id'      => $tabelaExameId,
+                'valor_rotina'         => $parseMoeda($_POST['valor_rotina'] ?? '0'),
+                'valor_urgencia'       => $parseMoeda($_POST['valor_urgencia'] ?? '0'),
+                'valor_venda_rotina'   => $parseMoeda($_POST['valor_venda_rotina'] ?? '0'),
+                'valor_venda_urgencia' => $parseMoeda($_POST['valor_venda_urgencia'] ?? '0'),
+                'usa_valor_custom'     => (int) ($_POST['usa_valor_custom'] ?? 0),
+                'observacoes'          => trim($_POST['observacoes'] ?? ''),
+            ];
+
+            $ok = $this->contratoExameModel->upsert($data);
+
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode([
+                'success' => $ok,
+                'message' => $ok ? 'Exame salvo com sucesso.' : 'Erro ao salvar exame.',
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[Contratos] Erro ao salvar exame do contrato: ' . $e->getMessage());
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * POST /contratos/exames/remover
+     * Remove um exame vinculado ao contrato.
+     */
+    public function removerExameContrato(): void
+    {
+        ob_start();
+        try {
+            $user      = Auth::user();
+            $usuarioId = (int) $user->id;
+
+            $contratoId    = (int) ($_POST['contrato_id'] ?? 0);
+            $tabelaExameId = (int) ($_POST['tabela_exame_id'] ?? 0);
+
+            if (!$contratoId || !$tabelaExameId) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Dados inválidos.']);
+                exit();
+            }
+
+            // Verificar se o contrato pertence ao usuário
+            $contrato = $this->contratoModel->findById($contratoId);
+            if (!$contrato || $contrato->usuario_id != $usuarioId) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Contrato não encontrado.']);
+                exit();
+            }
+
+            $ok = $this->contratoExameModel->deleteByContratoAndExame($contratoId, $tabelaExameId);
+
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode([
+                'success' => $ok,
+                'message' => $ok ? 'Exame removido.' : 'Erro ao remover exame.',
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[Contratos] Erro ao remover exame do contrato: ' . $e->getMessage());
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Erro interno: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * GET /contratos/exames/buscar-tabela
+     * Retorna os dados de um exame da tabela para pré-preencher o formulário.
+     */
+    public function buscarExameTabela(): void
+    {
+        ob_start();
+        try {
+            $user      = Auth::user();
+            $usuarioId = (int) $user->id;
+            $exameId   = (int) ($_GET['exame_id'] ?? 0);
+
+            if (!$exameId) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false]);
+                exit();
+            }
+
+            $exame = (new TabelaExame())->findById($exameId);
+            if (!$exame) {
+                ob_end_clean(); header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Exame não encontrado.']);
+                exit();
+            }
+
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode([
+                'success'              => true,
+                'nome_exame'           => $exame->nome_exame,
+                'modalidade'           => $exame->modalidade,
+                'valor_rotina'         => number_format((float)($exame->valor_rotina ?? 0), 2, '.', ''),
+                'valor_urgencia'       => number_format((float)($exame->valor_urgencia ?? 0), 2, '.', ''),
+                'valor_venda_rotina'   => number_format((float)($exame->valor_venda_rotina ?? 0), 2, '.', ''),
+                'valor_venda_urgencia' => number_format((float)($exame->valor_venda_urgencia ?? 0), 2, '.', ''),
+            ]);
+        } catch (\Throwable $e) {
+            ob_end_clean(); header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
         exit();
     }

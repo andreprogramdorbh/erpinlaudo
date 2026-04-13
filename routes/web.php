@@ -347,6 +347,10 @@ Router::group(["middleware" => ["Auth"]], function () {
     // Cobranças vinculadas ao contrato
     Router::post("/contratos/gerar-cobrancas/{id}", "ContratosController@gerarCobrancas");
     Router::get("/contratos/cobrancas/{id}", "ContratosController@listarCobrancas");
+    // Exames do contrato (Serviços/Exames) — AJAX
+    Router::post("/contratos/exames/salvar", "ContratosController@salvarExameContrato");
+    Router::post("/contratos/exames/remover", "ContratosController@removerExameContrato");
+    Router::get("/contratos/exames/buscar-tabela", "ContratosController@buscarExameTabela");
 
     // Apuração — Faturamento
     Router::get("/faturamento/apuracao-prestador", "ApuracaoController@prestador");
