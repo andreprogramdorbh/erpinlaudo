@@ -1,7 +1,8 @@
 <?php
 namespace App\Models;
 
-use App\Core\Database;
+use App\Core\Model;
+use PDO;
 
 /**
  * Model ContratoExame
@@ -13,15 +14,9 @@ use App\Core\Database;
  * Para contratos de médico (prestador): valor_rotina e valor_urgencia
  * Para contratos de cliente: valor_venda_rotina e valor_venda_urgencia
  */
-class ContratoExame
+class ContratoExame extends Model
 {
-    private \PDO $db;
-    private string $table = 'contrato_exames';
-
-    public function __construct()
-    {
-        $this->db = Database::getInstance()->getConnection();
-    }
+    protected string $table = 'contrato_exames';
 
     /**
      * Retorna todos os exames vinculados a um contrato,
@@ -44,9 +39,9 @@ class ContratoExame
             WHERE ce.contrato_id = :contrato_id
             ORDER BY te.modalidade ASC, te.nome_exame ASC
         ";
-        $stmt = $this->db->prepare($sql);
+        $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':contrato_id' => $contratoId]);
-        return $stmt->fetchAll(\PDO::FETCH_OBJ);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
     /**
@@ -70,9 +65,9 @@ class ContratoExame
             WHERE ce.contrato_id = :contrato_id
               AND ce.usa_valor_custom = 1
         ";
-        $stmt = $this->db->prepare($sql);
+        $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':contrato_id' => $contratoId]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_OBJ);
+        $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
 
         $map = [];
         foreach ($rows as $row) {
@@ -106,7 +101,7 @@ class ContratoExame
                 observacoes            = VALUES(observacoes),
                 updated_at             = CURRENT_TIMESTAMP
         ";
-        $stmt = $this->db->prepare($sql);
+        $stmt = $this->pdo->prepare($sql);
         return $stmt->execute([
             ':usuario_id'           => (int) $data['usuario_id'],
             ':contrato_id'          => (int) $data['contrato_id'],
@@ -125,7 +120,7 @@ class ContratoExame
      */
     public function deleteByContratoAndExame(int $contratoId, int $tabelaExameId): bool
     {
-        $stmt = $this->db->prepare(
+        $stmt = $this->pdo->prepare(
             "DELETE FROM {$this->table}
              WHERE contrato_id = :contrato_id AND tabela_exame_id = :tabela_exame_id"
         );
@@ -140,7 +135,7 @@ class ContratoExame
      */
     public function deleteById(int $id): bool
     {
-        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE id = :id");
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE id = :id");
         return $stmt->execute([':id' => $id]);
     }
 
@@ -149,7 +144,7 @@ class ContratoExame
      */
     public function deleteAllByContrato(int $contratoId): bool
     {
-        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE contrato_id = :contrato_id");
+        $stmt = $this->pdo->prepare("DELETE FROM {$this->table} WHERE contrato_id = :contrato_id");
         return $stmt->execute([':contrato_id' => $contratoId]);
     }
 
@@ -158,14 +153,14 @@ class ContratoExame
      */
     public function findById(int $id): ?\stdClass
     {
-        $stmt = $this->db->prepare(
+        $stmt = $this->pdo->prepare(
             "SELECT ce.*, te.nome_exame, te.modalidade
              FROM {$this->table} ce
              INNER JOIN tabela_exames te ON te.id = ce.tabela_exame_id
              WHERE ce.id = :id LIMIT 1"
         );
         $stmt->execute([':id' => $id]);
-        $row = $stmt->fetch(\PDO::FETCH_OBJ);
+        $row = $stmt->fetch(PDO::FETCH_OBJ);
         return $row ?: null;
     }
 }
