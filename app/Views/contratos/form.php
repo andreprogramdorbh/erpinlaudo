@@ -1067,16 +1067,22 @@ function salvarExameContrato() {
     formData.append('tabela_exame_id', exameId);
     formData.append('usa_valor_custom', usaCustom);
 
+    // Converte formato BR (1.350,00) para float (1350.00) antes de enviar ao servidor
+    function parseMoedaBR(val) {
+        if (!val || String(val).trim() === '') return 0;
+        return parseFloat(String(val).replace(/\./g, '').replace(',', '.')) || 0;
+    }
+
     if (EH_MEDICO) {
-        formData.append('valor_rotina',         document.getElementById('ce-valor-rotina')?.value || 0);
-        formData.append('valor_urgencia',       document.getElementById('ce-valor-urgencia')?.value || 0);
+        formData.append('valor_rotina',         parseMoedaBR(document.getElementById('ce-valor-rotina')?.value));
+        formData.append('valor_urgencia',       parseMoedaBR(document.getElementById('ce-valor-urgencia')?.value));
         formData.append('valor_venda_rotina',   0);
         formData.append('valor_venda_urgencia', 0);
     } else {
         formData.append('valor_rotina',         0);
         formData.append('valor_urgencia',       0);
-        formData.append('valor_venda_rotina',   document.getElementById('ce-valor-venda-rotina')?.value || 0);
-        formData.append('valor_venda_urgencia', document.getElementById('ce-valor-venda-urgencia')?.value || 0);
+        formData.append('valor_venda_rotina',   parseMoedaBR(document.getElementById('ce-valor-venda-rotina')?.value));
+        formData.append('valor_venda_urgencia', parseMoedaBR(document.getElementById('ce-valor-venda-urgencia')?.value));
     }
 
     fetch('/contratos/exames/salvar', { method: 'POST', body: formData })
