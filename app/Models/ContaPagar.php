@@ -62,7 +62,12 @@ class ContaPagar extends Model
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':usuario_id', $data['usuario_id']);
-        $stmt->bindValue(':plano_conta_id', (int)$data['plano_conta_id'], PDO::PARAM_INT);
+        $planoConta = $data['plano_conta_id'] ?? null;
+        if ($planoConta === null || $planoConta === '' || (int)$planoConta === 0) {
+            $stmt->bindValue(':plano_conta_id', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':plano_conta_id', (int)$planoConta, PDO::PARAM_INT);
+        }
 
         $fornecedorId = $data['fornecedor_id'] ?? null;
         if ($fornecedorId === '' || $fornecedorId === null) {

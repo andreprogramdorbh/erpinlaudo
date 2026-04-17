@@ -245,7 +245,12 @@ class ContaReceber extends Model
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':usuario_id', $data['usuario_id']);
         $stmt->bindValue(':cliente_id', (int)$data['cliente_id'], PDO::PARAM_INT);
-        $stmt->bindValue(':plano_conta_id', (int)$data['plano_conta_id'], PDO::PARAM_INT);
+        $planoContaR = $data['plano_conta_id'] ?? null;
+        if ($planoContaR === null || $planoContaR === '' || (int)$planoContaR === 0) {
+            $stmt->bindValue(':plano_conta_id', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':plano_conta_id', (int)$planoContaR, PDO::PARAM_INT);
+        }
         $stmt->bindValue(':descricao', trim($data['descricao']));
         $stmt->bindValue(':valor', $data['valor']);
         $stmt->bindValue(':data_vencimento', $data['data_vencimento']);
