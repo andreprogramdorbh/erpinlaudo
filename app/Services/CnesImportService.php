@@ -57,12 +57,16 @@ class CnesImportService
     ];
 
     private const TIPO_EQUIP = [
-        '1' => 'Diagnóstico por Imagem',
-        '2' => 'Infraestrutura',
-        '3' => 'Manutenção da Vida',
-        '4' => 'Odontológico',
-        '5' => 'Óptico',
-        '6' => 'Outro',
+        '1'  => 'Diagnóstico por Imagem',
+        '2'  => 'Infraestrutura',
+        '3'  => 'Equipamentos por Métodos Ópticos',
+        '4'  => 'Equipamentos por Métodos Gráficos',
+        '5'  => 'Manutenção da Vida',
+        '6'  => 'Laboratorial',
+        '7'  => 'Odontológico',
+        '8'  => 'Audiologia',
+        '9'  => 'Telessaúde',
+        '10' => 'Diálise',
     ];
 
     public function __construct()
