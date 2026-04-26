@@ -646,15 +646,24 @@ $errorMessages = [
             })
             .catch(() => alert('Erro de comunicação. Tente novamente.'));
         });
-    });
-
-    // ── Ativar tooltip Bootstrap ──────────────────────────────
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-        new bootstrap.Tooltip(el);
-    });
+    }
+    // ── Ativar tooltip Bootstrap (aguarda o Bootstrap estar carregado) ────────
+    function initTooltips() {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                new bootstrap.Tooltip(el);
+            });
+        }
+    }
+    // Bootstrap é carregado no footer (após a view), então usar DOMContentLoaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTooltips);
+    } else {
+        // DOM já pronto mas Bootstrap pode ainda não estar — aguardar via setTimeout
+        setTimeout(initTooltips, 0);
+    }
 })();
 </script>
-
 <!-- ============================================================
      SCRIPT: Gerenciamento de múltiplos CRMs
      ============================================================ -->

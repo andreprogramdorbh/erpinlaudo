@@ -72,9 +72,12 @@ class Medico extends Model
      */
     public function findByCrm(int $usuarioId, string $crm): object|false
     {
+        // Extrai apenas dígitos e hífens do CRM (ex: 'CRM RJ 5257495-2' => '5257495-2')
+        $crmSoDigitosHifen = preg_replace('/[^\d\-]/', '', $crm);
+        // Apenas dígitos puros (ex: '5257495-2' => '52574952')
         $crmLimpo = preg_replace('/\D/', '', $crm);
 
-        // --- Busca 1: medico_crms — CRM exato ---
+        // --- Busca 1: medico_crms — CRM exato como veio na planilha ---
         $stmt = $this->pdo->prepare(
             "SELECT m.*, e.especialidade AS especialidade_nome
              FROM {$this->table} m
@@ -88,24 +91,40 @@ class Medico extends Model
         $result = $stmt->fetch(PDO::FETCH_OBJ);
         if ($result) return $result;
 
-        // --- Busca 2: medico_crms — apenas dígitos (LIKE) ---
-        if ($crmLimpo !== '') {
-            $stmt2 = $this->pdo->prepare(
+        // --- Busca 2: medico_crms — CRM normalizado (dígitos+hífen) exato ---
+        if ($crmSoDigitosHifen !== '' && $crmSoDigitosHifen !== $crm) {
+            $stmt2a = $this->pdo->prepare(
                 "SELECT m.*, e.especialidade AS especialidade_nome
                  FROM {$this->table} m
                  INNER JOIN medico_crms mc ON mc.medico_id = m.id
                  LEFT JOIN especialidades e ON e.id = m.especialidade_id
                  WHERE m.usuario_id = :usuario_id
-                   AND mc.crm LIKE :crm_like
+                   AND mc.crm = :crm_norm
                  LIMIT 1"
             );
-            $stmt2->execute([':usuario_id' => $usuarioId, ':crm_like' => '%' . $crmLimpo . '%']);
-            $result2 = $stmt2->fetch(PDO::FETCH_OBJ);
-            if ($result2) return $result2;
+            $stmt2a->execute([':usuario_id' => $usuarioId, ':crm_norm' => $crmSoDigitosHifen]);
+            $result2a = $stmt2a->fetch(PDO::FETCH_OBJ);
+            if ($result2a) return $result2a;
         }
 
-        // --- Busca 3: campo legado medicos.crm — exato ---
-        $stmt3 = $this->pdo->prepare(
+        // --- Busca 3: medico_crms — apenas dígitos (LIKE) ---
+        if ($crmLimpo !== '') {
+            $stmt3 = $this->pdo->prepare(
+                "SELECT m.*, e.especialidade AS especialidade_nome
+                 FROM {$this->table} m
+                 INNER JOIN medico_crms mc ON mc.medico_id = m.id
+                 LEFT JOIN especialidades e ON e.id = m.especialidade_id
+                 WHERE m.usuario_id = :usuario_id
+                   AND REPLACE(REPLACE(mc.crm, '-', ''), ' ', '') LIKE :crm_like
+                 LIMIT 1"
+            );
+            $stmt3->execute([':usuario_id' => $usuarioId, ':crm_like' => '%' . $crmLimpo . '%']);
+            $result3 = $stmt3->fetch(PDO::FETCH_OBJ);
+            if ($result3) return $result3;
+        }
+
+        // --- Busca 4: campo legado medicos.crm — exato ---
+        $stmt4 = $this->pdo->prepare(
             "SELECT m.*, e.especialidade AS especialidade_nome
              FROM {$this->table} m
              LEFT JOIN especialidades e ON e.id = m.especialidade_id
@@ -113,23 +132,23 @@ class Medico extends Model
                AND m.crm = :crm_raw
              LIMIT 1"
         );
-        $stmt3->execute([':usuario_id' => $usuarioId, ':crm_raw' => $crm]);
-        $result3 = $stmt3->fetch(PDO::FETCH_OBJ);
-        if ($result3) return $result3;
+        $stmt4->execute([':usuario_id' => $usuarioId, ':crm_raw' => $crm]);
+        $result4 = $stmt4->fetch(PDO::FETCH_OBJ);
+        if ($result4) return $result4;
 
-        // --- Busca 4: campo legado medicos.crm — apenas dígitos (LIKE) ---
+        // --- Busca 5: campo legado medicos.crm — apenas dígitos (LIKE) ---
         if ($crmLimpo !== '') {
-            $stmt4 = $this->pdo->prepare(
+            $stmt5 = $this->pdo->prepare(
                 "SELECT m.*, e.especialidade AS especialidade_nome
                  FROM {$this->table} m
                  LEFT JOIN especialidades e ON e.id = m.especialidade_id
                  WHERE m.usuario_id = :usuario_id
-                   AND m.crm LIKE :crm_like
+                   AND REPLACE(REPLACE(m.crm, '-', ''), ' ', '') LIKE :crm_like
                  LIMIT 1"
             );
-            $stmt4->execute([':usuario_id' => $usuarioId, ':crm_like' => '%' . $crmLimpo . '%']);
-            $result4 = $stmt4->fetch(PDO::FETCH_OBJ);
-            if ($result4) return $result4;
+            $stmt5->execute([':usuario_id' => $usuarioId, ':crm_like' => '%' . $crmLimpo . '%']);
+            $result5 = $stmt5->fetch(PDO::FETCH_OBJ);
+            if ($result5) return $result5;
         }
 
         return false;
@@ -140,9 +159,19 @@ class Medico extends Model
     // =========================================================
 
     /**
-     * Busca um médico pelo nome (busca exata e parcial, case-insensitive).
-     * Usado como fallback quando findByCrm não encontra resultado.
+     * Remove prefixos de tratamento do nome (Dr., Dra., Prof., etc.) e normaliza espaços.
+     * Ex: 'Dr. Augusto Cezar Coutinho' => 'augusto cezar coutinho'
      */
+    private function normalizarNome(string $nome): string
+    {
+        $nome = trim($nome);
+        // Remove prefixos comuns (case-insensitive)
+        $nome = preg_replace('/^(dr\.?|dra\.?|prof\.?|profa\.?|dr\s|dra\s|prof\s|profa\s)\s*/i', '', $nome);
+        // Remove pontos e espaços extras
+        $nome = preg_replace('/\s+/', ' ', trim($nome));
+        return strtolower($nome);
+    }
+
     public function findByNome(int $usuarioId, string $nome): object|false
     {
         $nomeLimpo = trim($nome);
@@ -163,19 +192,56 @@ class Medico extends Model
         $result = $stmt->fetch(PDO::FETCH_OBJ);
         if ($result) return $result;
 
-        // Busca 2: nome contém a string buscada (busca parcial)
-        $stmt2 = $this->pdo->prepare(
+        // Busca 2: nome sem prefixo (Dr., Dra., Prof.) exato (case-insensitive)
+        $nomeSemPrefixo = $this->normalizarNome($nomeLimpo);
+        if ($nomeSemPrefixo !== strtolower($nomeLimpo)) {
+            $stmt2 = $this->pdo->prepare(
+                "SELECT m.*, e.especialidade AS especialidade_nome
+                 FROM {$this->table} m
+                 LEFT JOIN especialidades e ON e.id = m.especialidade_id
+                 WHERE m.usuario_id = :usuario_id
+                   AND LOWER(m.nome) = :nome_sem_prefixo
+                 LIMIT 1"
+            );
+            $stmt2->execute([':usuario_id' => $usuarioId, ':nome_sem_prefixo' => $nomeSemPrefixo]);
+            $result2 = $stmt2->fetch(PDO::FETCH_OBJ);
+            if ($result2) return $result2;
+        }
+
+        // Busca 3: nome contém a string buscada (busca parcial com nome sem prefixo)
+        $nomeBusca = $nomeSemPrefixo !== '' ? $nomeSemPrefixo : strtolower($nomeLimpo);
+        $stmt3 = $this->pdo->prepare(
             "SELECT m.*, e.especialidade AS especialidade_nome
              FROM {$this->table} m
              LEFT JOIN especialidades e ON e.id = m.especialidade_id
              WHERE m.usuario_id = :usuario_id
-               AND LOWER(m.nome) LIKE LOWER(:nome_like)
+               AND LOWER(m.nome) LIKE :nome_like
              ORDER BY m.nome ASC
              LIMIT 1"
         );
-        $stmt2->execute([':usuario_id' => $usuarioId, ':nome_like' => '%' . $nomeLimpo . '%']);
-        $result2 = $stmt2->fetch(PDO::FETCH_OBJ);
-        if ($result2) return $result2;
+        $stmt3->execute([':usuario_id' => $usuarioId, ':nome_like' => '%' . $nomeBusca . '%']);
+        $result3 = $stmt3->fetch(PDO::FETCH_OBJ);
+        if ($result3) return $result3;
+
+        // Busca 4: banco contém prefixo (Dr. Augusto...) mas busca sem prefixo (Augusto...)
+        // Busca cada palavra significativa do nome (mínimo 4 letras) no banco
+        $palavras = array_filter(explode(' ', $nomeBusca), fn($p) => strlen($p) >= 4);
+        if (!empty($palavras)) {
+            // Usa a primeira palavra longa como ancora
+            $ancora = reset($palavras);
+            $stmt4 = $this->pdo->prepare(
+                "SELECT m.*, e.especialidade AS especialidade_nome
+                 FROM {$this->table} m
+                 LEFT JOIN especialidades e ON e.id = m.especialidade_id
+                 WHERE m.usuario_id = :usuario_id
+                   AND LOWER(m.nome) LIKE :ancora
+                 ORDER BY m.nome ASC
+                 LIMIT 1"
+            );
+            $stmt4->execute([':usuario_id' => $usuarioId, ':ancora' => '%' . $ancora . '%']);
+            $result4 = $stmt4->fetch(PDO::FETCH_OBJ);
+            if ($result4) return $result4;
+        }
 
         return false;
     }
