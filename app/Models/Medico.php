@@ -54,23 +54,44 @@ class Medico extends Model
 
     /**
      * Busca um médico pelo CRM dentro do mesmo usuário.
+     * Toda normalização é feita no PHP para compatibilidade com MariaDB antigo (sem REGEXP_REPLACE).
      * Usado para identificar médicos na planilha de apuração cliente.
      */
     public function findByCrm(int $usuarioId, string $crm): object|false
     {
-        // Normaliza o CRM removendo não-dígitos para comparar apenas os números
+        // Extrai apenas os dígitos do CRM (ex: 'CRM RJ 5257495-...' -> '5257495')
         $crmLimpo = preg_replace('/\D/', '', $crm);
+
+        // Busca 1: pelo CRM exato como veio na planilha
         $stmt = $this->pdo->prepare(
             "SELECT m.*, e.especialidade AS especialidade_nome
              FROM {$this->table} m
              LEFT JOIN especialidades e ON e.id = m.especialidade_id
              WHERE m.usuario_id = :usuario_id
-               AND (REGEXP_REPLACE(m.crm, '[^0-9]', '') = :crm
-                    OR m.crm = :crm_raw)
+               AND m.crm = :crm_raw
              LIMIT 1"
         );
-        $stmt->execute([':usuario_id' => $usuarioId, ':crm' => $crmLimpo, ':crm_raw' => $crm]);
-        return $stmt->fetch(PDO::FETCH_OBJ);
+        $stmt->execute([':usuario_id' => $usuarioId, ':crm_raw' => $crm]);
+        $result = $stmt->fetch(PDO::FETCH_OBJ);
+        if ($result) return $result;
+
+        // Busca 2: pelo número do CRM (apenas dígitos) via LIKE
+        // Ex: planilha tem 'CRM RJ 52574' e banco tem '52574' ou 'RJ 52574'
+        if ($crmLimpo !== '') {
+            $stmt2 = $this->pdo->prepare(
+                "SELECT m.*, e.especialidade AS especialidade_nome
+                 FROM {$this->table} m
+                 LEFT JOIN especialidades e ON e.id = m.especialidade_id
+                 WHERE m.usuario_id = :usuario_id
+                   AND m.crm LIKE :crm_like
+                 LIMIT 1"
+            );
+            $stmt2->execute([':usuario_id' => $usuarioId, ':crm_like' => '%' . $crmLimpo . '%']);
+            $result2 = $stmt2->fetch(PDO::FETCH_OBJ);
+            if ($result2) return $result2;
+        }
+
+        return false;
     }
 
     public function create(array $data): string|false

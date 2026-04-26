@@ -176,13 +176,13 @@ abstract class WhatsappBaseController
               AND c.status = 'ativo'
         ";
 
-        // ─── Etapa 1: Busca direta (formato padronizado com DDI 55) ─────────────────
-        // O banco agora armazena sempre com DDI 55 (ex: 5531992746755).
-        // O WhatsApp também envia neste formato — a busca direta é suficiente.
+        // ─── Etapa 1: Busca direta por igualdade exata ────────────────────────────
+        // Compatível com MariaDB antigo (sem REGEXP_REPLACE).
+        // O banco armazena com DDI 55 (ex: 5531992746755) — busca direta é suficiente.
         $sqlDireto = $baseQuery . "
               AND (
-                  REGEXP_REPLACE(c.telefone, '[^0-9]', '') = :phone
-                  OR REGEXP_REPLACE(c.celular,  '[^0-9]', '') = :phone
+                  c.telefone = :phone
+                  OR c.celular = :phone
               )
             ORDER BY pc.ativo DESC
             LIMIT 1
@@ -215,10 +215,11 @@ abstract class WhatsappBaseController
 
         $inClause = implode(', ', $placeholders);
 
+        // Busca por IN direto (sem REGEXP_REPLACE) — compatível com MariaDB antigo
         $sqlFallback = $baseQuery . "
               AND (
-                  REGEXP_REPLACE(c.telefone, '[^0-9]', '') IN ({$inClause})
-                  OR REGEXP_REPLACE(c.celular,  '[^0-9]', '') IN ({$inClause})
+                  c.telefone IN ({$inClause})
+                  OR c.celular IN ({$inClause})
               )
             ORDER BY pc.ativo DESC
             LIMIT 1
