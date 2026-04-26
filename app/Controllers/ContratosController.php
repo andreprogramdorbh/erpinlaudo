@@ -679,20 +679,53 @@ class ContratosController extends Controller
                     $valoresContratoPrest  = [];
 
                     if ($crm !== '__sem_crm__') {
+                        // -------------------------------------------------------
+                        // Cadeia de busca do médico:
+                        //   P1: findByCrm   — CRM da planilha (verifica medico_crms + campo legado)
+                        //   P2: findByNome  — nome do médico da planilha (fallback)
+                        //   P3: findByCpf   — CPF do médico da planilha (fallback)
+                        //   P4: findByIdMedCrm — ID externo (preparado para importações futuras)
+                        // -------------------------------------------------------
                         $medicoObj = $medicoModel->findByCrm($usuarioId, $crm);
-                        // Fallback: se não encontrou pelo CRM, tentar pelo nome do médico
+
                         if (!$medicoObj) {
+                            // P2: Fallback por nome
                             $nomeMedicoFallback = trim((string)($itensMedico[0][':medico_nome'] ?? ''));
                             if ($nomeMedicoFallback !== '') {
                                 $medicoObj = $medicoModel->findByNome($usuarioId, $nomeMedicoFallback);
                                 if ($medicoObj) {
                                     $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' — vinculado pelo nome '{$nomeMedicoFallback}' (ID: {$medicoObj->id})";
-                                } else {
-                                    $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' nem pelo nome '{$nomeMedicoFallback}' — sub-apuração criada sem vínculo de médico";
                                 }
-                            } else {
-                                $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' e nome não disponível — sub-apuração criada sem vínculo de médico";
                             }
+                        }
+
+                        if (!$medicoObj) {
+                            // P3: Fallback por CPF (campo ':medico_cpf' se disponivel na planilha)
+                            $cpfFallback = trim((string)($itensMedico[0][':medico_cpf'] ?? ''));
+                            if ($cpfFallback !== '') {
+                                $medicoObj = $medicoModel->findByCpf($usuarioId, $cpfFallback);
+                                if ($medicoObj) {
+                                    $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' — vinculado pelo CPF '{$cpfFallback}' (ID: {$medicoObj->id})";
+                                }
+                            }
+                        }
+
+                        if (!$medicoObj) {
+                            // P4: Fallback por ID externo de medico_crms (campo ':medico_crm_id' se disponivel)
+                            $medCrmIdFallback = (int)($itensMedico[0][':medico_crm_id'] ?? 0);
+                            if ($medCrmIdFallback > 0) {
+                                $medicoObj = $medicoModel->findByIdMedCrm($usuarioId, $medCrmIdFallback);
+                                if ($medicoObj) {
+                                    $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' — vinculado pelo ID externo '{$medCrmIdFallback}' (ID: {$medicoObj->id})";
+                                }
+                            }
+                        }
+
+                        if (!$medicoObj) {
+                            $nomeMedicoFallback = trim((string)($itensMedico[0][':medico_nome'] ?? ''));
+                            $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}'"
+                                . ($nomeMedicoFallback !== '' ? ", nome '{$nomeMedicoFallback}'" : '')
+                                . " — sub-apuração criada sem vínculo de médico";
                         }
                     }
 

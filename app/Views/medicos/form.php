@@ -6,6 +6,7 @@ $medico        = $medico ?? null;
 $especialidades = $especialidades ?? [];
 $medicoExames  = $medicoExames ?? [];
 $tabelaExames  = $tabelaExames ?? [];
+$medicoCrms    = $medicoCrms ?? [];
 $isEdit        = ($formMode ?? 'create') === 'edit';
 $medicoId      = (int) ($medico->id ?? 0);
 $error         = $_GET['error'] ?? '';
@@ -95,12 +96,12 @@ $errorMessages = [
                         value="<?php echo htmlspecialchars($medico->nome ?? ''); ?>">
                 </div>
                 <div class="col-md-3">
-                    <label for="crm" class="form-label fw-semibold">CRM</label>
+                    <label for="crm" class="form-label fw-semibold">CRM Principal</label>
                     <input type="text" class="form-control" id="crm" name="crm" required
                         value="<?php echo htmlspecialchars($medico->crm ?? ''); ?>">
                 </div>
                 <div class="col-md-3">
-                    <label for="uf_crm" class="form-label fw-semibold">UF CRM</label>
+                    <label for="uf_crm" class="form-label fw-semibold">UF CRM Principal</label>
                     <input type="text" class="form-control text-uppercase" id="uf_crm" name="uf_crm" maxlength="2" required
                         value="<?php echo htmlspecialchars($medico->uf_crm ?? ''); ?>">
                 </div>
@@ -119,6 +120,81 @@ $errorMessages = [
                     <input type="text" class="form-control" id="telefone" name="telefone" required
                         value="<?php echo htmlspecialchars($medico->telefone ?? ''); ?>">
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         CARD: CRMs adicionais (multi-estado)
+         ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0 pb-0 d-flex align-items-center justify-content-between">
+            <div>
+                <h3 class="h5 mb-1">CRMs por Estado</h3>
+                <p class="text-muted small mb-0">O médico pode ter CRM em mais de um estado. O CRM principal (acima) é usado como padrão.</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-crm">
+                <i class="fas fa-plus me-1"></i> Adicionar CRM
+            </button>
+        </div>
+        <div class="card-body p-4">
+            <div id="lista-crms">
+                <?php
+                // Montar lista de CRMs: prioridade para medico_crms; fallback para o CRM principal
+                $crmsParaExibir = !empty($medicoCrms) ? $medicoCrms : [];
+                if (empty($crmsParaExibir) && !empty($medico->crm)) {
+                    // Nenhum registro em medico_crms ainda — exibir o CRM principal como linha
+                    $crmsParaExibir = [(object)[
+                        'crm'       => $medico->crm,
+                        'uf_crm'    => $medico->uf_crm,
+                        'principal' => 1,
+                    ]];
+                }
+                foreach ($crmsParaExibir as $idx => $mc): ?>
+                <div class="row g-2 align-items-center mb-2 crm-row" id="crm-row-<?php echo $idx; ?>">
+                    <div class="col-md-5">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-id-card"></i></span>
+                            <input type="text" class="form-control crm-input"
+                                name="crms[<?php echo $idx; ?>][crm]"
+                                placeholder="Número do CRM"
+                                value="<?php echo htmlspecialchars($mc->crm ?? ''); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <input type="text" class="form-control text-uppercase uf-input"
+                            name="crms[<?php echo $idx; ?>][uf_crm]"
+                            maxlength="2" placeholder="UF"
+                            value="<?php echo htmlspecialchars($mc->uf_crm ?? ''); ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check mt-1">
+                            <input class="form-check-input principal-radio" type="radio"
+                                name="crm_principal_idx" value="<?php echo $idx; ?>"
+                                id="crm-principal-<?php echo $idx; ?>"
+                                <?php echo ($mc->principal ?? 0) ? 'checked' : ''; ?>>
+                            <label class="form-check-label" for="crm-principal-<?php echo $idx; ?>">
+                                CRM Principal
+                            </label>
+                            <input type="hidden" name="crms[<?php echo $idx; ?>][principal]" class="principal-val" value="<?php echo ($mc->principal ?? 0) ? '1' : '0'; ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <?php if (($mc->principal ?? 0) != 1): ?>
+                        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-crm"
+                            data-idx="<?php echo $idx; ?>">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        <?php else: ?>
+                        <span class="badge bg-primary"><i class="fas fa-star me-1"></i>Principal</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <div class="text-muted small mt-2">
+                <i class="fas fa-info-circle me-1"></i>
+                Os CRMs adicionais são usados na importação de planilhas para vincular automaticamente o médico.
             </div>
         </div>
     </div>
@@ -548,6 +624,122 @@ $errorMessages = [
     // ── Ativar tooltip Bootstrap ──────────────────────────────
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
         new bootstrap.Tooltip(el);
+    });
+})();
+</script>
+
+<!-- ============================================================
+     SCRIPT: Gerenciamento de múltiplos CRMs
+     ============================================================ -->
+<script>
+(function() {
+    const listaCrms  = document.getElementById('lista-crms');
+    const btnAddCrm  = document.getElementById('btn-add-crm');
+    if (!listaCrms || !btnAddCrm) return;
+
+    // Sincronizar radio "CRM Principal" com o hidden input
+    function syncPrincipalRadios() {
+        const radios = listaCrms.querySelectorAll('.principal-radio');
+        radios.forEach(radio => {
+            const row = radio.closest('.crm-row');
+            if (!row) return;
+            const hiddenVal = row.querySelector('.principal-val');
+            const badge     = row.querySelector('.badge.bg-primary');
+            const btnRemove = row.querySelector('.btn-remove-crm');
+
+            if (radio.checked) {
+                if (hiddenVal) hiddenVal.value = '1';
+                // Sincronizar campos crm/uf_crm principais do formulário
+                const crmInput = row.querySelector('.crm-input');
+                const ufInput  = row.querySelector('.uf-input');
+                const crmPrincipal = document.getElementById('crm');
+                const ufPrincipal  = document.getElementById('uf_crm');
+                if (crmInput && crmPrincipal) crmPrincipal.value = crmInput.value;
+                if (ufInput  && ufPrincipal)  ufPrincipal.value  = ufInput.value;
+            } else {
+                if (hiddenVal) hiddenVal.value = '0';
+            }
+        });
+    }
+
+    // Sincronizar CRM principal quando usuário digita no campo da linha marcada como principal
+    listaCrms.addEventListener('input', function(e) {
+        const row = e.target.closest('.crm-row');
+        if (!row) return;
+        const radio = row.querySelector('.principal-radio');
+        if (!radio || !radio.checked) return;
+        const crmPrincipal = document.getElementById('crm');
+        const ufPrincipal  = document.getElementById('uf_crm');
+        if (e.target.classList.contains('crm-input') && crmPrincipal) {
+            crmPrincipal.value = e.target.value;
+        }
+        if (e.target.classList.contains('uf-input') && ufPrincipal) {
+            ufPrincipal.value = e.target.value.toUpperCase();
+        }
+    });
+
+    // Ao mudar o radio, sincronizar
+    listaCrms.addEventListener('change', function(e) {
+        if (e.target.classList.contains('principal-radio')) {
+            syncPrincipalRadios();
+        }
+    });
+
+    // Adicionar nova linha de CRM
+    btnAddCrm.addEventListener('click', function() {
+        const rows = listaCrms.querySelectorAll('.crm-row');
+        const newIdx = rows.length;
+        const div = document.createElement('div');
+        div.className = 'row g-2 align-items-center mb-2 crm-row';
+        div.id = `crm-row-${newIdx}`;
+        div.innerHTML = `
+            <div class="col-md-5">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-id-card"></i></span>
+                    <input type="text" class="form-control crm-input"
+                        name="crms[${newIdx}][crm]" placeholder="Número do CRM">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control text-uppercase uf-input"
+                    name="crms[${newIdx}][uf_crm]" maxlength="2" placeholder="UF">
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-1">
+                    <input class="form-check-input principal-radio" type="radio"
+                        name="crm_principal_idx" value="${newIdx}"
+                        id="crm-principal-${newIdx}">
+                    <label class="form-check-label" for="crm-principal-${newIdx}">CRM Principal</label>
+                    <input type="hidden" name="crms[${newIdx}][principal]" class="principal-val" value="0">
+                </div>
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger btn-remove-crm" data-idx="${newIdx}">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>`;
+        listaCrms.appendChild(div);
+    });
+
+    // Remover linha de CRM
+    listaCrms.addEventListener('click', function(e) {
+        const btn = e.target.closest('.btn-remove-crm');
+        if (!btn) return;
+        const row = btn.closest('.crm-row');
+        if (row) row.remove();
+        // Renumerar índices dos campos hidden
+        listaCrms.querySelectorAll('.crm-row').forEach((r, i) => {
+            r.querySelectorAll('[name]').forEach(el => {
+                el.name = el.name.replace(/crms\[\d+\]/, `crms[${i}]`);
+            });
+            const radio = r.querySelector('.principal-radio');
+            if (radio) {
+                radio.value = i;
+                radio.id    = `crm-principal-${i}`;
+                const lbl = r.querySelector(`label[for^="crm-principal-"]`);
+                if (lbl) lbl.setAttribute('for', `crm-principal-${i}`);
+            }
+        });
     });
 })();
 </script>

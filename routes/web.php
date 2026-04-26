@@ -165,6 +165,9 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::post("/medicos/store", "MedicosController@store");
     Router::get("/medicos/edit/{id}", "MedicosController@edit");
     Router::post("/medicos/update/{id}", "MedicosController@update");
+    // CRMs do médico (AJAX)
+    Router::get("/medicos/{id}/crms", "MedicosController@getCrms");
+    Router::post("/medicos/{id}/crms/save", "MedicosController@saveCrms");
     // Serviços / Exames do médico (AJAX)
     Router::get("/medicos/{id}/exames", "MedicosController@getExames");
     Router::post("/medicos/{id}/exames/save", "MedicosController@saveExame");

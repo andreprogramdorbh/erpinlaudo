@@ -31,6 +31,10 @@ class MedicosController extends Controller
         $this->logger             = new Logger();
     }
 
+    // =========================================================
+    // LISTAGEM
+    // =========================================================
+
     public function index(): void
     {
         try {
@@ -60,6 +64,10 @@ class MedicosController extends Controller
         }
     }
 
+    // =========================================================
+    // CRIAR
+    // =========================================================
+
     public function create(): void
     {
         $usuarioId = Auth::user()->id;
@@ -75,6 +83,7 @@ class MedicosController extends Controller
             ],
             'medico'        => null,
             'especialidades' => $this->especialidadeModel->listForSelect($usuarioId),
+            'medicoCrms'    => [],
         ]);
     }
 
@@ -86,6 +95,12 @@ class MedicosController extends Controller
 
             $id = $this->model->create($dados);
             if ($id) {
+                // Salvar CRMs adicionais (o principal já foi inserido pelo model->create)
+                $crmsPost = $this->parseCrmsPost();
+                if (!empty($crmsPost)) {
+                    $this->model->saveCrms((int)$id, $usuarioId, $crmsPost);
+                }
+
                 AuditLogger::log('create_medico', [
                     'id'   => $id,
                     'nome' => $dados['nome'],
@@ -104,6 +119,10 @@ class MedicosController extends Controller
         exit();
     }
 
+    // =========================================================
+    // EDITAR
+    // =========================================================
+
     public function edit($id): void
     {
         $usuarioId = Auth::user()->id;
@@ -113,6 +132,9 @@ class MedicosController extends Controller
             header('Location: ' . self::BASE_ROUTE . '?error=not_found');
             exit();
         }
+
+        // CRMs cadastrados para este médico
+        $medicoCrms = $this->model->getCrms((int) $id);
 
         // Exames vinculados ao médico (com TAGs DICOM)
         $medicoExames = $this->medicoExameModel->findByMedicoId((int) $id);
@@ -131,6 +153,7 @@ class MedicosController extends Controller
             ],
             'medico'        => $medico,
             'especialidades' => $this->especialidadeModel->listForSelect($usuarioId),
+            'medicoCrms'    => $medicoCrms,
             'medicoExames'  => $medicoExames,
             'tabelaExames'  => $tabelaExames,
         ]);
@@ -150,6 +173,10 @@ class MedicosController extends Controller
             $dados = $this->validarDadosFormulario($usuarioId, $medico);
 
             if ($this->model->update((int) $id, $dados)) {
+                // Salvar lista completa de CRMs (inclui o principal e os adicionais)
+                $crmsPost = $this->parseCrmsPost();
+                $this->model->saveCrms((int)$id, $usuarioId, $crmsPost);
+
                 AuditLogger::log('update_medico', [
                     'id'   => (int) $id,
                     'nome' => $dados['nome'],
@@ -168,9 +195,81 @@ class MedicosController extends Controller
         exit();
     }
 
-    // -------------------------------------------------------
+    // =========================================================
+    // AJAX — Gerenciar CRMs do médico
+    // =========================================================
+
+    /**
+     * POST /medicos/{id}/crms/save
+     * Salva (substitui) todos os CRMs do médico via AJAX.
+     * Recebe JSON: { crms: [{crm, uf_crm, principal}] }
+     */
+    public function saveCrms($medicoId): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $medico    = $this->model->findById((int) $medicoId);
+
+            if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Médico não encontrado.']);
+                exit();
+            }
+
+            $body  = json_decode(file_get_contents('php://input'), true) ?? [];
+            $crms  = $body['crms'] ?? [];
+
+            if (!is_array($crms)) {
+                echo json_encode(['success' => false, 'message' => 'Dados inválidos.']);
+                exit();
+            }
+
+            $ok = $this->model->saveCrms((int)$medicoId, $usuarioId, $crms);
+
+            AuditLogger::log('save_medico_crms', [
+                'medico_id' => (int)$medicoId,
+                'total'     => count($crms),
+            ]);
+
+            echo json_encode(['success' => $ok]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao salvar CRMs do médico: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * GET /medicos/{id}/crms
+     * Retorna os CRMs cadastrados para o médico (AJAX).
+     */
+    public function getCrms($medicoId): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $medico    = $this->model->findById((int) $medicoId);
+
+            if (!$medico || (int) ($medico->usuario_id ?? 0) !== (int) $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Médico não encontrado.']);
+                exit();
+            }
+
+            $crms = $this->model->getCrms((int)$medicoId);
+            echo json_encode(['success' => true, 'crms' => $crms]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao listar CRMs do médico: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // =========================================================
     // AJAX — Listar exames vinculados ao médico
-    // -------------------------------------------------------
+    // =========================================================
+
     public function getExames($medicoId): void
     {
         ob_start(); ob_end_clean();
@@ -194,9 +293,10 @@ class MedicosController extends Controller
         exit();
     }
 
-    // -------------------------------------------------------
+    // =========================================================
     // AJAX — Vincular/atualizar exame ao médico
-    // -------------------------------------------------------
+    // =========================================================
+
     public function saveExame($medicoId): void
     {
         ob_start(); ob_end_clean();
@@ -253,9 +353,10 @@ class MedicosController extends Controller
         exit();
     }
 
-    // -------------------------------------------------------
+    // =========================================================
     // AJAX — Remover vínculo de exame do médico
-    // -------------------------------------------------------
+    // =========================================================
+
     public function deleteExame($medicoId): void
     {
         ob_start(); ob_end_clean();
@@ -292,9 +393,10 @@ class MedicosController extends Controller
         exit();
     }
 
-    // -------------------------------------------------------
-    // AJAX — Buscar dados de um exame da tabela (para preencher o formulário)
-    // -------------------------------------------------------
+    // =========================================================
+    // AJAX — Buscar dados de um exame da tabela
+    // =========================================================
+
     public function getExameTabela($exameId): void
     {
         ob_start(); ob_end_clean();
@@ -323,9 +425,32 @@ class MedicosController extends Controller
         exit();
     }
 
-    // -------------------------------------------------------
+    // =========================================================
     // Helpers privados
-    // -------------------------------------------------------
+    // =========================================================
+
+    /**
+     * Lê do POST o array de CRMs enviado pelo formulário.
+     * Formato esperado: crms[0][crm], crms[0][uf_crm], crms[0][principal], ...
+     */
+    private function parseCrmsPost(): array
+    {
+        $raw = $_POST['crms'] ?? [];
+        if (!is_array($raw)) {
+            return [];
+        }
+        $result = [];
+        foreach ($raw as $item) {
+            $crm  = trim(strip_tags((string)($item['crm'] ?? '')));
+            $uf   = strtoupper(trim(strip_tags((string)($item['uf_crm'] ?? ''))));
+            $prin = (int)(bool)($item['principal'] ?? 0);
+            if ($crm !== '' && strlen($uf) === 2) {
+                $result[] = ['crm' => $crm, 'uf_crm' => $uf, 'principal' => $prin];
+            }
+        }
+        return $result;
+    }
+
     private function validarDadosFormulario(int $usuarioId, ?object $medicoAtual = null): array
     {
         $nome           = trim(strip_tags((string) ($_POST['nome'] ?? '')));
