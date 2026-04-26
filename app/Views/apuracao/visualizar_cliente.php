@@ -334,7 +334,22 @@ UI::sectionHeader(
             Apurações de Prestador Vinculadas
             <span class="badge bg-warning text-dark ms-2"><?php echo count($subApuracoes); ?></span>
         </h6>
-        <small class="text-muted">Geradas automaticamente por médico ao importar a planilha</small>
+        <div class="d-flex align-items-center gap-2">
+            <small class="text-muted">Geradas automaticamente por médico ao importar a planilha</small>
+            <?php
+            $temSubSemMedico = false;
+            foreach ($subApuracoes as $_sub) {
+                if (empty($_sub->medico_id)) { $temSubSemMedico = true; break; }
+            }
+            ?>
+            <?php if ($temSubSemMedico): ?>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="btn-revincular-medico"
+                data-apuracao-id="<?php echo (int)$apuracao->id; ?>"
+                title="Tenta vincular o médico nas sub-apurações sem vínculo usando CRM, nome ou CPF">
+                <i class="fas fa-link me-1"></i> Revincular Médico
+            </button>
+            <?php endif; ?>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -359,9 +374,13 @@ UI::sectionHeader(
                             <span class="badge bg-secondary font-monospace"><?php echo htmlspecialchars($sub->numero); ?></span>
                         </td>
                         <td>
-                            <strong><?php echo htmlspecialchars($sub->medico_nome ?? 'N/A'); ?></strong>
+                            <?php if (!empty($sub->medico_nome)): ?>
+                            <strong><?php echo htmlspecialchars($sub->medico_nome); ?></strong>
                             <?php if (!empty($sub->medico_crm)): ?>
                             <br><small class="text-muted">CRM <?php echo htmlspecialchars($sub->medico_crm); ?></small>
+                            <?php endif; ?>
+                            <?php else: ?>
+                            <span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i>Não vinculado</span>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -736,6 +755,50 @@ function executarRecalculo() {
         alert('Erro de comunicação: ' + err.message);
         btnConfirmar.disabled = false;
         btnConfirmar.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Sim, Recalcular';
+    });
+}
+
+// ============================================================
+// REVINCULAR MÉDICO nas sub-apurações sem vínculo
+// ============================================================
+const btnRevincular = document.getElementById('btn-revincular-medico');
+if (btnRevincular) {
+    btnRevincular.addEventListener('click', function() {
+        const apuracaoId = this.dataset.apuracaoId;
+        if (!apuracaoId) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Vinculando...';
+        fetch('/faturamento/apuracao/revincular-medico/' + apuracaoId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: 'csrf_token=' + encodeURIComponent(CSRF_TOKEN),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (data.atualizados > 0) {
+                    alert('✅ ' + data.atualizados + ' sub-apuração(s) vinculada(s) com sucesso! A página será recarregada.');
+                    window.location.reload();
+                } else {
+                    alert('⚠️ Nenhuma sub-apuração foi vinculada. Verifique se o médico está cadastrado com o CRM ou nome correto.\n\nLog:\n' + (data.log || []).join('\n'));
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-link me-1"></i> Revincular Médico';
+                }
+            } else {
+                alert('Erro ao revincular: ' + (data.message || 'Erro desconhecido'));
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-link me-1"></i> Revincular Médico';
+            }
+        })
+        .catch(err => {
+            alert('Erro de comunicação: ' + err.message);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-link me-1"></i> Revincular Médico';
+        });
     });
 }
 </script>

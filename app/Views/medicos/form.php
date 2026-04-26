@@ -102,8 +102,29 @@ $errorMessages = [
                 </div>
                 <div class="col-md-3">
                     <label for="uf_crm" class="form-label fw-semibold">UF CRM Principal</label>
-                    <input type="text" class="form-control text-uppercase" id="uf_crm" name="uf_crm" maxlength="2" required
-                        value="<?php echo htmlspecialchars($medico->uf_crm ?? ''); ?>">
+                    <?php
+                    $ufCrmAtual = strtoupper(trim($medico->uf_crm ?? ''));
+                    $ufsOptions = [
+                        'AC'=>'AC — Acre','AL'=>'AL — Alagoas','AP'=>'AP — Amapá','AM'=>'AM — Amazonas',
+                        'BA'=>'BA — Bahia','CE'=>'CE — Ceará','DF'=>'DF — Distrito Federal',
+                        'ES'=>'ES — Espírito Santo','GO'=>'GO — Goiás','MA'=>'MA — Maranhão',
+                        'MT'=>'MT — Mato Grosso','MS'=>'MS — Mato Grosso do Sul',
+                        'MG'=>'MG — Minas Gerais','PA'=>'PA — Pará','PB'=>'PB — Paraíba',
+                        'PR'=>'PR — Paraná','PE'=>'PE — Pernambuco','PI'=>'PI — Piauí',
+                        'RJ'=>'RJ — Rio de Janeiro','RN'=>'RN — Rio Grande do Norte',
+                        'RS'=>'RS — Rio Grande do Sul','RO'=>'RO — Rondônia',
+                        'RR'=>'RR — Roraima','SC'=>'SC — Santa Catarina',
+                        'SP'=>'SP — São Paulo','SE'=>'SE — Sergipe','TO'=>'TO — Tocantins',
+                    ];
+                    ?>
+                    <select class="form-select" id="uf_crm" name="uf_crm" required>
+                        <option value="">Selecione</option>
+                        <?php foreach ($ufsOptions as $sigla => $label): ?>
+                        <option value="<?php echo $sigla; ?>" <?php echo $ufCrmAtual === $sigla ? 'selected' : ''; ?>>
+                            <?php echo $label; ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="col-md-4">
                     <label for="cpf" class="form-label fw-semibold">CPF</label>
@@ -162,10 +183,16 @@ $errorMessages = [
                         </div>
                     </div>
                     <div class="col-md-2">
-                        <input type="text" class="form-control text-uppercase uf-input"
-                            name="crms[<?php echo $idx; ?>][uf_crm]"
-                            maxlength="2" placeholder="UF"
-                            value="<?php echo htmlspecialchars($mc->uf_crm ?? ''); ?>">
+                        <?php $ufCrmLinha = strtoupper(trim($mc->uf_crm ?? '')); ?>
+                        <select class="form-select uf-input"
+                            name="crms[<?php echo $idx; ?>][uf_crm]">
+                            <option value="">UF</option>
+                            <?php foreach ($ufsOptions as $sigla => $label): ?>
+                            <option value="<?php echo $sigla; ?>" <?php echo $ufCrmLinha === $sigla ? 'selected' : ''; ?>>
+                                <?php echo $sigla; ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div class="col-md-3">
                         <div class="form-check mt-1">
@@ -632,6 +659,12 @@ $errorMessages = [
      SCRIPT: Gerenciamento de múltiplos CRMs
      ============================================================ -->
 <script>
+// Lista de UFs para o select dinâmico
+const ufSelectOptions = [
+    'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
+    'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'
+].map(uf => `<option value="${uf}">${uf}</option>`).join('');
+
 (function() {
     const listaCrms  = document.getElementById('lista-crms');
     const btnAddCrm  = document.getElementById('btn-add-crm');
@@ -662,26 +695,31 @@ $errorMessages = [
         });
     }
 
-    // Sincronizar CRM principal quando usuário digita no campo da linha marcada como principal
+    // Sincronizar CRM principal quando usuário digita/altera campo da linha marcada como principal
     listaCrms.addEventListener('input', function(e) {
         const row = e.target.closest('.crm-row');
         if (!row) return;
         const radio = row.querySelector('.principal-radio');
         if (!radio || !radio.checked) return;
         const crmPrincipal = document.getElementById('crm');
-        const ufPrincipal  = document.getElementById('uf_crm');
         if (e.target.classList.contains('crm-input') && crmPrincipal) {
             crmPrincipal.value = e.target.value;
         }
-        if (e.target.classList.contains('uf-input') && ufPrincipal) {
-            ufPrincipal.value = e.target.value.toUpperCase();
-        }
     });
 
-    // Ao mudar o radio, sincronizar
+    // Ao mudar o radio OU o select de UF, sincronizar
     listaCrms.addEventListener('change', function(e) {
         if (e.target.classList.contains('principal-radio')) {
             syncPrincipalRadios();
+        }
+        // Sincronizar select UF quando linha marcada como principal é alterada
+        if (e.target.classList.contains('uf-input')) {
+            const row = e.target.closest('.crm-row');
+            if (!row) return;
+            const radio = row.querySelector('.principal-radio');
+            if (!radio || !radio.checked) return;
+            const ufPrincipal = document.getElementById('uf_crm');
+            if (ufPrincipal) ufPrincipal.value = e.target.value;
         }
     });
 
@@ -701,8 +739,10 @@ $errorMessages = [
                 </div>
             </div>
             <div class="col-md-2">
-                <input type="text" class="form-control text-uppercase uf-input"
-                    name="crms[${newIdx}][uf_crm]" maxlength="2" placeholder="UF">
+                <select class="form-select uf-input" name="crms[${newIdx}][uf_crm]">
+                    <option value="">UF</option>
+                    ${ufSelectOptions}
+                </select>
             </div>
             <div class="col-md-3">
                 <div class="form-check mt-1">

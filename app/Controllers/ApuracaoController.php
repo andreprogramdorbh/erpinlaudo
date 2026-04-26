@@ -538,6 +538,95 @@ class ApuracaoController extends Controller
     }
 
     // =========================================================
+    // REVINCULAR MÉDICO — atualiza sub-apurações com medico_id NULL
+    // POST /faturamento/apuracao/revincular-medico/{id}
+    // Tenta vincular o médico usando a cadeia: CRM → Nome → CPF → IdMedCrm
+    // =========================================================
+    public function revincularMedico(string $id): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json');
+        try {
+            $user      = Auth::user();
+            $usuarioId = (int) $user->id;
+            $apuracao  = $this->apuracaoModel->findById((int) $id);
+
+            if (!$apuracao || (int) $apuracao->usuario_id !== $usuarioId) {
+                echo json_encode(['success' => false, 'message' => 'Apuração não encontrada.']);
+                exit();
+            }
+
+            $medicoModel = new Medico();
+            $subApuracoes = $this->apuracaoModel->findSubApuracoesByMaeId((int) $id);
+
+            $atualizados = 0;
+            $log = [];
+
+            foreach ($subApuracoes as $sub) {
+                // Pular se já tem médico vinculado
+                if (!empty($sub->medico_id)) {
+                    continue;
+                }
+
+                $medicoObj = null;
+
+                // Buscar o primeiro item da sub-apuração para obter CRM e nome
+                $itens = $this->itemModel->findByApuracaoId((int) $sub->id);
+                $primeiroItem = $itens[0] ?? null;
+
+                $crmItem  = trim((string)($primeiroItem->medico_crm  ?? ''));
+                $nomeItem = trim((string)($primeiroItem->medico_nome ?? ''));
+
+                // P1: findByCrm
+                if ($crmItem !== '') {
+                    $medicoObj = $medicoModel->findByCrm($usuarioId, $crmItem);
+                    if ($medicoObj) {
+                        $log[] = "Sub {$sub->numero}: vinculado pelo CRM '{$crmItem}' (ID: {$medicoObj->id})";
+                    }
+                }
+
+                // P2: findByNome
+                if (!$medicoObj && $nomeItem !== '') {
+                    $medicoObj = $medicoModel->findByNome($usuarioId, $nomeItem);
+                    if ($medicoObj) {
+                        $log[] = "Sub {$sub->numero}: vinculado pelo nome '{$nomeItem}' (ID: {$medicoObj->id})";
+                    }
+                }
+
+                // P3: não há CPF nos itens, pular
+
+                if ($medicoObj) {
+                    $this->apuracaoModel->update((int)$sub->id, [
+                        'usuario_id' => $usuarioId,
+                        'medico_id'  => (int)$medicoObj->id,
+                    ]);
+                    $atualizados++;
+                } else {
+                    $log[] = "Sub {$sub->numero}: médico não encontrado (CRM='{$crmItem}', Nome='{$nomeItem}')";
+                }
+            }
+
+            AuditLogger::log('revincular_medico_sub_apuracoes', [
+                'apuracao_mae_id' => (int)$id,
+                'atualizados'     => $atualizados,
+            ]);
+
+            echo json_encode([
+                'success'     => true,
+                'atualizados' => $atualizados,
+                'log'         => $log,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[ApuracaoController] Erro ao revincular médico', [
+                'apuracao_id' => $id,
+                'error'       => $e->getMessage(),
+            ]);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // =========================================================
     // HELPER: JSON error response
     // =========================================================
     private function jsonError(string $msg): void
