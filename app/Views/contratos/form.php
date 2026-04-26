@@ -390,7 +390,7 @@ $ehMedico  = $tipoParte === 'medico';
                     <label class="form-label fw-semibold text-success"><i class="fas fa-tag me-1"></i>Rotina (Médico)</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" id="ce-valor-rotina" class="form-control" step="0.01" min="0" placeholder="0,00">
+                        <input type="text" id="ce-valor-rotina" class="form-control money-mask" inputmode="numeric" placeholder="0,00">
                     </div>
                     <small class="text-muted" id="ce-hint-rotina"></small>
                 </div>
@@ -398,7 +398,7 @@ $ehMedico  = $tipoParte === 'medico';
                     <label class="form-label fw-semibold text-warning"><i class="fas fa-bolt me-1"></i>Urgência (Médico)</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" id="ce-valor-urgencia" class="form-control" step="0.01" min="0" placeholder="0,00">
+                        <input type="text" id="ce-valor-urgencia" class="form-control money-mask" inputmode="numeric" placeholder="0,00">
                     </div>
                     <small class="text-muted" id="ce-hint-urgencia"></small>
                 </div>
@@ -408,7 +408,7 @@ $ehMedico  = $tipoParte === 'medico';
                     <label class="form-label fw-semibold text-success"><i class="fas fa-tag me-1"></i>Venda Rotina</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" id="ce-valor-venda-rotina" class="form-control" step="0.01" min="0" placeholder="0,00">
+                        <input type="text" id="ce-valor-venda-rotina" class="form-control money-mask" inputmode="numeric" placeholder="0,00">
                     </div>
                     <small class="text-muted" id="ce-hint-venda-rotina"></small>
                 </div>
@@ -416,7 +416,7 @@ $ehMedico  = $tipoParte === 'medico';
                     <label class="form-label fw-semibold text-warning"><i class="fas fa-bolt me-1"></i>Venda Urgência</label>
                     <div class="input-group">
                         <span class="input-group-text">R$</span>
-                        <input type="number" id="ce-valor-venda-urgencia" class="form-control" step="0.01" min="0" placeholder="0,00">
+                        <input type="text" id="ce-valor-venda-urgencia" class="form-control money-mask" inputmode="numeric" placeholder="0,00">
                     </div>
                     <small class="text-muted" id="ce-hint-venda-urgencia"></small>
                 </div>
@@ -1029,16 +1029,20 @@ function carregarValoresExame(exameId) {
     const opt = document.querySelector('#ce-exame-select option[value="' + exameId + '"]');
     if (!opt) return;
 
+    // Converte float para formato BR com vírgula decimal (ex: 13.5 → "13,50")
+    function floatToBR(v) {
+        return parseFloat(v || 0).toFixed(2).replace('.', ',');
+    }
     if (EH_MEDICO) {
-        const rotina   = parseFloat(opt.dataset.rotina || 0).toFixed(2);
-        const urgencia = parseFloat(opt.dataset.urgencia || 0).toFixed(2);
+        const rotina   = floatToBR(opt.dataset.rotina);
+        const urgencia = floatToBR(opt.dataset.urgencia);
         const r = document.getElementById('ce-valor-rotina');
         const u = document.getElementById('ce-valor-urgencia');
         if (r) { r.value = rotina; document.getElementById('ce-hint-rotina').textContent = 'Tabela: R$ ' + rotina; }
         if (u) { u.value = urgencia; document.getElementById('ce-hint-urgencia').textContent = 'Tabela: R$ ' + urgencia; }
     } else {
-        const vRotina   = parseFloat(opt.dataset.vendaRotina || 0).toFixed(2);
-        const vUrgencia = parseFloat(opt.dataset.vendaUrgencia || 0).toFixed(2);
+        const vRotina   = floatToBR(opt.dataset.vendaRotina);
+        const vUrgencia = floatToBR(opt.dataset.vendaUrgencia);
         const r = document.getElementById('ce-valor-venda-rotina');
         const u = document.getElementById('ce-valor-venda-urgencia');
         if (r) { r.value = vRotina; document.getElementById('ce-hint-venda-rotina').textContent = 'Tabela: R$ ' + vRotina; }
@@ -1063,16 +1067,13 @@ function salvarExameContrato() {
     formData.append('tabela_exame_id', exameId);
     formData.append('usa_valor_custom', usaCustom);
 
-    // Converte valor para float.
-    // Se contiver vírgula = formato BR (1.350,00): remove pontos de milhar, troca vírgula por ponto.
-    // Se não contiver vírgula = campo type="number" com ponto decimal (9.50): usa parseFloat direto.
+    // Converte formato BR (ex: "1.350,00" ou "135,00" ou "135") para float.
+    // Todos os campos são type="text" com máscara money-mask (formato BR).
     function parseMoedaBR(val) {
         if (!val || String(val).trim() === '') return 0;
         const s = String(val).trim();
-        if (s.includes(',')) {
-            return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
-        }
-        return parseFloat(s) || 0;
+        // Remove pontos de milhar e troca vírgula decimal por ponto
+        return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
     }
 
     if (EH_MEDICO) {
