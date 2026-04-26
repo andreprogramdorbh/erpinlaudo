@@ -824,7 +824,6 @@ $ehMedico  = $tipoParte === 'medico';
     </div>
 </div>
 <?php endif; ?>
-<?php endif; ?>
 
 <script>
 // Controle de abas
