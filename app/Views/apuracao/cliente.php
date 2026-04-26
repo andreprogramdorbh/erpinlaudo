@@ -64,7 +64,7 @@ if ($error === 'db_error')            echo '<div class="alert alert-danger borde
 <?php if (!empty($apuracoes)): ?>
 <?php
 $totExames = array_sum(array_column($apuracoes, 'total_exames'));
-$totValor  = array_sum(array_column($apuracoes, 'valor_total'));
+$totValor  = array_sum(array_column($apuracoes, 'valor_venda_total')) ?: array_sum(array_column($apuracoes, 'valor_total'));
 ?>
 <div class="row g-3 mb-4">
     <div class="col-md-3">
@@ -149,7 +149,7 @@ $totValor  = array_sum(array_column($apuracoes, 'valor_total'));
                         <td class="text-center"><span class="badge bg-success"><?php echo $ap->total_normal; ?></span></td>
                         <td class="text-center"><span class="badge bg-danger"><?php echo $ap->total_urgencia; ?></span></td>
                         <td class="text-end fw-semibold text-success">
-                            R$ <?php echo number_format((float)$ap->valor_total, 2, ',', '.'); ?>
+                            R$ <?php echo number_format((float)(($ap->valor_venda_total ?? 0) > 0 ? $ap->valor_venda_total : $ap->valor_total), 2, ',', '.'); ?>
                         </td>
                         <td>
                             <?php
@@ -168,7 +168,7 @@ $totValor  = array_sum(array_column($apuracoes, 'valor_total'));
                                     <i class="fas fa-eye"></i>
                                 </a>
                                 <button type="button" class="btn btn-outline-success"
-                                        onclick="confirmarFaturamento(<?php echo $ap->id; ?>, '<?php echo htmlspecialchars($ap->numero); ?>', '<?php echo number_format((float)$ap->valor_total, 2, ',', '.'); ?>')"
+                                        onclick="confirmarFaturamento(<?php echo $ap->id; ?>, '<?php echo htmlspecialchars($ap->numero); ?>', '<?php echo number_format((float)(($ap->valor_venda_total ?? 0) > 0 ? $ap->valor_venda_total : $ap->valor_total), 2, ',', '.'); ?>')"
                                         title="Faturar — gerar conta a receber">
                                     <i class="fas fa-file-invoice-dollar"></i>
                                 </button>

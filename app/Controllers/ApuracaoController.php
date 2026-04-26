@@ -364,8 +364,13 @@ class ApuracaoController extends Controller
             exit();
         }
 
+        // Determinar redirect correto com base no tipo ANTES de qualquer validação
+        $redirectBase = ($apuracao->tipo === 'cliente')
+            ? '/faturamento/apuracao-cliente'
+            : '/faturamento/apuracao-prestador';
+
         if ($apuracao->status !== 'concluido') {
-            header("Location: /faturamento/apuracao-prestador?error=status_invalido");
+            header("Location: {$redirectBase}?error=status_invalido");
             exit();
         }
 
@@ -406,7 +411,7 @@ class ApuracaoController extends Controller
                     'cliente_id'           => $apuracao->cliente_id ?? null,
                     'plano_conta_id'       => null,
                     'descricao'            => $descricao,
-                    'valor'                => $apuracao->valor_total,
+                    'valor'                => (float)(($apuracao->valor_venda_total ?? 0) > 0 ? $apuracao->valor_venda_total : $apuracao->valor_total),
                     'data_vencimento'      => date('Y-m-d', strtotime('+30 days')),
                     'data_recebimento'     => null,
                     'status'               => 'aberta',
@@ -415,6 +420,7 @@ class ApuracaoController extends Controller
                     'recorrente'           => 0,
                     'recorrencia_tipo'     => null,
                     'recorrencia_intervalo'=> null,
+                    'contrato_id'          => $apuracao->contrato_id ?? null,
                 ]);
 
                 $redirect = '/faturamento/apuracao-cliente';
@@ -436,14 +442,15 @@ class ApuracaoController extends Controller
 
         } catch (\Throwable $e) {
             $this->logger->error('[ApuracaoController] Erro ao faturar', [
-                'apuracao_id' => $id,
-                'error'       => $e->getMessage(),
-                'trace'       => $e->getTraceAsString(),
+                'apuracao_id'  => $id,
+                'tipo'         => $apuracao->tipo ?? 'desconhecido',
+                'cliente_id'   => $apuracao->cliente_id ?? null,
+                'valor_total'  => $apuracao->valor_total ?? null,
+                'valor_venda'  => $apuracao->valor_venda_total ?? null,
+                'error'        => $e->getMessage(),
+                'trace'        => $e->getTraceAsString(),
             ]);
-            $redirect = $apuracao->tipo === 'prestador'
-                ? '/faturamento/apuracao-prestador'
-                : '/faturamento/apuracao-cliente';
-            header("Location: {$redirect}?error=faturamento_falhou");
+            header("Location: {$redirectBase}?error=faturamento_falhou");
         }
         exit();
     }

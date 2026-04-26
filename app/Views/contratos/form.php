@@ -54,7 +54,6 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
             <?php endif; ?>
         </a>
     </li>
-    <?php if (($contrato->tipo_parte ?? '') === 'medico'): ?>
     <li class="nav-item">
         <a class="nav-link <?php echo $activeTab === 'apuracao' ? 'active' : ''; ?>"
            href="/contratos/edit/<?php echo $cId; ?>?tab=apuracao">
@@ -64,7 +63,6 @@ if ($error === 'db_error')          echo '<div class="alert alert-danger border-
             <?php endif; ?>
         </a>
     </li>
-    <?php endif; ?>
     <?php endif; ?>
 </ul>
 
@@ -529,9 +527,8 @@ $ehMedico  = $tipoParte === 'medico';
 <!-- FIM ABA SERVIÇOS/EXAMES -->
 
 <!-- ============================================================ -->
-<!-- ABA: APURAÇÃO (apenas médico) -->
+<!-- ABA: APURAÇÃO (médico e cliente) -->
 <!-- ============================================================ -->
-<?php if (($contrato->tipo_parte ?? '') === 'medico'): ?>
 <div id="tab-apuracao" class="tab-content-section <?php echo $activeTab !== 'apuracao' ? 'd-none' : ''; ?>">
 
     <!-- Filtros de apuração -->
