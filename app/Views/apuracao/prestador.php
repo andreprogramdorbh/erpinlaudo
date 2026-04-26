@@ -116,6 +116,7 @@ $totFat    = count(array_filter($apuracoes, fn($a) => $a->status === 'faturado')
                         <th class="ps-4">Número</th>
                         <th>Médico</th>
                         <th>Contrato</th>
+                        <th>Cliente</th>
                         <th>Período</th>
                         <th class="text-center">Exames</th>
                         <th class="text-center">Normal</th>
@@ -144,6 +145,15 @@ $totFat    = count(array_filter($apuracoes, fn($a) => $a->status === 'faturado')
                         </td>
                         <td>
                             <small class="text-muted"><?php echo htmlspecialchars($ap->contrato_nome ?? '—'); ?></small>
+                        </td>
+                        <td>
+                            <?php if (!empty($ap->cliente_nome)): ?>
+                            <span class="badge bg-light text-dark border">
+                                <i class="fas fa-building me-1 text-primary"></i><?php echo htmlspecialchars($ap->cliente_nome); ?>
+                            </span>
+                            <?php else: ?>
+                            <small class="text-muted">—</small>
+                            <?php endif; ?>
                         </td>
                         <td>
                             <small>

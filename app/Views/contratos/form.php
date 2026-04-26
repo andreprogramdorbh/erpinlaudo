@@ -1063,10 +1063,16 @@ function salvarExameContrato() {
     formData.append('tabela_exame_id', exameId);
     formData.append('usa_valor_custom', usaCustom);
 
-    // Converte formato BR (1.350,00) para float (1350.00) antes de enviar ao servidor
+    // Converte valor para float.
+    // Se contiver vírgula = formato BR (1.350,00): remove pontos de milhar, troca vírgula por ponto.
+    // Se não contiver vírgula = campo type="number" com ponto decimal (9.50): usa parseFloat direto.
     function parseMoedaBR(val) {
         if (!val || String(val).trim() === '') return 0;
-        return parseFloat(String(val).replace(/\./g, '').replace(',', '.')) || 0;
+        const s = String(val).trim();
+        if (s.includes(',')) {
+            return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+        }
+        return parseFloat(s) || 0;
     }
 
     if (EH_MEDICO) {
