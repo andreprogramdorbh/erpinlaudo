@@ -128,7 +128,7 @@ class ApuracaoController extends Controller
         // Sub-apurações de prestador vinculadas (apenas para apuração cliente)
         $subApuracoes = [];
         if ($tipo === 'cliente') {
-            $subApuracoes = $this->apuracaoModel->findByMaeId((int) $id);
+            $subApuracoes = $this->apuracaoModel->findSubApuracoesByMaeId((int) $id);
         }
 
         // Selecionar a view correta conforme o tipo da apuração
