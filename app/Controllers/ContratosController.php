@@ -680,6 +680,20 @@ class ContratosController extends Controller
 
                     if ($crm !== '__sem_crm__') {
                         $medicoObj = $medicoModel->findByCrm($usuarioId, $crm);
+                        // Fallback: se não encontrou pelo CRM, tentar pelo nome do médico
+                        if (!$medicoObj) {
+                            $nomeMedicoFallback = trim((string)($itensMedico[0][':medico_nome'] ?? ''));
+                            if ($nomeMedicoFallback !== '') {
+                                $medicoObj = $medicoModel->findByNome($usuarioId, $nomeMedicoFallback);
+                                if ($medicoObj) {
+                                    $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' — vinculado pelo nome '{$nomeMedicoFallback}' (ID: {$medicoObj->id})";
+                                } else {
+                                    $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' nem pelo nome '{$nomeMedicoFallback}' — sub-apuração criada sem vínculo de médico";
+                                }
+                            } else {
+                                $log[] = "[AVISO] Médico não encontrado pelo CRM '{$crm}' e nome não disponível — sub-apuração criada sem vínculo de médico";
+                            }
+                        }
                     }
 
                     if ($medicoObj) {

@@ -94,6 +94,49 @@ class Medico extends Model
         return false;
     }
 
+    /**
+     * Busca um médico pelo nome (busca parcial, case-insensitive) dentro do mesmo usuário.
+     * Usado como fallback quando findByCrm não encontra resultado — ex: CRM da planilha
+     * é diferente do CRM cadastrado no banco.
+     * Retorna o médico cujo nome corresponde exatamente ou contém a string buscada.
+     */
+    public function findByNome(int $usuarioId, string $nome): object|false
+    {
+        $nomeLimpo = trim($nome);
+        if ($nomeLimpo === '') {
+            return false;
+        }
+
+        // Busca 1: nome exato (case-insensitive)
+        $stmt = $this->pdo->prepare(
+            "SELECT m.*, e.especialidade AS especialidade_nome
+             FROM {$this->table} m
+             LEFT JOIN especialidades e ON e.id = m.especialidade_id
+             WHERE m.usuario_id = :usuario_id
+               AND LOWER(m.nome) = LOWER(:nome_exato)
+             LIMIT 1"
+        );
+        $stmt->execute([':usuario_id' => $usuarioId, ':nome_exato' => $nomeLimpo]);
+        $result = $stmt->fetch(PDO::FETCH_OBJ);
+        if ($result) return $result;
+
+        // Busca 2: nome contém a string buscada (busca parcial)
+        $stmt2 = $this->pdo->prepare(
+            "SELECT m.*, e.especialidade AS especialidade_nome
+             FROM {$this->table} m
+             LEFT JOIN especialidades e ON e.id = m.especialidade_id
+             WHERE m.usuario_id = :usuario_id
+               AND LOWER(m.nome) LIKE LOWER(:nome_like)
+             ORDER BY m.nome ASC
+             LIMIT 1"
+        );
+        $stmt2->execute([':usuario_id' => $usuarioId, ':nome_like' => '%' . $nomeLimpo . '%']);
+        $result2 = $stmt2->fetch(PDO::FETCH_OBJ);
+        if ($result2) return $result2;
+
+        return false;
+    }
+
     public function create(array $data): string|false
     {
         $sql = "INSERT INTO {$this->table}
