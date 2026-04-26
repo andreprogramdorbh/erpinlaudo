@@ -324,6 +324,106 @@ UI::sectionHeader(
 <?php endif; ?>
 
 <!-- ============================================================
+     SUB-APURAÇÕES DE PRESTADOR (geradas automaticamente)
+     ============================================================ -->
+<?php if (!empty($subApuracoes)): ?>
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold">
+            <i class="fas fa-user-md me-2 text-warning"></i>
+            Apurações de Prestador Vinculadas
+            <span class="badge bg-warning text-dark ms-2"><?php echo count($subApuracoes); ?></span>
+        </h6>
+        <small class="text-muted">Geradas automaticamente por médico ao importar a planilha</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Número</th>
+                        <th>Médico</th>
+                        <th>Período</th>
+                        <th class="text-center">Exames</th>
+                        <th class="text-center">Normal</th>
+                        <th class="text-center">Urgência</th>
+                        <th class="text-end">Valor Custo</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($subApuracoes as $sub): ?>
+                    <tr>
+                        <td>
+                            <span class="badge bg-secondary font-monospace"><?php echo htmlspecialchars($sub->numero); ?></span>
+                        </td>
+                        <td>
+                            <strong><?php echo htmlspecialchars($sub->medico_nome ?? 'N/A'); ?></strong>
+                            <?php if (!empty($sub->medico_crm)): ?>
+                            <br><small class="text-muted">CRM <?php echo htmlspecialchars($sub->medico_crm); ?></small>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <small>
+                                <?php echo date('d/m/Y', strtotime($sub->periodo_inicio)); ?>
+                                &rarr;
+                                <?php echo date('d/m/Y', strtotime($sub->periodo_fim)); ?>
+                            </small>
+                        </td>
+                        <td class="text-center"><?php echo (int)$sub->total_exames; ?></td>
+                        <td class="text-center">
+                            <span class="badge bg-primary"><?php echo (int)$sub->total_normal; ?></span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-danger"><?php echo (int)$sub->total_urgencia; ?></span>
+                        </td>
+                        <td class="text-end fw-bold text-success">
+                            R$ <?php echo number_format((float)$sub->valor_total, 2, ',', '.'); ?>
+                        </td>
+                        <td class="text-center">
+                            <?php
+                            $statusSub = $sub->status ?? 'pendente';
+                            $badgeSub = match($statusSub) {
+                                'faturado'  => 'bg-success',
+                                'concluido' => 'bg-info',
+                                'erro'      => 'bg-danger',
+                                default     => 'bg-secondary',
+                            };
+                            $labelSub = match($statusSub) {
+                                'faturado'  => 'Faturado',
+                                'concluido' => 'Concluído',
+                                'erro'      => 'Erro',
+                                default     => ucfirst($statusSub),
+                            };
+                            ?>
+                            <span class="badge <?php echo $badgeSub; ?>"><?php echo $labelSub; ?></span>
+                        </td>
+                        <td class="text-center">
+                            <a href="/faturamento/apuracao-prestador/visualizar/<?php echo $sub->id; ?>"
+                               class="btn btn-sm btn-outline-primary" title="Visualizar">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <td colspan="6" class="text-end fw-bold">Total Custo Prestadores:</td>
+                        <td class="text-end fw-bold text-success">
+                            R$ <?php echo number_format(array_sum(array_map(fn($s) => (float)$s->valor_total, $subApuracoes)), 2, ',', '.'); ?>
+                        </td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ============================================================
      ITENS DA APURAÇÃO — com valor de VENDA em destaque
      ============================================================ -->
 <div class="card border-0 shadow-sm">

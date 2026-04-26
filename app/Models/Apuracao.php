@@ -56,6 +56,12 @@ class Apuracao extends Model
             $where[] = 'a.periodo_fim <= :periodo_fim';
             $params[':periodo_fim'] = $filtros['periodo_fim'];
         }
+        // Listagem principal: nunca exibir sub-apurações geradas automaticamente
+        // (apuracao_mae_id IS NULL = apuração independente ou mãe)
+        // Sub-apurações de prestador são exibidas dentro da apuração-mãe cliente
+        if (empty($filtros['incluir_sub'])) {
+            $where[] = 'a.apuracao_mae_id IS NULL';
+        }
         $sql = "SELECT a.*,
                        m.nome AS medico_nome, m.crm AS medico_crm,
                        cl.razao_social AS cliente_nome,
@@ -248,6 +254,74 @@ class Apuracao extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    // -------------------------------------------------------
+    // Sub-apurações de prestador (geradas automaticamente a partir da apuração-mãe cliente)
+    // -------------------------------------------------------
+
+    /**
+     * Cria uma sub-apuração de prestador vinculada à apuração-mãe.
+     * Aceita apuracao_mae_id além dos campos normais.
+     */
+    public function createSubApuracao(array $data): string|false
+    {
+        $sql = "INSERT INTO {$this->table}
+                (usuario_id, contrato_id, apuracao_mae_id, numero, tipo, medico_id, cliente_id,
+                 periodo_inicio, periodo_fim, total_exames, total_normal, total_urgencia,
+                 valor_total, valor_venda_total, status, origem, arquivo_import, log_execucao)
+                VALUES
+                (:usuario_id, :contrato_id, :apuracao_mae_id, :numero, :tipo, :medico_id, :cliente_id,
+                 :periodo_inicio, :periodo_fim, :total_exames, :total_normal, :total_urgencia,
+                 :valor_total, :valor_venda_total, :status, :origem, :arquivo_import, :log_execucao)";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':usuario_id'       => $data['usuario_id'],
+            ':contrato_id'      => $data['contrato_id'],
+            ':apuracao_mae_id'  => $data['apuracao_mae_id'],
+            ':numero'           => $data['numero'],
+            ':tipo'             => 'prestador',
+            ':medico_id'        => $data['medico_id'] ?: null,
+            ':cliente_id'       => $data['cliente_id'] ?: null,
+            ':periodo_inicio'   => $data['periodo_inicio'] ?? null,
+            ':periodo_fim'      => $data['periodo_fim'] ?? null,
+            ':total_exames'     => $data['total_exames'] ?? 0,
+            ':total_normal'     => $data['total_normal'] ?? 0,
+            ':total_urgencia'   => $data['total_urgencia'] ?? 0,
+            ':valor_total'      => $data['valor_total'] ?? 0,
+            ':valor_venda_total'=> 0,
+            ':status'           => $data['status'] ?? 'concluido',
+            ':origem'           => 'automatico',
+            ':arquivo_import'   => $data['arquivo_import'] ?? null,
+            ':log_execucao'     => $data['log_execucao'] ?? null,
+        ]);
+        return $this->pdo->lastInsertId() ?: false;
+    }
+
+    /**
+     * Busca todas as sub-apurações de prestador vinculadas a uma apuração-mãe.
+     */
+    public function findSubApuracoesByMaeId(int $maeId): array
+    {
+        $sql = "SELECT a.*,
+                       m.nome AS medico_nome, m.crm AS medico_crm
+                FROM {$this->table} a
+                LEFT JOIN medicos m ON m.id = a.medico_id
+                WHERE a.apuracao_mae_id = :mae_id
+                ORDER BY a.created_at ASC";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':mae_id' => $maeId]);
+        return $stmt->fetchAll(\PDO::FETCH_OBJ);
+    }
+
+    /**
+     * Remove todas as sub-apurações de uma apuração-mãe (para re-execução).
+     */
+    public function deleteSubApuracoesByMaeId(int $maeId, int $usuarioId): void
+    {
+        $this->pdo->prepare(
+            "DELETE FROM {$this->table} WHERE apuracao_mae_id = ? AND usuario_id = ?"
+        )->execute([$maeId, $usuarioId]);
+    }
+
     public function findByContratoId(int $contratoId, int $usuarioId, array $filtros = []): array
     {
         $where  = ['a.contrato_id = :contrato_id', 'a.usuario_id = :usuario_id'];
@@ -261,11 +335,14 @@ class Apuracao extends Model
             $where[] = 'a.periodo_inicio >= :periodo_inicio';
             $params[':periodo_inicio'] = $filtros['periodo_inicio'];
         }
-        if (!empty($filtros['periodo_fim'])) {
+         if (!empty($filtros['periodo_fim'])) {
             $where[] = 'a.periodo_fim <= :periodo_fim';
             $params[':periodo_fim'] = $filtros['periodo_fim'];
         }
-
+        // Na aba de contrato, exibir apenas apurações-mãe (não sub-apurações)
+        if (empty($filtros['incluir_sub'])) {
+            $where[] = 'a.apuracao_mae_id IS NULL';
+        }
         $sql = "SELECT a.*,
                        m.nome AS medico_nome, m.crm AS medico_crm,
                        cl.razao_social AS cliente_nome,

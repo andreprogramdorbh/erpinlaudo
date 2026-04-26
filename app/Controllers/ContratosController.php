@@ -640,6 +640,7 @@ class ContratosController extends Controller
             $totalExames = $totalNormal + $totalUrgencia;
             $logStr = empty($log) ? 'Apuração concluída sem erros.' : implode("\n", $log);
 
+            // Atualiza apuração-mãe com status concluído
             $this->apuracaoModel->update($apuracaoId, [
                 'usuario_id'       => $usuarioId,
                 'status'           => 'concluido',
@@ -651,11 +652,148 @@ class ContratosController extends Controller
                 'log_execucao'     => $logStr,
             ]);
 
+            // =================================================================
+            // NOVO FLUXO: Se a apuração é do tipo CLIENTE, gerar automaticamente
+            // sub-apurações de PRESTADOR para cada médico encontrado na planilha.
+            // =================================================================
+            $subApuracoesCriadas = [];
+            if ($tipoApuracao === 'cliente') {
+                // Remove sub-apurações anteriores (re-execução)
+                $this->apuracaoModel->deleteSubApuracoesByMaeId($apuracaoId, $usuarioId);
+
+                // Agrupar itens por CRM do médico
+                $itensPorCrm = [];
+                foreach ($itens as $item) {
+                    $crm = trim((string)($item[':medico_crm'] ?? ''));
+                    if ($crm === '') $crm = '__sem_crm__';
+                    $itensPorCrm[$crm][] = $item;
+                }
+
+                $medicoModel   = new Medico();
+                $contratoModel = new Contrato();
+
+                foreach ($itensPorCrm as $crm => $itensMedico) {
+                    // Identificar o médico cadastrado pelo CRM
+                    $medicoObj             = null;
+                    $contratoPrestador     = null;
+                    $valoresContratoPrest  = [];
+
+                    if ($crm !== '__sem_crm__') {
+                        $medicoObj = $medicoModel->findByCrm($usuarioId, $crm);
+                    }
+
+                    if ($medicoObj) {
+                        // Buscar contrato ativo do médico
+                        $contratoPrestador = $contratoModel->findAtivoByMedicoId($usuarioId, (int)$medicoObj->id);
+                        if ($contratoPrestador) {
+                            $valoresContratoPrest = $this->contratoExameModel->findMapByContratoId((int)$contratoPrestador->id);
+                        }
+                    }
+
+                    // Recalcular valores de custo (prestador) para cada item
+                    $itensPrestador = [];
+                    $subTotal       = 0.0;
+                    $subNormal      = 0;
+                    $subUrgencia    = 0;
+
+                    foreach ($itensMedico as $item) {
+                        $exId  = $item[':exame_id'] ? (int)$item[':exame_id'] : null;
+                        $isUrg = ($item[':tipo_prioridade'] === 'urgencia');
+
+                        // Calcular valor de custo (prestador) para este item
+                        $valorCusto = 0.0;
+                        if ($exId) {
+                            // P0: Contrato do prestador
+                            if (!empty($valoresContratoPrest[$exId]) && (bool)$valoresContratoPrest[$exId]->usa_valor_custom) {
+                                $vcp = $valoresContratoPrest[$exId];
+                                $valorCusto = $isUrg
+                                    ? (float)($vcp->valor_urgencia ?: 0)
+                                    : (float)($vcp->valor_rotina  ?: 0);
+                            }
+                            // P1: Valores do médico (medico_exames)
+                            if ($valorCusto == 0.0 && $medicoObj && !empty($valoresMedico[$exId])) {
+                                $vm = $valoresMedico[$exId];
+                                $valorCusto = $isUrg
+                                    ? (float)($vm['urgencia'] ?: 0)
+                                    : (float)($vm['rotina']   ?: 0);
+                            }
+                            // P2: Tabela de exames (valor_rotina/urgencia = custo)
+                            if ($valorCusto == 0.0) {
+                                foreach ($exames as $ex) {
+                                    if ((int)$ex->id === $exId) {
+                                        $valorCusto = $isUrg
+                                            ? (float)($ex->valor_urgencia ?: 0)
+                                            : (float)($ex->valor_rotina  ?: 0);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        $subTotal += $valorCusto;
+                        if ($isUrg) $subUrgencia++; else $subNormal++;
+
+                        // Item da sub-apuração usa valor_calculado = custo, valor_calculado_venda = 0
+                        $itensPrestador[] = array_merge($item, [
+                            ':valor_calculado'       => $valorCusto,
+                            ':valor_calculado_venda' => 0.0,
+                        ]);
+                    }
+
+                    // Criar a sub-apuração de prestador
+                    $subNumero = $this->apuracaoModel->gerarNumero();
+                    $subId = $this->apuracaoModel->createSubApuracao([
+                        'usuario_id'      => $usuarioId,
+                        'contrato_id'     => $contratoPrestador ? (int)$contratoPrestador->id : (int)$apuracao->contrato_id,
+                        'apuracao_mae_id' => $apuracaoId,
+                        'numero'          => $subNumero,
+                        'medico_id'       => $medicoObj ? (int)$medicoObj->id : null,
+                        'cliente_id'      => null,
+                        'periodo_inicio'  => $apuracao->periodo_inicio,
+                        'periodo_fim'     => $apuracao->periodo_fim,
+                        'total_exames'    => $subNormal + $subUrgencia,
+                        'total_normal'    => $subNormal,
+                        'total_urgencia'  => $subUrgencia,
+                        'valor_total'     => $subTotal,
+                        'status'          => 'concluido',
+                        'arquivo_import'  => $apuracao->arquivo_import,
+                        'log_execucao'    => 'Sub-apuração gerada automaticamente a partir de ' . $apuracao->numero,
+                    ]);
+
+                    if ($subId) {
+                        // Inserir itens da sub-apuração com o ID correto
+                        $itensPrestadorComId = array_map(function($it) use ($subId) {
+                            $it[':apuracao_id'] = (int)$subId;
+                            return $it;
+                        }, $itensPrestador);
+                        $this->itemModel->insertBatch($itensPrestadorComId);
+
+                        $nomeMedico = $medicoObj ? $medicoObj->nome : ($crm === '__sem_crm__' ? 'Sem CRM' : $crm);
+                        $subApuracoesCriadas[] = [
+                            'id'     => $subId,
+                            'numero' => $subNumero,
+                            'medico' => $nomeMedico,
+                            'total'  => $subNormal + $subUrgencia,
+                            'valor'  => 'R$ ' . number_format($subTotal, 2, ',', '.'),
+                        ];
+                        $log[] = "Sub-apuração prestador: {$subNumero} — {$nomeMedico} — " . ($subNormal + $subUrgencia) . " exames — R$ " . number_format($subTotal, 2, ',', '.');
+                    }
+                }
+
+                // Atualizar log da apuração-mãe com as sub-apurações criadas
+                $this->apuracaoModel->update($apuracaoId, [
+                    'usuario_id'   => $usuarioId,
+                    'log_execucao' => implode("\n", $log),
+                ]);
+            }
+
             AuditLogger::log('apuracao_executada', [
-                'apuracao_id'  => $apuracaoId,
-                'total_exames' => $totalExames,
-                'valor_total'  => $valorTotal,
-                'sem_match'    => $semMatch,
+                'apuracao_id'   => $apuracaoId,
+                'total_exames'  => $totalExames,
+                'valor_total'   => $valorTotal,
+                'valor_venda'   => $valorVendaTotal,
+                'sem_match'     => $semMatch,
+                'sub_apuracoes' => count($subApuracoesCriadas),
             ]);
 
             header('Content-Type: application/json');
@@ -665,8 +803,10 @@ class ContratosController extends Controller
                 'total_normal'   => $totalNormal,
                 'total_urgencia' => $totalUrgencia,
                 'valor_total'    => 'R$ ' . number_format($valorTotal, 2, ',', '.'),
+                'valor_venda'    => 'R$ ' . number_format($valorVendaTotal, 2, ',', '.'),
                 'sem_match'      => $semMatch,
-                'log'            => $logStr,
+                'sub_apuracoes'  => $subApuracoesCriadas,
+                'log'            => implode("\n", $log),
             ]);
 
         } catch (\Throwable $e) {

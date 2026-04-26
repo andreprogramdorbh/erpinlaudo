@@ -130,6 +130,11 @@ $totFat    = count(array_filter($apuracoes, fn($a) => $a->status === 'faturado')
                     <tr>
                         <td class="ps-4">
                             <span class="badge bg-secondary font-monospace"><?php echo htmlspecialchars($ap->numero); ?></span>
+                            <?php if (!empty($ap->apuracao_mae_id)): ?>
+                            <br><span class="badge bg-warning text-dark mt-1" title="Gerada automaticamente a partir de uma apuração cliente">
+                                <i class="fas fa-link me-1"></i>Auto-gerada
+                            </span>
+                            <?php endif; ?>
                         </td>
                         <td>
                             <div class="fw-semibold small"><?php echo htmlspecialchars($ap->medico_nome ?? '—'); ?></div>

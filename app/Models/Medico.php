@@ -52,6 +52,27 @@ class Medico extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Busca um médico pelo CRM dentro do mesmo usuário.
+     * Usado para identificar médicos na planilha de apuração cliente.
+     */
+    public function findByCrm(int $usuarioId, string $crm): object|false
+    {
+        // Normaliza o CRM removendo não-dígitos para comparar apenas os números
+        $crmLimpo = preg_replace('/\D/', '', $crm);
+        $stmt = $this->pdo->prepare(
+            "SELECT m.*, e.especialidade AS especialidade_nome
+             FROM {$this->table} m
+             LEFT JOIN especialidades e ON e.id = m.especialidade_id
+             WHERE m.usuario_id = :usuario_id
+               AND (REGEXP_REPLACE(m.crm, '[^0-9]', '') = :crm
+                    OR m.crm = :crm_raw)
+             LIMIT 1"
+        );
+        $stmt->execute([':usuario_id' => $usuarioId, ':crm' => $crmLimpo, ':crm_raw' => $crm]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
     public function create(array $data): string|false
     {
         $sql = "INSERT INTO {$this->table}

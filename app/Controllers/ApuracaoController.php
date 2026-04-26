@@ -125,6 +125,12 @@ class ApuracaoController extends Controller
         $todasTagsDicom = array_keys($tagDicomParaExame);
         sort($todasTagsDicom);
 
+        // Sub-apurações de prestador vinculadas (apenas para apuração cliente)
+        $subApuracoes = [];
+        if ($tipo === 'cliente') {
+            $subApuracoes = $this->apuracaoModel->findByMaeId((int) $id);
+        }
+
         // Selecionar a view correta conforme o tipo da apuração
         $viewName = $tipo === 'cliente' ? 'apuracao/visualizar_cliente' : 'apuracao/visualizar';
 
@@ -135,6 +141,7 @@ class ApuracaoController extends Controller
             'resumoModal'       => $resumoModal,
             'resumoMedico'      => $resumoMedico,
             'resumoUnidade'     => $resumoUnidade,
+            'subApuracoes'      => $subApuracoes,
             'tagDicomParaExame' => $tagDicomParaExame,
             'todasTagsDicom'    => $todasTagsDicom,
             '_layout' => 'erp',

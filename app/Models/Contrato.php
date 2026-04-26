@@ -144,6 +144,26 @@ class Contrato extends Model
         }
     }
 
+    /**
+     * Busca o contrato ativo de um médico (tipo_parte='medico') para sub-apuração.
+     * Usado ao gerar sub-apurações de prestador a partir de uma apuração-mãe cliente.
+     */
+    public function findAtivoByMedicoId(int $usuarioId, int $medicoId): object|false
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT c.*
+             FROM {$this->table} c
+             WHERE c.usuario_id = :usuario_id
+               AND c.medico_id  = :medico_id
+               AND c.tipo_parte = 'medico'
+               AND c.status     = 'ativo'
+             ORDER BY c.created_at DESC
+             LIMIT 1"
+        );
+        $stmt->execute([':usuario_id' => $usuarioId, ':medico_id' => $medicoId]);
+        return $stmt->fetch(PDO::FETCH_OBJ);
+    }
+
     public function countByUsuarioId(int $usuarioId): int
     {
         $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM {$this->table} WHERE usuario_id = ?");
