@@ -187,6 +187,67 @@ class Apuracao extends Model
         return $stmt->fetchAll(PDO::FETCH_OBJ);
     }
 
+    // -------------------------------------------------------
+    // Resumos com valor de VENDA (para apurações de cliente)
+    // -------------------------------------------------------
+
+    // Resumo por modalidade — valor de venda
+    public function resumoPorModalidadeVenda(int $apuracaoId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT modalidade,
+                    COUNT(*) AS total,
+                    SUM(tipo_prioridade = 'normal') AS total_normal,
+                    SUM(tipo_prioridade = 'urgencia') AS total_urgencia,
+                    SUM(valor_calculado) AS valor,
+                    SUM(COALESCE(NULLIF(valor_calculado_venda, 0), valor_calculado)) AS valor_venda
+             FROM apuracao_itens
+             WHERE apuracao_id = ?
+             GROUP BY modalidade
+             ORDER BY total DESC"
+        );
+        $stmt->execute([$apuracaoId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Resumo por médico — valor de venda
+    public function resumoPorMedicoVenda(int $apuracaoId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT medico_nome AS medico, medico_crm,
+                    COUNT(*) AS total,
+                    SUM(tipo_prioridade = 'normal') AS total_normal,
+                    SUM(tipo_prioridade = 'urgencia') AS total_urgencia,
+                    SUM(valor_calculado) AS valor,
+                    SUM(COALESCE(NULLIF(valor_calculado_venda, 0), valor_calculado)) AS valor_venda
+             FROM apuracao_itens
+             WHERE apuracao_id = ?
+             GROUP BY medico_nome, medico_crm
+             ORDER BY total DESC"
+        );
+        $stmt->execute([$apuracaoId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
+    // Resumo por unidade — valor de venda
+    public function resumoPorUnidadeVenda(int $apuracaoId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT COALESCE(NULLIF(TRIM(unidade),''), 'Sem unidade') AS unidade,
+                    COUNT(*) AS total,
+                    SUM(tipo_prioridade = 'normal') AS total_normal,
+                    SUM(tipo_prioridade = 'urgencia') AS total_urgencia,
+                    SUM(valor_calculado) AS valor,
+                    SUM(COALESCE(NULLIF(valor_calculado_venda, 0), valor_calculado)) AS valor_venda
+             FROM apuracao_itens
+             WHERE apuracao_id = ?
+             GROUP BY unidade
+             ORDER BY total DESC"
+        );
+        $stmt->execute([$apuracaoId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     public function findByContratoId(int $contratoId, int $usuarioId, array $filtros = []): array
     {
         $where  = ['a.contrato_id = :contrato_id', 'a.usuario_id = :usuario_id'];

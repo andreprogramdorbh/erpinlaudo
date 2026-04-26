@@ -91,15 +91,25 @@ class ApuracaoController extends Controller
         $usuarioId = (int) $user->id;
         $apuracao  = $this->apuracaoModel->findById((int) $id);
 
+        $tipo = $apuracao->tipo ?? 'prestador';
+        $backUrl = $tipo === 'cliente' ? '/faturamento/apuracao-cliente' : '/faturamento/apuracao-prestador';
+
         if (!$apuracao || $apuracao->usuario_id != $usuarioId) {
-            header("Location: /faturamento/apuracao-prestador?error=not_found");
+            header("Location: {$backUrl}?error=not_found");
             exit();
         }
 
         $itens          = $this->itemModel->findByApuracaoId((int) $id);
-        $resumoModal    = $this->apuracaoModel->resumoPorModalidade((int) $id);
-        $resumoMedico   = $this->apuracaoModel->resumoPorMedico((int) $id);
-        $resumoUnidade  = $this->apuracaoModel->resumoPorUnidade((int) $id);
+        // Para apuração cliente: usa resumos com valor_calculado_venda; prestador: valor_calculado
+        $resumoModal    = $tipo === 'cliente'
+            ? $this->apuracaoModel->resumoPorModalidadeVenda((int) $id)
+            : $this->apuracaoModel->resumoPorModalidade((int) $id);
+        $resumoMedico   = $tipo === 'cliente'
+            ? $this->apuracaoModel->resumoPorMedicoVenda((int) $id)
+            : $this->apuracaoModel->resumoPorMedico((int) $id);
+        $resumoUnidade  = $tipo === 'cliente'
+            ? $this->apuracaoModel->resumoPorUnidadeVenda((int) $id)
+            : $this->apuracaoModel->resumoPorUnidade((int) $id);
 
         // Buscar exames com TAGs DICOM para exibir na view
         $tabelaExameModel = new TabelaExame();
@@ -115,7 +125,10 @@ class ApuracaoController extends Controller
         $todasTagsDicom = array_keys($tagDicomParaExame);
         sort($todasTagsDicom);
 
-        View::render('apuracao/visualizar', [
+        // Selecionar a view correta conforme o tipo da apuração
+        $viewName = $tipo === 'cliente' ? 'apuracao/visualizar_cliente' : 'apuracao/visualizar';
+
+        View::render($viewName, [
             'title'             => 'Apuração ' . $apuracao->numero,
             'apuracao'          => $apuracao,
             'itens'             => $itens,
