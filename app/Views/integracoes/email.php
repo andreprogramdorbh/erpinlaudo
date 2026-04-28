@@ -6,13 +6,14 @@
 
 $config          = $config ?? [];
 $cryptoOk        = $crypto_configured ?? false;
-$alertas         = $alertas ?? ['financeiro' => [], 'faturamento' => [], 'crm' => []];
+$alertas         = $alertas ?? ['financeiro' => [], 'faturamento' => [], 'crm' => [], 'corpo_clinico' => []];
 
 // Labels dos módulos
 $moduloLabels = [
-    'financeiro'  => ['label' => 'Financeiro',  'icon' => 'fa-coins',        'cor' => 'success'],
-    'faturamento' => ['label' => 'Faturamento', 'icon' => 'fa-file-invoice', 'cor' => 'primary'],
-    'crm'         => ['label' => 'CRM',         'icon' => 'fa-users',        'cor' => 'warning'],
+    'financeiro'    => ['label' => 'Financeiro',    'icon' => 'fa-coins',        'cor' => 'success'],
+    'faturamento'   => ['label' => 'Faturamento',   'icon' => 'fa-file-invoice', 'cor' => 'primary'],
+    'crm'           => ['label' => 'CRM',           'icon' => 'fa-users',        'cor' => 'warning'],
+    'corpo_clinico' => ['label' => 'Corpo Clínico', 'icon' => 'fa-user-md',      'cor' => 'info'],
 ];
 ?>
 

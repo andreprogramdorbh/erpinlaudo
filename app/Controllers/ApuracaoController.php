@@ -12,6 +12,7 @@ use App\Models\Medico;
 use App\Models\Cliente;
 use App\Models\TabelaExame;
 use App\Models\MedicoExame;
+use App\Services\EmailAlertaService;
 
 class ApuracaoController extends Controller
 {
@@ -418,6 +419,20 @@ class ApuracaoController extends Controller
                     'observacoes'          => "Gerado automaticamente pela apuração {$apuracao->numero}",
                 ]);
 
+                // ── Email 1: Provisionamento de pagamento (conta a pagar criada) ──
+                try {
+                    $this->dispararEmailProvisionamento($apuracao, $usuarioId);
+                } catch (\Throwable $emailEx) {
+                    $this->logger->warning('[ApuracaoController] Falha ao enviar email provisionamento: ' . $emailEx->getMessage());
+                }
+
+                // ── Email 2: Apuração concluída com PDF ──
+                try {
+                    $this->dispararEmailApuracao($apuracao, $usuarioId);
+                } catch (\Throwable $emailEx) {
+                    $this->logger->warning('[ApuracaoController] Falha ao enviar email apuração: ' . $emailEx->getMessage());
+                }
+
                 $redirect = '/faturamento/apuracao-prestador';
             } else {
                 // Gera Conta a Receber do cliente
@@ -635,5 +650,285 @@ class ApuracaoController extends Controller
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => $msg]);
         exit();
+    }
+
+    // =========================================================
+    // EMAILS DO CORPO CLÍNICO
+    // =========================================================
+
+    /**
+     * Dispara email de provisionamento de pagamento para o médico.
+     * Chamado ao faturar apuração de prestador (conta a pagar criada).
+     */
+    private function dispararEmailProvisionamento(object $apuracao, int $usuarioId): void
+    {
+        $medicoId = (int) ($apuracao->medico_id ?? 0);
+        if ($medicoId <= 0) return;
+
+        $medicoModel = new Medico();
+        $medico      = $medicoModel->findById($medicoId);
+        if (!$medico || empty($medico->email)) return;
+
+        $valor       = number_format((float) $apuracao->valor_total, 2, ',', '.');
+        $vencimento  = date('d/m/Y', strtotime('+30 days'));
+        $periodoIni  = !empty($apuracao->periodo_inicio) ? date('d/m/Y', strtotime($apuracao->periodo_inicio)) : '---';
+        $periodoFim  = !empty($apuracao->periodo_fim)    ? date('d/m/Y', strtotime($apuracao->periodo_fim))    : '---';
+        $nomeMedico  = htmlspecialchars($medico->nome ?? $apuracao->medico_nome ?? 'Prezado(a)');
+        $numero      = htmlspecialchars($apuracao->numero);
+        $totalExames = (int) ($apuracao->total_exames ?? 0);
+        $linkVis     = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br')
+                       . '/faturamento/apuracao-prestador/visualizar/' . $apuracao->id;
+
+        $corpoHtml = <<<HTML
+<p>Olá, <strong>{$nomeMedico}</strong>!</p>
+<p>Informamos que foi criado um <strong>provisionamento de pagamento</strong> em seu nome no sistema <strong>ERP InLaudo</strong>.</p>
+
+<table style="border-collapse:collapse;width:100%;margin:16px 0;">
+  <tr style="background:#f3f4f6;">
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Número da Apuração</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$numero}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Período</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$periodoIni} &rarr; {$periodoFim}</td>
+  </tr>
+  <tr style="background:#f3f4f6;">
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Total de Exames</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$totalExames}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Valor Provisionado</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;font-size:18px;color:#059669;font-weight:700;">R$ {$valor}</td>
+  </tr>
+  <tr style="background:#f3f4f6;">
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Previsão de Pagamento</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$vencimento}</td>
+  </tr>
+</table>
+
+<p>Você pode visualizar os detalhes completos da apuração acessando o link abaixo:</p>
+<p style="text-align:center;margin:24px 0;">
+  <a href="{$linkVis}" style="background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;">
+    Visualizar Apuração
+  </a>
+</p>
+<p style="color:#6b7280;font-size:13px;">Em caso de dúvidas, entre em contato com a equipe administrativa.</p>
+HTML;
+
+        $service = new EmailAlertaService($usuarioId);
+        $service->disparar(
+            'corpo_clinico_provisionamento_criado',
+            (string) $medico->email,
+            (string) ($medico->nome ?? ''),
+            "Provisionamento de Pagamento Criado — Apuração {$numero}",
+            $corpoHtml
+        );
+    }
+
+    /**
+     * Dispara email de apuração de prestador concluída para o médico,
+     * com link de visualização e PDF anexado.
+     */
+    private function dispararEmailApuracao(object $apuracao, int $usuarioId): void
+    {
+        $medicoId = (int) ($apuracao->medico_id ?? 0);
+        if ($medicoId <= 0) return;
+
+        $medicoModel = new Medico();
+        $medico      = $medicoModel->findById($medicoId);
+        if (!$medico || empty($medico->email)) return;
+
+        $valor         = number_format((float) $apuracao->valor_total, 2, ',', '.');
+        $periodoIni    = !empty($apuracao->periodo_inicio) ? date('d/m/Y', strtotime($apuracao->periodo_inicio)) : '---';
+        $periodoFim    = !empty($apuracao->periodo_fim)    ? date('d/m/Y', strtotime($apuracao->periodo_fim))    : '---';
+        $nomeMedico    = htmlspecialchars($medico->nome ?? $apuracao->medico_nome ?? 'Prezado(a)');
+        $numero        = htmlspecialchars($apuracao->numero);
+        $totalExames   = (int) ($apuracao->total_exames ?? 0);
+        $totalNormal   = (int) ($apuracao->total_normal ?? 0);
+        $totalUrgencia = (int) ($apuracao->total_urgencia ?? 0);
+        $crm           = htmlspecialchars($apuracao->medico_crm ?? $medico->crm ?? '');
+        $linkVis       = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br')
+                         . '/faturamento/apuracao-prestador/visualizar/' . $apuracao->id;
+
+        $corpoHtml = <<<HTML
+<p>Olá, <strong>{$nomeMedico}</strong>!</p>
+<p>Sua <strong>Apuração de Prestador</strong> foi concluída e faturada. Confira o resumo abaixo:</p>
+
+<table style="border-collapse:collapse;width:100%;margin:16px 0;">
+  <tr style="background:#1a56db;">
+    <td colspan="2" style="padding:12px 14px;color:#fff;font-weight:700;font-size:15px;">Resumo da Apuração {$numero}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Médico</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$nomeMedico} &mdash; CRM {$crm}</td>
+  </tr>
+  <tr style="background:#f3f4f6;">
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Período</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$periodoIni} &rarr; {$periodoFim}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Total de Exames</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;">{$totalExames} ({$totalNormal} normais + {$totalUrgencia} urgências)</td>
+  </tr>
+  <tr style="background:#f3f4f6;">
+    <td style="padding:10px 14px;font-weight:600;color:#374151;border:1px solid #e5e7eb;">Valor Total</td>
+    <td style="padding:10px 14px;border:1px solid #e5e7eb;font-size:18px;color:#059669;font-weight:700;">R$ {$valor}</td>
+  </tr>
+</table>
+
+<p>Acesse o link abaixo para visualizar a apuração completa com todos os exames detalhados:</p>
+<p style="text-align:center;margin:24px 0;">
+  <a href="{$linkVis}" style="background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;">
+    Visualizar Apuração Completa
+  </a>
+</p>
+<p style="color:#6b7280;font-size:13px;">O PDF completo da apuração está anexado a este e-mail para sua conveniência.</p>
+HTML;
+
+        // Gerar PDF da apuração via weasyprint
+        $pdfPath = null;
+        $pdfName = "apuracao-{$apuracao->numero}.pdf";
+        try {
+            $pdfPath = $this->gerarPdfApuracao($apuracao, $usuarioId);
+        } catch (\Throwable $pdfEx) {
+            $this->logger->warning('[ApuracaoController] Falha ao gerar PDF para email: ' . $pdfEx->getMessage());
+        }
+
+        $service = new EmailAlertaService($usuarioId);
+        $service->disparar(
+            'corpo_clinico_apuracao_concluida',
+            (string) $medico->email,
+            (string) ($medico->nome ?? ''),
+            "Apuração de Prestador Concluída — {$numero}",
+            $corpoHtml,
+            $pdfPath,
+            $pdfName
+        );
+
+        // Limpar PDF temporário
+        if ($pdfPath && file_exists($pdfPath)) {
+            @unlink($pdfPath);
+        }
+    }
+
+    /**
+     * Gera um PDF da apuração de prestador usando weasyprint.
+     * Retorna o caminho do arquivo PDF temporário gerado.
+     */
+    private function gerarPdfApuracao(object $apuracao, int $usuarioId): string
+    {
+        $itens         = $this->itemModel->findByApuracaoId((int) $apuracao->id);
+        $valor         = number_format((float) $apuracao->valor_total, 2, ',', '.');
+        $periodoIni    = !empty($apuracao->periodo_inicio) ? date('d/m/Y', strtotime($apuracao->periodo_inicio)) : '---';
+        $periodoFim    = !empty($apuracao->periodo_fim)    ? date('d/m/Y', strtotime($apuracao->periodo_fim))    : '---';
+        $nomeMedico    = htmlspecialchars($apuracao->medico_nome ?? '---');
+        $crm           = htmlspecialchars($apuracao->medico_crm ?? '---');
+        $numero        = htmlspecialchars($apuracao->numero);
+        $totalExames   = (int) ($apuracao->total_exames ?? 0);
+        $totalNormal   = (int) ($apuracao->total_normal ?? 0);
+        $totalUrgencia = (int) ($apuracao->total_urgencia ?? 0);
+        $dataGeracao   = date('d/m/Y H:i');
+
+        // Montar linhas da tabela de itens
+        $linhasItens = '';
+        foreach ($itens as $i => $item) {
+            $bg        = ($i % 2 === 0) ? '#ffffff' : '#f9fafb';
+            $prioridade = ($item->prioridade ?? '') === 'urgente' ? 'Urgente' : 'Normal';
+            $custo      = number_format((float)($item->valor_calculado ?? 0), 2, ',', '.');
+            $linhasItens .= "<tr style='background:{$bg};'>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;'>" . ($i + 1) . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars($item->paciente_nome ?? '') . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars($item->exame_nome ?? $item->exame_tag ?? '') . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center;'>" . htmlspecialchars($item->modalidade ?? '') . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center;'>{$prioridade}</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:right;'>R$ {$custo}</td>";
+            $linhasItens .= "</tr>";
+        }
+
+        $html = <<<HTML
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Apuração {$numero}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #1f2937; margin: 0; padding: 20px; }
+  .header { background: #1a56db; color: #fff; padding: 20px 24px; border-radius: 6px 6px 0 0; }
+  .header h1 { margin: 0; font-size: 18px; }
+  .header p  { margin: 4px 0 0; font-size: 12px; color: #c7d9ff; }
+  .info-box { background: #f9fafb; border: 1px solid #e5e7eb; padding: 16px 20px; margin: 16px 0; border-radius: 6px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .info-item label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 2px; }
+  .info-item span  { font-weight: 600; font-size: 13px; }
+  .valor-destaque { color: #059669; font-size: 20px; font-weight: 700; }
+  table.itens { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  table.itens th { background: #1a56db; color: #fff; padding: 9px 10px; text-align: left; font-size: 12px; }
+  table.itens th:last-child { text-align: right; }
+  .footer { margin-top: 24px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>ERP InLaudo &mdash; Apuração de Prestador</h1>
+    <p>Gerado em {$dataGeracao}</p>
+  </div>
+
+  <div class="info-box">
+    <div class="info-grid">
+      <div class="info-item"><label>Número</label><span>{$numero}</span></div>
+      <div class="info-item"><label>Médico</label><span>{$nomeMedico}</span></div>
+      <div class="info-item"><label>CRM</label><span>{$crm}</span></div>
+      <div class="info-item"><label>Período</label><span>{$periodoIni} &rarr; {$periodoFim}</span></div>
+      <div class="info-item"><label>Total Exames</label><span>{$totalExames} ({$totalNormal}N + {$totalUrgencia}U)</span></div>
+      <div class="info-item"><label>Valor Total</label><span class="valor-destaque">R$ {$valor}</span></div>
+    </div>
+  </div>
+
+  <table class="itens">
+    <thead>
+      <tr>
+        <th style="width:40px;">#</th>
+        <th>Paciente</th>
+        <th>Exame</th>
+        <th style="width:70px;text-align:center;">Mod.</th>
+        <th style="width:70px;text-align:center;">Prioridade</th>
+        <th style="width:90px;text-align:right;">Custo</th>
+      </tr>
+    </thead>
+    <tbody>
+      {$linhasItens}
+    </tbody>
+    <tfoot>
+      <tr style="background:#f3f4f6;">
+        <td colspan="5" style="padding:10px;font-weight:700;text-align:right;">Total:</td>
+        <td style="padding:10px;font-weight:700;text-align:right;color:#059669;">R$ {$valor}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer">
+    ERP InLaudo &mdash; Documento gerado automaticamente em {$dataGeracao}
+  </div>
+</body>
+</html>
+HTML;
+
+        // Salvar HTML temporário
+        $tmpHtml = sys_get_temp_dir() . '/apuracao_' . $apuracao->id . '_' . time() . '.html';
+        $tmpPdf  = sys_get_temp_dir() . '/apuracao_' . $apuracao->id . '_' . time() . '.pdf';
+        file_put_contents($tmpHtml, $html);
+
+        // Gerar PDF via weasyprint
+        $cmd = 'weasyprint ' . escapeshellarg($tmpHtml) . ' ' . escapeshellarg($tmpPdf) . ' 2>&1';
+        shell_exec($cmd);
+
+        // Limpar HTML temporário
+        @unlink($tmpHtml);
+
+        if (!file_exists($tmpPdf) || filesize($tmpPdf) < 100) {
+            throw new \RuntimeException('weasyprint não gerou o PDF corretamente.');
+        }
+
+        return $tmpPdf;
     }
 }

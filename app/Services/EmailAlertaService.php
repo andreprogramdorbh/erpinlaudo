@@ -40,7 +40,7 @@ class EmailAlertaService
     {
         $resultado = ['enviados' => 0, 'falhas' => 0, 'ignorados' => 0];
 
-        foreach (['financeiro', 'faturamento', 'crm'] as $modulo) {
+        foreach (['financeiro', 'faturamento', 'crm', 'corpo_clinico'] as $modulo) {
             $parcial = $this->processarModulo($modulo);
             $resultado['enviados']  += $parcial['enviados'];
             $resultado['falhas']    += $parcial['falhas'];
@@ -320,8 +320,90 @@ class EmailAlertaService
                 $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
                 return $stmt->fetchAll(PDO::FETCH_OBJ);
 
+            // ── Corpo Clínico: disparos transacionais (não usam buscarRegistros) ──
+            case 'corpo_clinico_provisionamento_criado':
+            case 'corpo_clinico_apuracao_concluida':
+                // Disparados diretamente via disparar() — sem busca agendada
+                return [];
+
             default:
                 return [];
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Disparo transacional (chamado por controllers ao criar eventos)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Dispara um alerta transacional diretamente para um e-mail específico,
+     * sem depender de buscarRegistros. Usado por ContasPagarController e
+     * ApuracaoController ao criar provisionamentos e apurações para médicos.
+     *
+     * @param string $codigo     Código do alerta (ex: 'corpo_clinico_provisionamento_criado')
+     * @param string $toEmail    E-mail do destinatário (médico)
+     * @param string $toName     Nome do destinatário
+     * @param string $assunto    Assunto do e-mail
+     * @param string $corpoHtml  Corpo HTML completo do e-mail
+     * @param string|null $attachPath  Caminho absoluto do PDF a anexar (opcional)
+     * @param string|null $attachName  Nome do arquivo PDF exibido no e-mail (opcional)
+     */
+    public function disparar(
+        string $codigo,
+        string $toEmail,
+        string $toName,
+        string $assunto,
+        string $corpoHtml,
+        ?string $attachPath = null,
+        ?string $attachName = null
+    ): bool {
+        if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        // Verifica se o alerta está ativo para este usuário
+        $alerta = $this->alertaModel->findByCodigo($codigo, $this->usuarioId);
+        if (!$alerta || !(bool) $alerta->ativo) {
+            return false; // Alerta desativado ou não configurado
+        }
+
+        try {
+            if ($attachPath && file_exists($attachPath)) {
+                $this->mailService->sendWithAttachment(
+                    $toEmail, $assunto, $corpoHtml,
+                    $attachPath, $attachName ?? basename($attachPath),
+                    $toName
+                );
+            } else {
+                $this->mailService->send($toEmail, $assunto, $corpoHtml, true, $toName);
+            }
+
+            $this->alertaModel->registrarDisparo(
+                (int) $alerta->id, $this->usuarioId,
+                $toEmail, $assunto, 'enviado', null,
+                $codigo . ':transacional'
+            );
+
+            AuditLogger::log('email_alerta_transacional_enviado', [
+                'codigo'   => $codigo,
+                'to_email' => $toEmail,
+                'assunto'  => $assunto,
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->alertaModel->registrarDisparo(
+                (int) $alerta->id, $this->usuarioId,
+                $toEmail, $assunto, 'falha', $e->getMessage(),
+                $codigo . ':transacional'
+            );
+
+            AuditLogger::log('email_alerta_transacional_falha', [
+                'codigo' => $codigo,
+                'error'  => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 

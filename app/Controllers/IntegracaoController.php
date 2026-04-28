@@ -1172,7 +1172,7 @@ class IntegracaoController extends Controller
         $alertas   = $model->findAllByUsuario($usuarioId);
 
         // Agrupa por módulo
-        $agrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => []];
+        $agrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => [], 'corpo_clinico' => []];
         foreach ($alertas as $a) {
             $agrupados[$a->modulo][] = $a;
         }
@@ -1337,7 +1337,7 @@ class IntegracaoController extends Controller
         $config    = $row ? $this->integracaoModel->getDecodedConfig($row) : [];
 
         // Carrega alertas com tolerância à ausência da tabela (migration pendente)
-        $alertasAgrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => []];
+        $alertasAgrupados = ['financeiro' => [], 'faturamento' => [], 'crm' => [], 'corpo_clinico' => []];
         try {
             $model   = new EmailAlerta();
             $alertas = $model->findAllByUsuario($usuarioId);

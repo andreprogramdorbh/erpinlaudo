@@ -155,6 +155,82 @@ class MailService
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Envio com anexo (PDF ou qualquer arquivo)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Envia e-mail HTML com um arquivo em anexo.
+     *
+     * @param string      $toEmail     Destinatário
+     * @param string      $subject     Assunto
+     * @param string      $body        Corpo HTML
+     * @param string      $attachPath  Caminho absoluto do arquivo a anexar
+     * @param string      $attachName  Nome do arquivo exibido no e-mail
+     * @param string|null $toName      Nome do destinatário (opcional)
+     */
+    public function sendWithAttachment(
+        string $toEmail,
+        string $subject,
+        string $body,
+        string $attachPath,
+        string $attachName,
+        ?string $toName = null
+    ): bool {
+        if (class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) {
+            return $this->sendWithPHPMailerAttachment($toEmail, $subject, $body, $attachPath, $attachName, $toName);
+        }
+        // Fallback: envia sem anexo (socket não suporta multipart/mixed facilmente)
+        return $this->send($toEmail, $subject, $body, true, $toName);
+    }
+
+    private function sendWithPHPMailerAttachment(
+        string $toEmail,
+        string $subject,
+        string $body,
+        string $attachPath,
+        string $attachName,
+        ?string $toName
+    ): bool {
+        $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+
+        $host      = (string)($this->config['host']       ?? '');
+        $port      = (int)($this->config['port']          ?? 587);
+        $username  = (string)($this->config['username']   ?? '');
+        $password  = (string)($this->config['password']   ?? '');
+        $protocol  = strtolower((string)($this->config['protocol'] ?? 'tls'));
+        $fromEmail = (string)($this->config['from_email'] ?? $username);
+        $fromName  = (string)($this->config['from_name']  ?? 'ERP InLaudo');
+
+        $mail->isSMTP();
+        $mail->Host       = $host;
+        $mail->Port       = $port;
+        $mail->SMTPAuth   = ($username !== '' && $password !== '');
+        $mail->Username   = $username;
+        $mail->Password   = $password;
+        $mail->SMTPSecure = ($protocol === 'ssl')
+            ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+            : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+
+        $mail->CharSet  = 'UTF-8';
+        $mail->Encoding = 'base64';
+
+        $mail->setFrom($fromEmail, $fromName);
+        $mail->addAddress($toEmail, $toName ?? '');
+
+        $mail->Subject = $subject;
+        $mail->isHTML(true);
+        $mail->Body    = $body;
+        $mail->AltBody = strip_tags($body);
+
+        if (file_exists($attachPath)) {
+            $mail->addAttachment($attachPath, $attachName);
+        }
+
+        $mail->send();
+        return true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Implementação com PHPMailer
     // ─────────────────────────────────────────────────────────────────────────
 
