@@ -392,24 +392,80 @@
       flex-grow: 1;
     }
 
-    /* RESPONSIVE */
-    @media (max-width: 768px) {
+    /* RESPONSIVE — MOBILE / TABLET */
+    @media (max-width: 991.98px) {
+      /* Sidebar sai da tela por padrão em mobile */
       .sidebar {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: var(--sidebar-width) !important;
         transform: translateX(-100%);
+        transition: transform var(--transition-speed) ease !important;
+        z-index: 1050;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.18);
       }
-
+      /* Sidebar visível quando ativado pelo botão hamburger */
       .sidebar.show {
-        transform: translateX(0);
+        transform: translateX(0) !important;
       }
-
+      /* Conteúdo ocupa 100% da tela — sem margem lateral */
       .main-wrapper {
         margin-left: 0 !important;
+      }
+      /* Overlay escuro atrás do sidebar (fecha ao clicar fora) */
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 1045;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .sidebar-overlay.active {
+        display: block;
+      }
+      /* Em mobile o sidebar nunca fica colapsado — exibe tudo normalmente */
+      .sidebar.collapsed .link-text {
+        display: inline !important;
+      }
+      .sidebar.collapsed .nav-label {
+        display: block !important;
+      }
+      .sidebar.collapsed .nav-link {
+        padding: 0.8rem 1.5rem !important;
+        justify-content: flex-start !important;
+      }
+      .sidebar.collapsed .nav-link i {
+        margin-right: 12px !important;
+      }
+      .sidebar.collapsed .sidebar-footer {
+        display: block !important;
+      }
+      .sidebar.collapsed .sidebar-header {
+        padding: 0 1.5rem !important;
+        justify-content: flex-start !important;
+      }
+      .sidebar.collapsed .logo-text {
+        display: inline !important;
+        opacity: 1 !important;
+      }
+    }
+    /* Desktop: overlay nunca aparece */
+    @media (min-width: 992px) {
+      .sidebar-overlay {
+        display: none !important;
       }
     }
   </style>
 </head>
 
 <body>
+
+  <!-- Overlay para fechar o sidebar em mobile ao clicar fora -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
   <div
     class="layout-wrapper <?php echo isset($_COOKIE['sidebarCollapsed']) && $_COOKIE['sidebarCollapsed'] == 'true' ? 'sidebar-collapsed' : ''; ?>">
