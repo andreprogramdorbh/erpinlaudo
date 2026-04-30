@@ -36,6 +36,18 @@ if ($isConcluido) {
     ];
 }
 
+if (!empty($isSuperAdmin)) {
+    $saUrl = '/faturamento/apuracao/superadmin-delete/' . $apuracao->id;
+    $saNum = htmlspecialchars($apuracao->numero, ENT_QUOTES);
+    $actions[] = [
+        'text'       => '[SUPERADMIN] Excluir em Cascata',
+        'link'       => '#',
+        'icon'       => 'fas fa-skull-crossbones',
+        'class'      => 'btn-danger',
+        'attributes' => 'onclick="confirmarExclusaoSuperAdmin(\'' . $saUrl . '\', \'' . $saNum . '\')"',
+    ];
+}
+
 UI::sectionHeader(
     'Apura&ccedil;&atilde;o Cliente ' . htmlspecialchars($apuracao->numero),
     'Cliente: ' . htmlspecialchars($apuracao->cliente_nome ?? '&mdash;'),
@@ -800,6 +812,38 @@ if (btnRevincular) {
             btn.innerHTML = '<i class="fas fa-link me-1"></i> Revincular Médico';
         });
     });
+}
+
+// Exclusão em cascata exclusiva do SUPERADMIN
+function confirmarExclusaoSuperAdmin(url, numero) {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: '⚠️ Exclusão Permanente (SUPERADMIN)',
+            html: '<p>Você está prestes a excluir <strong>' + numero + '</strong> e <strong>todas as suas ramificações</strong>:</p>'
+                + '<ul class="text-start small mt-2">'
+                + '<li>Apuração principal e todos os itens</li>'
+                + '<li>Sub-apurações de prestador vinculadas</li>'
+                + '<li>Contas a Pagar geradas</li>'
+                + '<li>Contas a Receber geradas</li>'
+                + '</ul>'
+                + '<p class="text-danger fw-bold mt-2">Esta ação é irreversível e não pode ser desfeita!</p>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: '<i class="fas fa-skull-crossbones me-1"></i> Excluir Tudo',
+            cancelButtonText: 'Cancelar',
+            focusCancel: true,
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = url;
+            }
+        });
+    } else {
+        if (confirm('[SUPERADMIN] Excluir ' + numero + ' e todas as ramificações?\n\nESTA AÇÃO É IRREVERSÍVEL!')) {
+            window.location.href = url;
+        }
+    }
 }
 </script>
 <?php endif; ?>

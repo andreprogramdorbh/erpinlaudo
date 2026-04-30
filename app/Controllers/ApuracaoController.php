@@ -48,10 +48,11 @@ class ApuracaoController extends Controller
         $medicos   = (new Medico())->findByUsuarioId($usuarioId, ['status' => 'ativo']);
 
         View::render('apuracao/prestador', [
-            'title'     => 'Apuração Prestador',
-            'apuracoes' => $apuracoes,
-            'medicos'   => $medicos,
-            'filtros'   => $filtros,
+            'title'        => 'Apuração Prestador',
+            'apuracoes'    => $apuracoes,
+            'medicos'      => $medicos,
+            'filtros'      => $filtros,
+            'isSuperAdmin' => Auth::hasRole('superadmin'),
             '_layout' => 'erp',
         ]);
     }
@@ -74,12 +75,12 @@ class ApuracaoController extends Controller
 
         $apuracoes = $this->apuracaoModel->findByUsuarioId($usuarioId, $filtros);
         $clientes  = (new Cliente())->findByUsuarioId($usuarioId);
-
         View::render('apuracao/cliente', [
-            'title'     => 'Apuração Cliente',
-            'apuracoes' => $apuracoes,
-            'clientes'  => $clientes,
-            'filtros'   => $filtros,
+            'title'          => 'Apuração Cliente',
+            'apuracoes'      => $apuracoes,
+            'clientes'       => $clientes,
+            'filtros'        => $filtros,
+            'isSuperAdmin'   => Auth::hasRole('superadmin'),
             '_layout' => 'erp',
         ]);
     }
@@ -146,6 +147,7 @@ class ApuracaoController extends Controller
             'subApuracoes'      => $subApuracoes,
             'tagDicomParaExame' => $tagDicomParaExame,
             'todasTagsDicom'    => $todasTagsDicom,
+            'isSuperAdmin'      => Auth::hasRole('superadmin'),
             '_layout' => 'erp',
         ]);
     }
@@ -616,6 +618,133 @@ class ApuracaoController extends Controller
             header("Location: {$redirect}?error=db_error");
         }
 
+        exit();
+    }
+
+    // =========================================================
+    // EXCLUIR APURAÇÃO — SUPERADMIN (cascata completa)
+    // GET /faturamento/apuracao/superadmin-delete/{id}
+    // Exclusivo para superadmin: remove apuração + sub-apurações
+    // + contas a pagar/receber vinculadas, independente do status.
+    // =========================================================
+    public function deleteSuperAdmin(string $id): void
+    {
+        $user      = Auth::user();
+        $usuarioId = (int) $user->id;
+
+        // ── Verificação de role: SOMENTE superadmin ──────────────
+        if (!Auth::hasRole('superadmin')) {
+            $this->logger->warning('[ApuracaoController] Tentativa de exclusão superadmin por usuário sem permissão', [
+                'usuario_id'  => $usuarioId,
+                'role'        => $user->role ?? 'desconhecido',
+                'apuracao_id' => $id,
+            ]);
+            header('Location: /faturamento/apuracao-cliente?error=sem_permissao');
+            exit();
+        }
+
+        $apuracao = $this->apuracaoModel->findById((int) $id);
+
+        // Determinar URL de retorno
+        $redirect = ($apuracao && $apuracao->tipo === 'cliente')
+            ? '/faturamento/apuracao-cliente'
+            : '/faturamento/apuracao-prestador';
+
+        if (!$apuracao || (int) $apuracao->usuario_id !== $usuarioId) {
+            header("Location: {$redirect}?error=not_found");
+            exit();
+        }
+
+        try {
+            $pdo               = $this->apuracaoModel->getPdo();
+            $numero            = $apuracao->numero;
+            $pattern           = '%' . $numero . '%';
+            $logCascata        = [];
+
+            // ── 1. Excluir contas a receber vinculadas ────────────
+            $stmtCR = $pdo->prepare(
+                "DELETE FROM contas_receber
+                  WHERE usuario_id = ?
+                    AND (observacoes LIKE ? OR descricao LIKE ?)"
+            );
+            $stmtCR->execute([$usuarioId, $pattern, $pattern]);
+            $deletedCR = $stmtCR->rowCount();
+            $logCascata[] = "Contas a Receber excluídas: {$deletedCR}";
+
+            // ── 2. Excluir contas a pagar da apuração principal ───
+            $stmtCP = $pdo->prepare(
+                "DELETE FROM contas_pagar
+                  WHERE usuario_id = ?
+                    AND (observacoes LIKE ? OR descricao LIKE ?)"
+            );
+            $stmtCP->execute([$usuarioId, $pattern, $pattern]);
+            $deletedCP = $stmtCP->rowCount();
+            $logCascata[] = "Contas a Pagar excluídas: {$deletedCP}";
+
+            // ── 3. Excluir sub-apurações de prestador vinculadas ──
+            $subApuracoes = $this->apuracaoModel->findSubApuracoesByMaeId((int) $id);
+            $deletedSub   = 0;
+            foreach ($subApuracoes as $sub) {
+                // Excluir contas a pagar da sub-apuração pelo número dela
+                $patternSub = '%' . $sub->numero . '%';
+                $stmtSubCP  = $pdo->prepare(
+                    "DELETE FROM contas_pagar
+                      WHERE usuario_id = ?
+                        AND (observacoes LIKE ? OR descricao LIKE ?)"
+                );
+                $stmtSubCP->execute([$usuarioId, $patternSub, $patternSub]);
+
+                // Excluir itens da sub-apuração (ON DELETE CASCADE cobre, mas por segurança)
+                $pdo->prepare("DELETE FROM apuracao_itens WHERE apuracao_id = ?")
+                    ->execute([(int) $sub->id]);
+
+                // Excluir a sub-apuração
+                $pdo->prepare("DELETE FROM apuracoes WHERE id = ? AND usuario_id = ?")
+                    ->execute([(int) $sub->id, $usuarioId]);
+
+                $deletedSub++;
+                $logCascata[] = "Sub-apuração {$sub->numero} excluída"
+                    . (!empty($sub->medico_nome) ? " ({$sub->medico_nome})" : '');
+            }
+
+            // ── 4. Excluir itens da apuração principal ────────────
+            $pdo->prepare("DELETE FROM apuracao_itens WHERE apuracao_id = ?")
+                ->execute([(int) $id]);
+
+            // ── 5. Excluir a apuração principal ───────────────────
+            $pdo->prepare("DELETE FROM apuracoes WHERE id = ? AND usuario_id = ?")
+                ->execute([(int) $id, $usuarioId]);
+
+            // ── 6. Log de auditoria completo ──────────────────────
+            AuditLogger::log('apuracao_excluida_superadmin', [
+                'apuracao_id'    => $id,
+                'numero'         => $numero,
+                'tipo'           => $apuracao->tipo,
+                'status_era'     => $apuracao->status,
+                'valor_total'    => $apuracao->valor_total,
+                'sub_apuracoes'  => $deletedSub,
+                'contas_pagar'   => $deletedCP,
+                'contas_receber' => $deletedCR,
+                'executado_por'  => $usuarioId,
+                'executado_role' => $user->role ?? 'superadmin',
+                'cascata_log'    => $logCascata,
+            ]);
+
+            $this->logger->info('[ApuracaoController] Exclusão superadmin concluída', [
+                'apuracao'    => $numero,
+                'cascata_log' => $logCascata,
+            ]);
+
+            header("Location: {$redirect}?success=deleted");
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[ApuracaoController] Erro na exclusão superadmin', [
+                'apuracao_id' => $id,
+                'error'       => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+            header("Location: {$redirect}?error=db_error");
+        }
         exit();
     }
 

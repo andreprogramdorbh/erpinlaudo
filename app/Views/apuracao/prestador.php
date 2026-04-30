@@ -18,6 +18,7 @@ if ($error === 'faturamento_falhou')  echo '<div class="alert alert-danger borde
 if ($error === 'exclusao_bloqueada') echo '<div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-lock me-2"></i><strong>Exclusão bloqueada:</strong> Não é possível excluir apurações com status <strong>Concluído</strong> ou <strong>Faturado</strong>. Apenas apurações em rascunho ou com erro podem ser excluídas.</div>';
 if ($error === 'not_found')           echo '<div class="alert alert-warning border-0 shadow-sm"><i class="fas fa-search me-2"></i>Apuração não encontrada.</div>';
 if ($error === 'db_error')            echo '<div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-times-circle me-2"></i>Erro ao excluir apuração. Tente novamente.</div>';
+if ($error === 'sem_permissao')       echo '<div class="alert alert-danger border-0 shadow-sm"><i class="fas fa-ban me-2"></i><strong>Acesso negado:</strong> Esta operação é exclusiva para superadmin.</div>';
 ?>
 
 <!-- FILTROS -->
@@ -212,6 +213,13 @@ $totFat    = count(array_filter($apuracoes, fn($a) => $a->status === 'faturado')
                                     <i class="fas fa-trash"></i>
                                 </button>
                                 <?php endif; ?>
+                                <?php if (!empty($isSuperAdmin)): ?>
+                                <button type="button" class="btn btn-danger"
+                                        onclick="confirmarExclusaoSuperAdmin('/faturamento/apuracao/superadmin-delete/<?php echo $ap->id; ?>', '<?php echo htmlspecialchars($ap->numero, ENT_QUOTES); ?>')"
+                                        title="[SUPERADMIN] Excluir em cascata">
+                                    <i class="fas fa-skull-crossbones"></i>
+                                </button>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>
@@ -261,5 +269,37 @@ function confirmarFaturamento(id, numero, valor) {
 }
 function confirmarExclusao(url, msg) {
     if (confirm(msg + '\n\nEsta ação não pode ser desfeita.')) window.location.href = url;
+}
+
+// Exclusão em cascata exclusiva do SUPERADMIN
+function confirmarExclusaoSuperAdmin(url, numero) {
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: '⚠️ Exclusão Permanente (SUPERADMIN)',
+            html: '<p>Você está prestes a excluir <strong>' + numero + '</strong> e <strong>todas as suas ramificações</strong>:</p>'
+                + '<ul class="text-start small mt-2">'
+                + '<li>Apuração principal e todos os itens</li>'
+                + '<li>Sub-apurações de prestador vinculadas</li>'
+                + '<li>Contas a Pagar geradas</li>'
+                + '<li>Contas a Receber geradas</li>'
+                + '</ul>'
+                + '<p class="text-danger fw-bold mt-2">Esta ação é irreversível e não pode ser desfeita!</p>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: '<i class="fas fa-skull-crossbones me-1"></i> Excluir Tudo',
+            cancelButtonText: 'Cancelar',
+            focusCancel: true,
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = url;
+            }
+        });
+    } else {
+        if (confirm('[SUPERADMIN] Excluir ' + numero + ' e todas as ramificações (contas a pagar/receber, sub-apurações)?\n\nESTA AÇÃO É IRREVERSÍVEL!')) {
+            window.location.href = url;
+        }
+    }
 }
 </script>

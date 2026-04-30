@@ -362,6 +362,8 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::get("/faturamento/apuracao-cliente/visualizar/{id}", "ApuracaoController@visualizar");
     Router::get("/faturamento/apuracao/faturar/{id}", "ApuracaoController@faturar");
     Router::get("/faturamento/apuracao/delete/{id}", "ApuracaoController@delete");
+    // Exclusão forçada com cascata — SOMENTE superadmin (validação no controller)
+    Router::get("/faturamento/apuracao/superadmin-delete/{id}", "ApuracaoController@deleteSuperAdmin");
     Router::post("/faturamento/apuracao/recalcular/{id}", "ApuracaoController@recalcular");
     Router::post("/faturamento/apuracao/revincular-medico/{id}", "ApuracaoController@revincularMedico");
 
