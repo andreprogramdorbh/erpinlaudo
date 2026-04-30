@@ -168,7 +168,7 @@ $totValor  = array_sum(array_column($apuracoes, 'valor_venda_total')) ?: array_s
                                     <i class="fas fa-eye"></i>
                                 </a>
                                 <button type="button" class="btn btn-outline-success"
-                                        onclick="confirmarFaturamento(<?php echo $ap->id; ?>, '<?php echo htmlspecialchars($ap->numero); ?>', '<?php echo number_format((float)(($ap->valor_venda_total ?? 0) > 0 ? $ap->valor_venda_total : $ap->valor_total), 2, ',', '.'); ?>')"
+                                        onclick="confirmarFaturamento('/faturamento/apuracao/faturar/<?php echo $ap->id; ?>', 'Cliente', '<?php echo htmlspecialchars(addslashes($ap->cliente_nome ?? $ap->numero)); ?>', '<?php echo number_format((float)(($ap->valor_venda_total ?? 0) > 0 ? $ap->valor_venda_total : $ap->valor_total), 2, ',', '.'); ?>')"
                                         title="Faturar — gerar conta a receber">
                                     <i class="fas fa-file-invoice-dollar"></i>
                                 </button>
@@ -203,40 +203,14 @@ $totValor  = array_sum(array_column($apuracoes, 'valor_venda_total')) ?: array_s
     </div>
 </div>
 
-<!-- Modal de confirmação de faturamento -->
-<div class="modal fade" id="modalFaturar" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-file-invoice-dollar me-2 text-success"></i>Confirmar Faturamento</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-info border-0">
-                    <strong>Apuração:</strong> <span id="fat-numero"></span><br>
-                    <strong>Valor:</strong> R$ <span id="fat-valor"></span>
-                </div>
-                <p>Ao confirmar, o sistema irá gerar uma <strong>Conta a Receber</strong> do cliente no módulo Financeiro com status <em>Pendente</em>.</p>
-                <p class="text-muted small">Esta ação não pode ser desfeita.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <a href="#" id="btn-confirmar-fat" class="btn btn-success">
-                    <i class="fas fa-check me-1"></i> Confirmar e Faturar
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
-function confirmarFaturamento(id, numero, valor) {
-    document.getElementById('fat-numero').textContent = numero;
-    document.getElementById('fat-valor').textContent  = valor;
-    document.getElementById('btn-confirmar-fat').href = '/faturamento/apuracao/faturar/' + id;
-    new bootstrap.Modal(document.getElementById('modalFaturar')).show();
-}
+// confirmarFaturamento e confirmarExclusaoApuracao são definidos em /assets/js/apuracao.js
+// Alias para compatibilidade com botões de exclusão simples
 function confirmarExclusao(url, msg) {
-    if (confirm(msg + '\n\nEsta ação não pode ser desfeita.')) window.location.href = url;
+    if (window.confirmarExclusaoApuracao) {
+        confirmarExclusaoApuracao(url, msg);
+    } else if (confirm(msg + '\n\nEsta ação não pode ser desfeita.')) {
+        window.location.href = url;
+    }
 }
 </script>
