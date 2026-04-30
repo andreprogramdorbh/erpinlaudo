@@ -35,14 +35,15 @@ class ApuracaoController extends Controller
         $user      = Auth::user();
         $usuarioId = (int) $user->id;
 
-        $filtros = [
+         $filtros = [
             'tipo'          => 'prestador',
             'medico_id'     => (int) ($_GET['medico_id'] ?? 0) ?: null,
             'status'        => $_GET['status'] ?? '',
             'periodo_inicio'=> $_GET['periodo_inicio'] ?? '',
             'periodo_fim'   => $_GET['periodo_fim'] ?? '',
+            // Inclui sub-apurações geradas automaticamente pela cascata de faturamento
+            'incluir_sub'   => true,
         ];
-
         $apuracoes = $this->apuracaoModel->findByUsuarioId($usuarioId, $filtros);
         $medicos   = (new Medico())->findByUsuarioId($usuarioId, ['status' => 'ativo']);
 
@@ -435,7 +436,16 @@ class ApuracaoController extends Controller
 
                 $redirect = '/faturamento/apuracao-prestador';
             } else {
-                // Gera Conta a Receber do cliente
+                // ═══════════════════════════════════════════════════════════════
+                // CASCATA DE FATURAMENTO — APURAÇÃO CLIENTE
+                // 1. Gera Conta a Receber do cliente (sistema recebe)
+                // 2. Para cada sub-apuração de prestador vinculada:
+                //    a. Gera Conta a Pagar para o médico (sistema paga)
+                //    b. Marca sub-apuração como 'faturado'
+                //    c. Envia emails de notificação ao médico
+                // ═══════════════════════════════════════════════════════════════
+
+                // 1. Conta a Receber do cliente
                 $contaReceberModel = new \App\Models\ContaReceber();
                 $descricao = "Apuração Cliente {$apuracao->numero}";
                 if ($apuracao->cliente_nome) $descricao .= " — {$apuracao->cliente_nome}";
@@ -457,6 +467,63 @@ class ApuracaoController extends Controller
                     'recorrencia_intervalo'=> null,
                     'contrato_id'          => $apuracao->contrato_id ?? null,
                 ]);
+
+                // 2. Cascata: faturar sub-apurações de prestador vinculadas
+                $subApuracoes = $this->apuracaoModel->findSubApuracoesByMaeId((int) $id);
+                $contaPagarModel = new \App\Models\ContaPagar();
+                $logCascata = [];
+
+                foreach ($subApuracoes as $sub) {
+                    // Só fatura sub-apurações que ainda não foram faturadas
+                    if ($sub->status === 'faturado') {
+                        $logCascata[] = "Sub {$sub->numero}: já faturada — ignorada.";
+                        continue;
+                    }
+
+                    // Cria Conta a Pagar para o médico
+                    $descSub = "Honorários Prestador {$sub->numero}";
+                    if (!empty($sub->medico_nome)) $descSub .= " — {$sub->medico_nome}";
+                    $descSub .= " ({$sub->total_exames} exames | Ref: {$apuracao->numero})";
+
+                    $contaPagarModel->create([
+                        'usuario_id'           => $usuarioId,
+                        'plano_conta_id'       => null,
+                        'fornecedor_id'        => null,
+                        'descricao'            => $descSub,
+                        'valor'                => (float)($sub->valor_total ?? 0),
+                        'data_vencimento'      => date('Y-m-d', strtotime('+30 days')),
+                        'data_pagamento'       => null,
+                        'codigo_barras'        => null,
+                        'recorrente'           => 0,
+                        'recorrencia_tipo'     => null,
+                        'recorrencia_intervalo'=> null,
+                        'status'               => 'aberta',
+                        'observacoes'          => "Gerado automaticamente ao faturar apuração cliente {$apuracao->numero}",
+                    ]);
+
+                    // Marca sub-apuração como faturada
+                    $this->apuracaoModel->updateStatus((int) $sub->id, 'faturado', $usuarioId);
+
+                    // Emails ao médico (silencioso — não interrompe o faturamento)
+                    try { $this->dispararEmailProvisionamento($sub, $usuarioId); } catch (\Throwable $e) {}
+                    try { $this->dispararEmailApuracao($sub, $usuarioId); } catch (\Throwable $e) {}
+
+                    $logCascata[] = "Sub {$sub->numero}: Conta a Pagar criada" . (!empty($sub->medico_nome) ? " para {$sub->medico_nome}" : '') . " (R$ " . number_format((float)$sub->valor_total, 2, ',', '.') . ").";
+
+                    AuditLogger::log('sub_apuracao_faturada', [
+                        'sub_apuracao_id' => $sub->id,
+                        'apuracao_mae_id' => $id,
+                        'medico_id'       => $sub->medico_id ?? null,
+                        'valor'           => $sub->valor_total,
+                    ]);
+                }
+
+                if (!empty($logCascata)) {
+                    $this->logger->info('[ApuracaoController] Cascata de faturamento', [
+                        'apuracao_mae' => $apuracao->numero,
+                        'sub_apuracoes'=> $logCascata,
+                    ]);
+                }
 
                 $redirect = '/faturamento/apuracao-cliente';
             }

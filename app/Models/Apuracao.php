@@ -134,6 +134,18 @@ class Apuracao extends Model
         return $stmt->execute([$id, $usuarioId]);
     }
 
+    /**
+     * Atualiza apenas o status de uma apuração (qualquer tipo, sem restrição de status atual).
+     * Usado na cascata de faturamento para marcar sub-apurações como 'faturado'.
+     */
+    public function updateStatus(int $id, string $status, int $usuarioId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            "UPDATE {$this->table} SET status = :status, updated_at = NOW() WHERE id = :id AND usuario_id = :usuario_id"
+        );
+        return $stmt->execute([':status' => $status, ':id' => $id, ':usuario_id' => $usuarioId]);
+    }
+
     public function gerarNumero(): string
     {
         return 'APU-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
