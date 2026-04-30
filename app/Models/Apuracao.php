@@ -11,9 +11,9 @@ class Apuracao extends Model
     public function findById(int $id): object|false
     {
         $sql = "SELECT a.*,
-                       m.nome AS medico_nome, m.crm AS medico_crm,
+                       m.nome AS medico_nome, m.crm AS medico_crm, m.email AS medico_email, m.cpf AS medico_cpf,
                        cl.razao_social AS cliente_nome,
-                       c.nome AS contrato_nome, c.numero AS contrato_numero
+                       c.nome AS contrato_nome, c.numero AS contrato_numero, c.tipo_parte AS contrato_tipo_parte
                 FROM {$this->table} a
                 LEFT JOIN medicos m ON m.id = a.medico_id
                 LEFT JOIN clientes cl ON cl.id = a.cliente_id

@@ -540,58 +540,77 @@ class ContratosController extends Controller
                 if ($exameMatch) {
                     $exId = (int) $exameMatch->id;
 
-                    // -------------------------------------------------------
-                    // NOVA LÓGICA DE PREÇOS:
-                    // - valor_rotina / valor_urgencia = valores DIRETOS do médico (prestador)
-                    // - valor_venda_rotina / valor_venda_urgencia = valores de venda (cliente)
-                    // -------------------------------------------------------
+                    // =====================================================================
+                    // HIERARQUIA DE PREÇOS — LADO CLIENTE (recebimento) e PRESTADOR (custo)
+                    //
+                    // LADO CLIENTE (contrato tipo_parte='cliente' OU tipo apuração='cliente'):
+                    //   C1: Contrato tem valor_venda_rotina/urgencia custom → usa
+                    //   C2: Tabela de exames tem valor_venda_rotina/urgencia → usa
+                    //   C3: Tabela de exames tem valor_rotina/urgencia → usa como fallback
+                    //
+                    // LADO PRESTADOR (contrato tipo_parte='medico' OU tipo apuração='prestador'):
+                    //   P1: Contrato tem valor_rotina/urgencia custom → usa
+                    //   P2: Médico tem valor específico (medico_exames) → usa
+                    //   P3: Tabela de exames tem valor_rotina/urgencia (custo médico) → usa
+                    //
+                    // VALOR DE VENDA é sempre calculado (para sub-apurações de prestador
+                    // que precisam saber o valor de venda do cliente correspondente).
+                    // =====================================================================
 
-                    // -------------------------------------------------------
-                    // HIERARQUIA DE PREÇOS (do maior para menor prioridade):
-                    // P0: Valores do CONTRATO (contrato_exames) — base contábil definitiva
-                    // P1: Valores do MÉDICO (medico_exames) — override individual
-                    // P2: Valores da TABELA DE EXAMES — padrão do sistema
-                    // -------------------------------------------------------
+                    // Determinar se o contrato é de cliente ou de médico
+                    $contratoParte = $apuracao->contrato_tipo_parte ?? null;
+                    $isContratoCliente = ($tipoApuracao === 'cliente')
+                        || ($contratoParte === 'cliente');
 
-                    // VALOR DE VENDA BASE (tabela de exames)
-                    $valorCalcVenda = $isUrgencia
-                        ? (float) ($exameMatch->valor_venda_urgencia ?: $exameMatch->valor_urgencia ?: 0)
-                        : (float) ($exameMatch->valor_venda_rotina  ?: $exameMatch->valor_rotina  ?: 0);
+                    // --- BASE: valores da tabela de exames do sistema ---
+                    // Venda (o que o cliente paga)
+                    $tabelaVendaR = (float) ($exameMatch->valor_venda_rotina   ?: $exameMatch->valor_rotina   ?: 0);
+                    $tabelaVendaU = (float) ($exameMatch->valor_venda_urgencia ?: $exameMatch->valor_urgencia ?: 0);
+                    // Custo (o que o médico recebe)
+                    $tabelaCustoR = (float) ($exameMatch->valor_rotina   ?: $exameMatch->preco_custo ?: 0);
+                    $tabelaCustoU = (float) ($exameMatch->valor_urgencia ?: $exameMatch->preco_custo ?: 0);
 
-                    // P0: Contrato tem valores definidos para este exame?
+                    // Inicializar com valores da tabela
+                    $valorCalcVenda = $isUrgencia ? $tabelaVendaU : $tabelaVendaR;
+                    $valorCalcCusto = $isUrgencia ? $tabelaCustoU : $tabelaCustoR;
+                    $fonteValor     = 'tabela_sistema';
+
+                    // --- APLICAR HIERARQUIA ---
                     if (!empty($valoresContrato[$exId]) && $valoresContrato[$exId]->usa_valor_custom) {
+                        // C1/P1: Contrato tem valores custom para este exame
                         $vc = $valoresContrato[$exId];
-                        if ($tipoApuracao === 'cliente') {
-                            // Contrato cliente: usa valor_venda_rotina/urgencia do contrato
-                            $valorCalc      = $isUrgencia ? (float)$vc->valor_venda_urgencia : (float)$vc->valor_venda_rotina;
-                            $valorCalcVenda = $valorCalc; // venda = o próprio valor do contrato cliente
-                        } else {
-                            // Contrato prestador: usa valor_rotina/urgencia do contrato
-                            $valorCalc = $isUrgencia ? (float)$vc->valor_urgencia : (float)$vc->valor_rotina;
-                            // Venda: se o contrato também tiver venda definida, usa; senão usa tabela
-                            if ((float)$vc->valor_venda_rotina > 0 || (float)$vc->valor_venda_urgencia > 0) {
-                                $valorCalcVenda = $isUrgencia ? (float)$vc->valor_venda_urgencia : (float)$vc->valor_venda_rotina;
-                            }
+                        $vcVendaR = (float) $vc->valor_venda_rotina;
+                        $vcVendaU = (float) $vc->valor_venda_urgencia;
+                        $vcCustoR = (float) $vc->valor_rotina;
+                        $vcCustoU = (float) $vc->valor_urgencia;
+
+                        // Atualiza venda se definida no contrato
+                        if ($vcVendaR > 0 || $vcVendaU > 0) {
+                            $valorCalcVenda = $isUrgencia ? $vcVendaU : $vcVendaR;
                         }
-                        $obsItem = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: contrato_custom';
+                        // Atualiza custo se definido no contrato
+                        if ($vcCustoR > 0 || $vcCustoU > 0) {
+                            $valorCalcCusto = $isUrgencia ? $vcCustoU : $vcCustoR;
+                        }
+                        $fonteValor = 'contrato_custom';
 
-                    // P1: Médico tem valores específicos? (apenas para prestador)
-                    } elseif ($tipoApuracao !== 'cliente' && !empty($valoresMedico[$exId])) {
+                    } elseif (!$isContratoCliente && !empty($valoresMedico[$exId])) {
+                        // P2: Médico tem valores específicos (apenas para contratos de médico/prestador)
                         $vm = $valoresMedico[$exId];
-                        $valorCalc = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
-                        $obsItem   = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $vm['fonte'];
-
-                    // P2: Tabela de exames (padrão)
-                    } elseif ($tipoApuracao === 'cliente') {
-                        // Apuração cliente: usa valor de venda da tabela
-                        $valorCalc = $valorCalcVenda;
-                    } else {
-                        // Apuração prestador: usa valor_rotina/urgencia DIRETOS da tabela
-                        $valorCalc = $isUrgencia
-                            ? (float) ($exameMatch->valor_urgencia ?: 0)
-                            : (float) ($exameMatch->valor_rotina  ?: 0);
+                        $valorCalcCusto = $isUrgencia ? $vm['urgencia'] : $vm['rotina'];
+                        $fonteValor     = $vm['fonte'];
                     }
 
+                    // Definir valorCalc conforme o tipo de apuração
+                    if ($isContratoCliente) {
+                        // Apuração cliente: valorCalc = valor de VENDA (o que o cliente paga)
+                        $valorCalc = $valorCalcVenda;
+                    } else {
+                        // Apuração prestador: valorCalc = valor de CUSTO (o que o médico recebe)
+                        $valorCalc = $valorCalcCusto;
+                    }
+
+                    $obsItem    = ($obsItem ? $obsItem . ' | ' : '') . 'Valor: ' . $fonteValor;
                     $statusItem = 'ok';
                     if ($obsItem === 'Sem correspondência na tabela de exames') $obsItem = null;
                 } else {
@@ -743,47 +762,75 @@ class ContratosController extends Controller
                     $subNormal      = 0;
                     $subUrgencia    = 0;
 
+                    // Carregar medico_exames do médico encontrado (pode ser diferente do contrato-mãe)
+                    $valoresMedicoSub = [];
+                    if ($medicoObj) {
+                        $medicoExameModel = new MedicoExame();
+                        $examesMedicoSub  = $medicoExameModel->findByMedicoId((int)$medicoObj->id);
+                        foreach ($examesMedicoSub as $me) {
+                            if ($me->usa_valor_custom) {
+                                $valoresMedicoSub[(int)$me->tabela_exame_id] = [
+                                    'rotina'   => (float) $me->valor_rotina,
+                                    'urgencia' => (float) $me->valor_urgencia,
+                                    'fonte'    => 'medico_exames',
+                                ];
+                            }
+                        }
+                    }
+
                     foreach ($itensMedico as $item) {
                         $exId  = $item[':exame_id'] ? (int)$item[':exame_id'] : null;
                         $isUrg = ($item[':tipo_prioridade'] === 'urgencia');
 
-                        // Calcular valor de custo (prestador) para este item
-                        $valorCusto = 0.0;
+                        // =====================================================================
+                        // HIERARQUIA DE PREÇOS — LADO PRESTADOR (custo = o que o médico recebe)
+                        //   P1: Contrato do prestador tem valor custom → usa
+                        //   P2: Médico tem valor específico (medico_exames) → usa
+                        //   P3: Tabela de exames (valor_rotina/urgencia) → usa
+                        // =====================================================================
+                        $valorCusto     = 0.0;
+                        $fonteCusto     = 'tabela_sistema';
                         if ($exId) {
-                            // P0: Contrato do prestador
+                            // P1: Contrato do prestador
                             if (!empty($valoresContratoPrest[$exId]) && (bool)$valoresContratoPrest[$exId]->usa_valor_custom) {
                                 $vcp = $valoresContratoPrest[$exId];
                                 $valorCusto = $isUrg
                                     ? (float)($vcp->valor_urgencia ?: 0)
                                     : (float)($vcp->valor_rotina  ?: 0);
+                                $fonteCusto = 'contrato_prestador';
                             }
-                            // P1: Valores do médico (medico_exames)
-                            if ($valorCusto == 0.0 && $medicoObj && !empty($valoresMedico[$exId])) {
-                                $vm = $valoresMedico[$exId];
+                            // P2: Valores específicos do médico (medico_exames)
+                            if ($valorCusto == 0.0 && !empty($valoresMedicoSub[$exId])) {
+                                $vm = $valoresMedicoSub[$exId];
                                 $valorCusto = $isUrg
                                     ? (float)($vm['urgencia'] ?: 0)
                                     : (float)($vm['rotina']   ?: 0);
+                                $fonteCusto = 'medico_exames';
                             }
-                            // P2: Tabela de exames (valor_rotina/urgencia = custo)
+                            // P3: Tabela de exames (valor_rotina/urgencia = custo do médico)
                             if ($valorCusto == 0.0) {
                                 foreach ($exames as $ex) {
                                     if ((int)$ex->id === $exId) {
                                         $valorCusto = $isUrg
-                                            ? (float)($ex->valor_urgencia ?: 0)
-                                            : (float)($ex->valor_rotina  ?: 0);
+                                            ? (float)($ex->valor_urgencia ?: $ex->preco_custo ?: 0)
+                                            : (float)($ex->valor_rotina  ?: $ex->preco_custo ?: 0);
                                         break;
                                     }
                                 }
                             }
                         }
 
+                        // Valor de venda do item original (preservado da apuração-mãe)
+                        $valorVendaItem = (float)($item[':valor_calculado_venda'] ?: $item[':valor_calculado'] ?: 0);
+
                         $subTotal += $valorCusto;
                         if ($isUrg) $subUrgencia++; else $subNormal++;
 
-                        // Item da sub-apuração usa valor_calculado = custo, valor_calculado_venda = 0
+                        // Item da sub-apuração: custo = o que o médico recebe, venda = valor original do cliente
                         $itensPrestador[] = array_merge($item, [
                             ':valor_calculado'       => $valorCusto,
-                            ':valor_calculado_venda' => 0.0,
+                            ':valor_calculado_venda' => $valorVendaItem,
+                            ':obs_item'              => ($item[':obs_item'] ? $item[':obs_item'] . ' | ' : '') . 'Custo: ' . $fonteCusto,
                         ]);
                     }
 
