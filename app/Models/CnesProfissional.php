@@ -44,7 +44,7 @@ class CnesProfissional extends Model
         $params = $estabParams;
 
         if (!empty($filtros['q'])) {
-            $where[]  = '(p.no_profissional LIKE ? OR p.co_cbo LIKE ? OR p.no_cbo LIKE ?)';
+            $where[]  = '(p.no_profissional LIKE ? OR p.co_cbo LIKE ? OR COALESCE(d.no_cbo, p.no_cbo) LIKE ?)';
             $busca    = '%' . $filtros['q'] . '%';
             $params[] = $busca;
             $params[] = $busca;
@@ -65,12 +65,13 @@ class CnesProfissional extends Model
 
         $whereStr = implode(' AND ', $where);
 
-        // Sem JOIN com cnes_dom_cbo/cnes_dom_conselho — tabelas podem não existir
-        // Os campos no_cbo e no_conselho_classe já vêm preenchidos na importação
+        // LEFT JOIN com cnes_dom_cbo para obter a descrição do CBO
+        // COALESCE prioriza: 1) tabela dom, 2) campo no_cbo importado, 3) código numérico
         $sql = "SELECT p.*,
-                       COALESCE(p.no_cbo, p.co_cbo) AS no_cbo_desc,
+                       COALESCE(d.no_cbo, p.no_cbo, p.co_cbo) AS no_cbo_desc,
                        COALESCE(p.no_conselho_classe, p.co_conselho_classe) AS no_conselho_desc
                 FROM {$this->table} p
+                LEFT JOIN cnes_dom_cbo d ON d.co_cbo = p.co_cbo
                 WHERE {$whereStr}
                 ORDER BY p.no_profissional ASC";
 
@@ -103,15 +104,17 @@ class CnesProfissional extends Model
     }
 
     /**
-     * Retorna lista de CBOs disponíveis para um estabelecimento.
+     * Retorna lista de CBOs disponíveis para um estabelecimento,
+     * com descrição da tabela de domínio.
      */
     public function cbosDisponiveis(string $coUnidade, string $coCnes = ''): array
     {
         [$estabWhere, $estabParams] = $this->whereEstab($coUnidade, $coCnes);
         $stmt = $this->pdo->prepare(
             "SELECT DISTINCT p.co_cbo,
-                    COALESCE(p.no_cbo, p.co_cbo) AS no_cbo
+                    COALESCE(d.no_cbo, p.no_cbo, p.co_cbo) AS no_cbo
              FROM {$this->table} p
+             LEFT JOIN cnes_dom_cbo d ON d.co_cbo = p.co_cbo
              WHERE ({$estabWhere}) AND p.co_cbo IS NOT NULL
              ORDER BY no_cbo"
         );

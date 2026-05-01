@@ -744,16 +744,25 @@ class CnesImportService
             );
         } catch (\Throwable $e) { /* já existe */ }
 
+        // Carregar lookup de descrições de CBO em memória
+        $nomesCbo = [];
+        try {
+            $stmtCbo = $this->pdo->query("SELECT co_cbo, no_cbo FROM cnes_dom_cbo");
+            foreach ($stmtCbo->fetchAll(PDO::FETCH_OBJ) as $cboRow) {
+                $nomesCbo[$cboRow->co_cbo] = $cboRow->no_cbo;
+            }
+        } catch (\Throwable $e) { /* tabela pode não existir ainda */ }
+
         $sql = "INSERT INTO cnes_profissionais
                 (co_cnes, co_unidade, co_profissional_sus, no_profissional,
-                 co_cbo, co_conselho_classe, nu_registro, nu_registro_conselho,
+                 co_cbo, no_cbo, co_conselho_classe, nu_registro, nu_registro_conselho,
                  sg_uf_crm, sg_uf_conselho,
                  tp_sus_nao_sus, ind_vinculacao,
                  qt_carga_horaria_amb, qt_carga_horaria_outros,
                  dt_atualizacao, competencia, created_at, updated_at)
                 VALUES
                 (:co_cnes, :co_unidade, :co_prof, :no_prof,
-                 :co_cbo, :co_conselho, :nu_registro, :nu_registro2,
+                 :co_cbo, :no_cbo, :co_conselho, :nu_registro, :nu_registro2,
                  :sg_uf, :sg_uf2,
                  :tp_sus, :ind_vinc,
                  :ch_amb, :ch_outros,
@@ -761,6 +770,7 @@ class CnesImportService
                 ON DUPLICATE KEY UPDATE
                   no_profissional        = VALUES(no_profissional),
                   co_cbo                 = VALUES(co_cbo),
+                  no_cbo                 = VALUES(no_cbo),
                   co_conselho_classe     = VALUES(co_conselho_classe),
                   nu_registro            = VALUES(nu_registro),
                   nu_registro_conselho   = VALUES(nu_registro_conselho),
@@ -799,12 +809,14 @@ class CnesImportService
 
             $dtAtu = $this->converterData($this->col($row, "TO_CHAR(A.DT_ATUALIZACAO,'DD/MM/YYYY')"));
 
+            $coBo = $this->col($row, 'CO_CBO');
             $stmt->execute([
                 ':co_cnes'    => $coCnes,
                 ':co_unidade' => $coUnidade,
                 ':co_prof'    => $coProf,
                 ':no_prof'    => $nomesProf[$coProf ?? ''] ?? 'Profissional',
-                ':co_cbo'     => $this->col($row, 'CO_CBO'),
+                ':co_cbo'     => $coBo,
+                ':no_cbo'     => $nomesCbo[$coBo ?? ''] ?? null,
                 ':co_conselho'=> $this->col($row, 'CO_CONSELHO_CLASSE'),
                 ':nu_registro'=> $this->col($row, 'NU_REGISTRO'),
                 ':nu_registro2'=> $this->col($row, 'NU_REGISTRO'),
