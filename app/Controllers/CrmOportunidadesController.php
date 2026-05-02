@@ -11,6 +11,7 @@ use App\Models\CrmOportunidade;
 use App\Models\CrmLead;
 use App\Models\CrmInteracao;
 use App\Models\CrmOportunidadeModalidade;
+use App\Models\CrmAnexo;
 use App\Models\Cliente;
 use App\Models\User;
 
@@ -19,6 +20,7 @@ class CrmOportunidadesController extends Controller
     private CrmOportunidade $opModel;
     private CrmInteracao $interacaoModel;
     private CrmOportunidadeModalidade $modModel;
+    private CrmAnexo $anexoModel;
     private Logger $logger;
 
     public function __construct()
@@ -26,6 +28,7 @@ class CrmOportunidadesController extends Controller
         $this->opModel        = new CrmOportunidade();
         $this->interacaoModel = new CrmInteracao();
         $this->modModel       = new CrmOportunidadeModalidade();
+        $this->anexoModel     = new CrmAnexo();
         $this->logger         = new Logger();
     }
 
@@ -165,6 +168,7 @@ class CrmOportunidadesController extends Controller
         }
 
         $interacoes = $this->interacaoModel->findByRelated('oportunidade', $id);
+        $anexos     = $this->anexoModel->findByRelated('oportunidade', $id);
 
         // Herda interações do lead de origem
         $interacoesLead = [];
@@ -186,6 +190,7 @@ class CrmOportunidadesController extends Controller
             'isEdit'             => true,
             'interacoes'         => $interacoes,
             'interacoesLead'     => $interacoesLead,
+            'anexos'             => $anexos,
             'leads'              => $leads,
             'etapas'             => CrmOportunidade::ETAPAS,
             'statusList'         => CrmOportunidade::STATUS,
@@ -195,6 +200,8 @@ class CrmOportunidadesController extends Controller
             'tiposContrato'      => CrmOportunidade::TIPOS_CONTRATO,
             'tiposInteracao'     => CrmInteracao::TIPOS,
             'iconesInteracao'    => CrmInteracao::ICONES,
+            'tiposAnexo'         => CrmAnexo::TIPOS,
+            'iconesAnexo'        => CrmAnexo::ICONES,
         ]);
     }
 
@@ -514,6 +521,182 @@ class CrmOportunidadesController extends Controller
             $data[$f] = trim($_POST[$f] ?? '');
         }
         return $data;
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/oportunidades/anexo/upload  — faz upload de anexo
+    // ---------------------------------------------------------------
+    public function uploadAnexo(): void
+    {
+        $uid  = $this->usuarioId();
+        $opId = (int) ($_POST['related_id'] ?? 0);
+        $op   = $this->opModel->findById($opId);
+
+        if (!$op || (int) $op->usuario_id !== $uid) {
+            header("Location: /crm/oportunidades?error=nao_encontrado");
+            exit();
+        }
+
+        $nomeDoc = trim($_POST['nome_documento'] ?? '');
+        $tipoDoc = trim($_POST['tipo_documento'] ?? 'outro');
+
+        if (empty($nomeDoc)) {
+            header("Location: /crm/oportunidades/edit/{$opId}?error=nome_obrigatorio&tab=anexos");
+            exit();
+        }
+
+        if (!array_key_exists($tipoDoc, CrmAnexo::TIPOS)) {
+            $tipoDoc = 'outro';
+        }
+
+        if (empty($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK) {
+            header("Location: /crm/oportunidades/edit/{$opId}?error=upload_failed&tab=anexos");
+            exit();
+        }
+
+        $file    = $_FILES['arquivo'];
+        $maxSize = 10 * 1024 * 1024; // 10 MB
+
+        if ($file['size'] > $maxSize) {
+            header("Location: /crm/oportunidades/edit/{$opId}?error=file_too_large&tab=anexos");
+            exit();
+        }
+
+        $finfo   = new \finfo(FILEINFO_MIME_TYPE);
+        $mime    = $finfo->file($file['tmp_name']) ?: '';
+        $origExt = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        $allowed = [
+            'application/pdf'  => 'pdf',
+            'image/jpeg'       => 'jpg',
+            'image/png'        => 'png',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+            'application/vnd.ms-excel' => 'xls',
+        ];
+        $ext = $allowed[$mime] ?? null;
+        if ($ext === null && in_array($origExt, ['doc','docx','xls','xlsx','pdf','jpg','jpeg','png'], true)) {
+            $ext = $origExt === 'jpeg' ? 'jpg' : $origExt;
+        }
+        if ($ext === null) {
+            $this->logger->warning('[CRM] Upload anexo oportunidade: tipo inválido', [
+                'op_id' => $opId, 'mime' => $mime, 'ext' => $origExt,
+            ]);
+            header("Location: /crm/oportunidades/edit/{$opId}?error=invalid_file_type&tab=anexos");
+            exit();
+        }
+
+        $baseDir = BASE_PATH . '/storage/uploads/crm/oportunidades/' . $uid . '/' . $opId;
+        if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+            $this->logger->error('[CRM] Falha ao criar diretório de upload', ['dir' => $baseDir]);
+            header("Location: /crm/oportunidades/edit/{$opId}?error=upload_failed&tab=anexos");
+            exit();
+        }
+
+        $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
+        $destPath = $baseDir . '/' . $safeName;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            $this->logger->error('[CRM] Falha ao mover arquivo de upload', ['dest' => $destPath]);
+            header("Location: /crm/oportunidades/edit/{$opId}?error=upload_failed&tab=anexos");
+            exit();
+        }
+
+        $relativePath = 'storage/uploads/crm/oportunidades/' . $uid . '/' . $opId . '/' . $safeName;
+
+        $anexoId = $this->anexoModel->create([
+            'usuario_id'     => $uid,
+            'related_type'   => 'oportunidade',
+            'related_id'     => $opId,
+            'nome_documento' => $nomeDoc,
+            'tipo_documento' => $tipoDoc,
+            'file_path'      => $relativePath,
+            'original_name'  => $file['name'] !== '' ? $file['name'] : 'documento',
+            'mime_type'      => $mime,
+            'file_size'      => $file['size'] ?: null,
+        ]);
+
+        if ($anexoId) {
+            AuditLogger::log('crm_oportunidade_anexo_upload', [
+                'anexo_id' => $anexoId, 'op_id' => $opId, 'nome' => $nomeDoc, 'tipo' => $tipoDoc,
+            ]);
+            $this->logger->info('[CRM] Anexo de oportunidade salvo', [
+                'anexo_id' => $anexoId, 'op_id' => $opId, 'file' => $relativePath,
+            ]);
+            header("Location: /crm/oportunidades/edit/{$opId}?success=anexo_salvo&tab=anexos");
+        } else {
+            @unlink($destPath);
+            $this->logger->error('[CRM] Falha ao salvar anexo no banco', ['op_id' => $opId]);
+            header("Location: /crm/oportunidades/edit/{$opId}?error=db_failure&tab=anexos");
+        }
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // GET /crm/oportunidades/anexo/download/{id}  — faz download
+    // ---------------------------------------------------------------
+    public function downloadAnexo(int $id): void
+    {
+        $uid   = $this->usuarioId();
+        $anexo = $this->anexoModel->findById($id);
+
+        if (!$anexo || $anexo->related_type !== 'oportunidade') {
+            header('Location: /crm/oportunidades?error=nao_encontrado');
+            exit();
+        }
+
+        $op = $this->opModel->findById((int) $anexo->related_id);
+        if (!$op || (int) $op->usuario_id !== $uid) {
+            header('Location: /crm/oportunidades?error=sem_permissao');
+            exit();
+        }
+
+        $fullPath = BASE_PATH . '/' . $anexo->file_path;
+        if (!file_exists($fullPath)) {
+            header('Location: /crm/oportunidades/edit/' . $anexo->related_id . '?error=arquivo_nao_encontrado&tab=anexos');
+            exit();
+        }
+
+        $mime = $anexo->mime_type ?: 'application/octet-stream';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: attachment; filename="' . addslashes($anexo->original_name) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        header('Cache-Control: private, no-cache');
+        readfile($fullPath);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/oportunidades/anexo/delete/{id}  — exclui um anexo
+    // ---------------------------------------------------------------
+    public function deleteAnexo(int $id): void
+    {
+        $uid   = $this->usuarioId();
+        $anexo = $this->anexoModel->findById($id);
+
+        if (!$anexo || $anexo->related_type !== 'oportunidade') {
+            $this->jsonError('Anexo não encontrado.');
+            return;
+        }
+
+        $op = $this->opModel->findById((int) $anexo->related_id);
+        if (!$op || (int) $op->usuario_id !== $uid) {
+            $this->jsonError('Sem permissão para excluir este anexo.');
+            return;
+        }
+
+        $fullPath = BASE_PATH . '/' . $anexo->file_path;
+        if (file_exists($fullPath)) {
+            @unlink($fullPath);
+        }
+
+        $this->anexoModel->delete($id);
+        AuditLogger::log('crm_oportunidade_anexo_excluido', ['anexo_id' => $id, 'op_id' => $anexo->related_id]);
+        $this->logger->info('[CRM] Anexo de oportunidade excluído', ['anexo_id' => $id]);
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
+        exit();
     }
 
     private function jsonError(string $msg): void

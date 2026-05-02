@@ -307,6 +307,10 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/crm/leads/interacao/add",          "CrmLeadsController@addInteracao");
         Router::post("/crm/leads/interacao/delete/{id}",  "CrmLeadsController@deleteInteracao");
         Router::get("/crm/leads/buscar-cnpj",             "CrmLeadsController@buscarCnpj");
+        // Anexos de Leads
+        Router::post("/crm/leads/anexo/upload",           "CrmLeadsController@uploadAnexo");
+        Router::get("/crm/leads/anexo/download/{id}",     "CrmLeadsController@downloadAnexo");
+        Router::post("/crm/leads/anexo/delete/{id}",      "CrmLeadsController@deleteAnexo");
     });
     Router::group(["middleware" => ["Permission:manage_oportunidades"]], function () {
         Router::get("/crm/oportunidades/create",                   "CrmOportunidadesController@create");
@@ -317,6 +321,10 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/crm/oportunidades/mover",                   "CrmOportunidadesController@moverEtapa");
         Router::post("/crm/oportunidades/interacao/add",           "CrmOportunidadesController@addInteracao");
         Router::post("/crm/oportunidades/interacao/delete/{id}",   "CrmOportunidadesController@deleteInteracao");
+        // Anexos de Oportunidades
+        Router::post("/crm/oportunidades/anexo/upload",            "CrmOportunidadesController@uploadAnexo");
+        Router::get("/crm/oportunidades/anexo/download/{id}",      "CrmOportunidadesController@downloadAnexo");
+        Router::post("/crm/oportunidades/anexo/delete/{id}",       "CrmOportunidadesController@deleteAnexo");
     });
 
     // Logging de Erros do Frontend

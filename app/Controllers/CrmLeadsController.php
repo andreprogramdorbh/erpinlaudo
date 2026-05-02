@@ -9,18 +9,21 @@ use App\Core\Audit\AuditLogger;
 use App\Models\CrmLead;
 use App\Models\CrmInteracao;
 use App\Models\CrmOportunidade;
+use App\Models\CrmAnexo;
 use App\Services\CnpjService;
 
 class CrmLeadsController extends Controller
 {
     private CrmLead $leadModel;
     private CrmInteracao $interacaoModel;
+    private CrmAnexo $anexoModel;
     private Logger $logger;
 
     public function __construct()
     {
         $this->leadModel      = new CrmLead();
         $this->interacaoModel = new CrmInteracao();
+        $this->anexoModel     = new CrmAnexo();
         $this->logger         = new Logger();
     }
 
@@ -148,6 +151,7 @@ class CrmLeadsController extends Controller
         }
 
         $interacoes = $this->interacaoModel->findByRelated('lead', $id);
+        $anexos     = $this->anexoModel->findByRelated('lead', $id);
 
         View::render('crm/leads/form', [
             'title'      => 'Editar Lead — ' . htmlspecialchars($lead->nome_lead),
@@ -156,12 +160,15 @@ class CrmLeadsController extends Controller
             'lead'       => $lead,
             'isEdit'     => true,
             'interacoes' => $interacoes,
+            'anexos'     => $anexos,
             'statusList' => CrmLead::STATUS,
             'segmentos'  => CrmLead::SEGMENTOS,
             'origens'    => CrmLead::ORIGENS,
             'especialidades' => CrmLead::ESPECIALIDADES,
             'tiposInteracao' => CrmInteracao::TIPOS,
             'iconesInteracao'=> CrmInteracao::ICONES,
+            'tiposAnexo'     => CrmAnexo::TIPOS,
+            'iconesAnexo'    => CrmAnexo::ICONES,
         ]);
     }
 
@@ -388,6 +395,182 @@ class CrmLeadsController extends Controller
             $data[$f] = trim($_POST[$f] ?? '');
         }
         return $data;
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/leads/anexo/upload  — faz upload de anexo
+    // ---------------------------------------------------------------
+    public function uploadAnexo(): void
+    {
+        $uid    = $this->usuarioId();
+        $leadId = (int) ($_POST['related_id'] ?? 0);
+        $lead   = $this->leadModel->findById($leadId);
+
+        if (!$lead || (int) $lead->usuario_id !== $uid) {
+            header("Location: /crm/leads?error=nao_encontrado");
+            exit();
+        }
+
+        $nomeDoc = trim($_POST['nome_documento'] ?? '');
+        $tipoDoc = trim($_POST['tipo_documento'] ?? 'outro');
+
+        if (empty($nomeDoc)) {
+            header("Location: /crm/leads/edit/{$leadId}?error=nome_obrigatorio&tab=anexos");
+            exit();
+        }
+
+        if (!array_key_exists($tipoDoc, CrmAnexo::TIPOS)) {
+            $tipoDoc = 'outro';
+        }
+
+        if (empty($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK) {
+            header("Location: /crm/leads/edit/{$leadId}?error=upload_failed&tab=anexos");
+            exit();
+        }
+
+        $file    = $_FILES['arquivo'];
+        $maxSize = 10 * 1024 * 1024; // 10 MB
+
+        if ($file['size'] > $maxSize) {
+            header("Location: /crm/leads/edit/{$leadId}?error=file_too_large&tab=anexos");
+            exit();
+        }
+
+        $finfo   = new \finfo(FILEINFO_MIME_TYPE);
+        $mime    = $finfo->file($file['tmp_name']) ?: '';
+        $origExt = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        $allowed = [
+            'application/pdf'  => 'pdf',
+            'image/jpeg'       => 'jpg',
+            'image/png'        => 'png',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+            'application/vnd.ms-excel' => 'xls',
+        ];
+        $ext = $allowed[$mime] ?? null;
+        if ($ext === null && in_array($origExt, ['doc','docx','xls','xlsx','pdf','jpg','jpeg','png'], true)) {
+            $ext = $origExt === 'jpeg' ? 'jpg' : $origExt;
+        }
+        if ($ext === null) {
+            $this->logger->warning('[CRM] Upload anexo lead: tipo inválido', [
+                'lead_id' => $leadId, 'mime' => $mime, 'ext' => $origExt,
+            ]);
+            header("Location: /crm/leads/edit/{$leadId}?error=invalid_file_type&tab=anexos");
+            exit();
+        }
+
+        $baseDir = BASE_PATH . '/storage/uploads/crm/leads/' . $uid . '/' . $leadId;
+        if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+            $this->logger->error('[CRM] Falha ao criar diretório de upload', ['dir' => $baseDir]);
+            header("Location: /crm/leads/edit/{$leadId}?error=upload_failed&tab=anexos");
+            exit();
+        }
+
+        $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
+        $destPath = $baseDir . '/' . $safeName;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            $this->logger->error('[CRM] Falha ao mover arquivo de upload', ['dest' => $destPath]);
+            header("Location: /crm/leads/edit/{$leadId}?error=upload_failed&tab=anexos");
+            exit();
+        }
+
+        $relativePath = 'storage/uploads/crm/leads/' . $uid . '/' . $leadId . '/' . $safeName;
+
+        $anexoId = $this->anexoModel->create([
+            'usuario_id'     => $uid,
+            'related_type'   => 'lead',
+            'related_id'     => $leadId,
+            'nome_documento' => $nomeDoc,
+            'tipo_documento' => $tipoDoc,
+            'file_path'      => $relativePath,
+            'original_name'  => $file['name'] !== '' ? $file['name'] : 'documento',
+            'mime_type'      => $mime,
+            'file_size'      => $file['size'] ?: null,
+        ]);
+
+        if ($anexoId) {
+            AuditLogger::log('crm_lead_anexo_upload', [
+                'anexo_id' => $anexoId, 'lead_id' => $leadId, 'nome' => $nomeDoc, 'tipo' => $tipoDoc,
+            ]);
+            $this->logger->info('[CRM] Anexo de lead salvo', [
+                'anexo_id' => $anexoId, 'lead_id' => $leadId, 'file' => $relativePath,
+            ]);
+            header("Location: /crm/leads/edit/{$leadId}?success=anexo_salvo&tab=anexos");
+        } else {
+            @unlink($destPath);
+            $this->logger->error('[CRM] Falha ao salvar anexo no banco', ['lead_id' => $leadId]);
+            header("Location: /crm/leads/edit/{$leadId}?error=db_failure&tab=anexos");
+        }
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // GET /crm/leads/anexo/download/{id}  — faz download do anexo
+    // ---------------------------------------------------------------
+    public function downloadAnexo(int $id): void
+    {
+        $uid   = $this->usuarioId();
+        $anexo = $this->anexoModel->findById($id);
+
+        if (!$anexo || $anexo->related_type !== 'lead') {
+            header('Location: /crm/leads?error=nao_encontrado');
+            exit();
+        }
+
+        $lead = $this->leadModel->findById((int) $anexo->related_id);
+        if (!$lead || (int) $lead->usuario_id !== $uid) {
+            header('Location: /crm/leads?error=sem_permissao');
+            exit();
+        }
+
+        $fullPath = BASE_PATH . '/' . $anexo->file_path;
+        if (!file_exists($fullPath)) {
+            header('Location: /crm/leads/edit/' . $anexo->related_id . '?error=arquivo_nao_encontrado&tab=anexos');
+            exit();
+        }
+
+        $mime = $anexo->mime_type ?: 'application/octet-stream';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: attachment; filename="' . addslashes($anexo->original_name) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        header('Cache-Control: private, no-cache');
+        readfile($fullPath);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/leads/anexo/delete/{id}  — exclui um anexo
+    // ---------------------------------------------------------------
+    public function deleteAnexo(int $id): void
+    {
+        $uid   = $this->usuarioId();
+        $anexo = $this->anexoModel->findById($id);
+
+        if (!$anexo || $anexo->related_type !== 'lead') {
+            $this->jsonError('Anexo não encontrado.');
+            return;
+        }
+
+        $lead = $this->leadModel->findById((int) $anexo->related_id);
+        if (!$lead || (int) $lead->usuario_id !== $uid) {
+            $this->jsonError('Sem permissão para excluir este anexo.');
+            return;
+        }
+
+        $fullPath = BASE_PATH . '/' . $anexo->file_path;
+        if (file_exists($fullPath)) {
+            @unlink($fullPath);
+        }
+
+        $this->anexoModel->delete($id);
+        AuditLogger::log('crm_lead_anexo_excluido', ['anexo_id' => $id, 'lead_id' => $anexo->related_id]);
+        $this->logger->info('[CRM] Anexo de lead excluído', ['anexo_id' => $id]);
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
+        exit();
     }
 
     private function jsonError(string $msg): void
