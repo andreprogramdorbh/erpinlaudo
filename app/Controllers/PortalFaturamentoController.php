@@ -92,10 +92,22 @@ class PortalFaturamentoController extends Controller
     private function getAsaasService(int $tenantId): ?AsaasService
     {
         $integracaoModel = new Integracao();
+
+        // 1º tenta buscar a integração pelo tenantId específico do cliente
         $config = $integracaoModel->findByProvider('asaas', $tenantId);
+
+        // 2º fallback: sistema single-tenant — busca qualquer integração Asaas ativa
+        if (!$config || empty($config->api_key)) {
+            $rowFallback = $integracaoModel->findByProviderAtivo('asaas');
+            if ($rowFallback) {
+                $config = $integracaoModel->findByProvider('asaas', (int) $rowFallback->usuario_id);
+            }
+        }
+
         if (!$config || $config->status !== 'active' || empty($config->api_key)) {
             return null;
         }
+
         return new AsaasService($config->api_key, $config->environment ?? 'sandbox');
     }
 

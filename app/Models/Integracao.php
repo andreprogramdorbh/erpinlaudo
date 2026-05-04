@@ -95,6 +95,20 @@ class Integracao extends Model
         return $config;
     }
 
+    /**
+     * Busca a primeira integração ativa pelo nome, sem filtrar por usuario_id.
+     * Usado como fallback no portal do cliente (single-tenant): quando o tenantId
+     * do cliente não possui integração cadastrada, busca qualquer integração ativa.
+     */
+    public function findByProviderAtivo(string $provider): object|false
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table} WHERE nome = :nome AND status != 'inativo' ORDER BY id ASC LIMIT 1"
+        );
+        $stmt->execute([':nome' => $provider]);
+        return $stmt->fetch(PDO::FETCH_OBJ) ?: false;
+    }
+
     public function findByProvider(string $provider, ?int $usuarioId = null): object|false
     {
         $usuarioId = $usuarioId ?? (int)($_SESSION['user_id'] ?? 0);

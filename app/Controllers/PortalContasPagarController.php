@@ -61,10 +61,27 @@ class PortalContasPagarController extends Controller
     private function getAsaasService(int $tenantId): ?AsaasService
     {
         $integracaoModel = new Integracao();
+
+        // 1º tenta buscar a integração pelo tenantId específico do cliente
         $config = $integracaoModel->findByProvider('asaas', $tenantId);
+
+        // 2º fallback: sistema single-tenant — busca qualquer integração Asaas ativa
+        // Isso ocorre quando o cliente foi cadastrado por um usuário diferente do que
+        // configurou a integração Asaas, ou quando o tenantId não tem integração própria.
+        if (!$config || empty($config->api_key)) {
+            $rowFallback = $integracaoModel->findByProviderAtivo('asaas');
+            if ($rowFallback) {
+                $config = $integracaoModel->findByProvider('asaas', (int) $rowFallback->usuario_id);
+            }
+        }
+
         if (!$config || $config->status !== 'active' || empty($config->api_key)) {
+            $this->logger->error('[Portal] Integração Asaas não encontrada ou inativa', [
+                'tenant_id' => $tenantId,
+            ]);
             return null;
         }
+
         return new AsaasService($config->api_key, $config->environment ?? 'sandbox');
     }
 
