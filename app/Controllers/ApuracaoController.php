@@ -470,6 +470,13 @@ class ApuracaoController extends Controller
                     'contrato_id'          => $apuracao->contrato_id ?? null,
                 ]);
 
+                // ── Email ao cliente: cobrança gerada ──
+                try {
+                    $this->dispararEmailFaturamentoCliente($apuracao, $usuarioId);
+                } catch (\Throwable $emailEx) {
+                    $this->logger->warning('[ApuracaoController] Falha ao enviar email faturamento cliente: ' . $emailEx->getMessage());
+                }
+
                 // 2. Cascata: faturar sub-apurações de prestador vinculadas
                 $subApuracoes = $this->apuracaoModel->findSubApuracoesByMaeId((int) $id);
                 $contaPagarModel = new \App\Models\ContaPagar();
@@ -1125,6 +1132,221 @@ HTML;
             throw new \RuntimeException('weasyprint não gerou o PDF corretamente.');
         }
 
+        return $tmpPdf;
+    }
+
+    // =========================================================================
+    // EMAIL — APURAÇÃO CLIENTE
+    // =========================================================================
+
+    /**
+     * Dispara e-mail de faturamento para o cliente ao gerar apuração.
+     * Envia resumo com valores de venda, período, total de exames e PDF em anexo.
+     */
+    private function dispararEmailFaturamentoCliente(object $apuracao, int $usuarioId): void
+    {
+        $clienteId = (int) ($apuracao->cliente_id ?? 0);
+        if ($clienteId <= 0) return;
+
+        $clienteModel = new \App\Models\Cliente();
+        $cliente      = $clienteModel->findById($clienteId);
+        if (!$cliente) return;
+
+        // Tenta e-mail principal; se vazio, tenta e-mail do responsável
+        $emailCliente = trim((string) ($cliente->email ?? ''));
+        if (empty($emailCliente)) {
+            $emailCliente = trim((string) ($cliente->responsavel_email ?? ''));
+        }
+        if (empty($emailCliente)) return;
+
+        $nomeCliente   = htmlspecialchars($cliente->razao_social ?? $cliente->nome_fantasia ?? 'Prezado(a)');
+        $numero        = htmlspecialchars($apuracao->numero);
+        $totalExames   = (int) ($apuracao->total_exames ?? 0);
+        $totalNormal   = (int) ($apuracao->total_normal ?? 0);
+        $totalUrgencia = (int) ($apuracao->total_urgencia ?? 0);
+        $periodoIni    = !empty($apuracao->periodo_inicio) ? date('d/m/Y', strtotime($apuracao->periodo_inicio)) : '---';
+        $periodoFim    = !empty($apuracao->periodo_fim)    ? date('d/m/Y', strtotime($apuracao->periodo_fim))    : '---';
+        $valorVenda    = (float)(($apuracao->valor_venda_total ?? 0) > 0 ? $apuracao->valor_venda_total : $apuracao->valor_total);
+        $valorFmt      = number_format($valorVenda, 2, ',', '.');
+        $vencimento    = date('d/m/Y', strtotime('+30 days'));
+        $contrato      = htmlspecialchars($apuracao->contrato_nome ?? $apuracao->contrato_numero ?? '---');
+        $linkVis       = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br')
+                         . '/faturamento/apuracao-cliente/visualizar/' . $apuracao->id;
+
+        $corpoHtml = <<<HTML
+<p>Prezado(a) <strong>{$nomeCliente}</strong>,</p>
+<p>Informamos que a <strong>Apuração de Serviços</strong> referente ao período <strong>{$periodoIni} → {$periodoFim}</strong> foi <strong style="color:#1a56db;">concluída e faturada</strong>.</p>
+<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;background:#f8fafc;border-radius:8px;margin:16px 0;">
+  <tr style="background:#1a56db;color:#fff;">
+    <td colspan="2" style="padding:12px 16px;font-weight:700;font-size:15px;border-radius:6px 6px 0 0;">Resumo da Apuração {$numero}</td>
+  </tr>
+  <tr style="border-bottom:1px solid #e5e7eb;">
+    <td style="padding:10px 16px;color:#6b7280;width:40%;">Contrato</td>
+    <td style="padding:10px 16px;font-weight:600;">{$contrato}</td>
+  </tr>
+  <tr style="border-bottom:1px solid #e5e7eb;background:#fff;">
+    <td style="padding:10px 16px;color:#6b7280;">Período de Referência</td>
+    <td style="padding:10px 16px;">{$periodoIni} &rarr; {$periodoFim}</td>
+  </tr>
+  <tr style="border-bottom:1px solid #e5e7eb;">
+    <td style="padding:10px 16px;color:#6b7280;">Total de Exames</td>
+    <td style="padding:10px 16px;">{$totalExames} exame(s) &mdash; {$totalNormal} normal(is) + {$totalUrgencia} urgência(s)</td>
+  </tr>
+  <tr style="border-bottom:1px solid #e5e7eb;background:#fff;">
+    <td style="padding:10px 16px;color:#6b7280;">Valor Total</td>
+    <td style="padding:10px 16px;font-size:20px;font-weight:700;color:#1a56db;">R$&nbsp;{$valorFmt}</td>
+  </tr>
+  <tr style="background:#f3f4f6;">
+    <td style="padding:10px 16px;color:#6b7280;">Vencimento</td>
+    <td style="padding:10px 16px;font-weight:600;">{$vencimento}</td>
+  </tr>
+</table>
+<p>O detalhamento completo dos exames está disponível no link abaixo. O PDF da apuração também está anexado a este e-mail.</p>
+<p style="text-align:center;margin:24px 0;">
+  <a href="{$linkVis}"
+     style="background:#1a56db;color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">
+    Ver Apuração Completa
+  </a>
+</p>
+<p style="color:#6b7280;font-size:13px;">Em caso de dúvidas sobre os valores, entre em contato com nossa equipe financeira.</p>
+HTML;
+
+        // Gera PDF com valores de venda
+        $pdfPath = null;
+        $pdfName = "apuracao-cliente-{$apuracao->numero}.pdf";
+        try {
+            $pdfPath = $this->gerarPdfApuracaoCliente($apuracao, $usuarioId);
+        } catch (\Throwable $pdfEx) {
+            $this->logger->warning('[ApuracaoController] Falha ao gerar PDF cliente para email: ' . $pdfEx->getMessage());
+        }
+
+        $service = new EmailAlertaService($usuarioId);
+        $service->disparar(
+            'apuracao_cliente_faturada',
+            $emailCliente,
+            $nomeCliente,
+            "Apuração de Serviços Faturada — {$numero} | R\$ {$valorFmt}",
+            $corpoHtml,
+            $pdfPath,
+            $pdfName
+        );
+
+        if ($pdfPath && file_exists($pdfPath)) {
+            @unlink($pdfPath);
+        }
+    }
+
+    /**
+     * Gera PDF da apuração do cliente usando valores de venda (valor_calculado_venda).
+     */
+    private function gerarPdfApuracaoCliente(object $apuracao, int $usuarioId): string
+    {
+        $itens         = $this->itemModel->findByApuracaoId((int) $apuracao->id);
+        $valorVenda    = (float)(($apuracao->valor_venda_total ?? 0) > 0 ? $apuracao->valor_venda_total : $apuracao->valor_total);
+        $valor         = number_format($valorVenda, 2, ',', '.');
+        $periodoIni    = !empty($apuracao->periodo_inicio) ? date('d/m/Y', strtotime($apuracao->periodo_inicio)) : '---';
+        $periodoFim    = !empty($apuracao->periodo_fim)    ? date('d/m/Y', strtotime($apuracao->periodo_fim))    : '---';
+        $nomeCliente   = htmlspecialchars($apuracao->cliente_nome ?? '---');
+        $contrato      = htmlspecialchars($apuracao->contrato_nome ?? $apuracao->contrato_numero ?? '---');
+        $numero        = htmlspecialchars($apuracao->numero);
+        $totalExames   = (int) ($apuracao->total_exames ?? 0);
+        $totalNormal   = (int) ($apuracao->total_normal ?? 0);
+        $totalUrgencia = (int) ($apuracao->total_urgencia ?? 0);
+        $dataGeracao   = date('d/m/Y H:i');
+        $vencimento    = date('d/m/Y', strtotime('+30 days'));
+
+        $linhasItens = '';
+        foreach ($itens as $i => $item) {
+            $bg         = ($i % 2 === 0) ? '#ffffff' : '#f9fafb';
+            $prioridade = ($item->prioridade ?? '') === 'urgente' ? 'Urgente' : 'Normal';
+            // Para apuração cliente usa valor de venda
+            $venda      = number_format((float)($item->valor_calculado_venda ?? $item->valor_calculado ?? 0), 2, ',', '.');
+            $linhasItens .= "<tr style='background:{$bg};'>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;'>" . ($i + 1) . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars($item->paciente_nome ?? '') . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars($item->exame_nome ?? $item->exame_tag ?? '') . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center;'>" . htmlspecialchars($item->modalidade ?? '') . "</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:center;'>{$prioridade}</td>";
+            $linhasItens .= "<td style='padding:7px 10px;border-bottom:1px solid #e5e7eb;text-align:right;'>R\$ {$venda}</td>";
+            $linhasItens .= "</tr>";
+        }
+
+        $html = <<<HTML
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Apuração Cliente {$numero}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #1f2937; margin: 0; padding: 20px; }
+  .header { background: #1a56db; color: #fff; padding: 20px 24px; border-radius: 6px 6px 0 0; }
+  .header h1 { margin: 0; font-size: 18px; }
+  .header p  { margin: 4px 0 0; font-size: 12px; color: #c7d9ff; }
+  .info-box { background: #f9fafb; border: 1px solid #e5e7eb; padding: 16px 20px; margin: 16px 0; border-radius: 6px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .info-item label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 2px; }
+  .info-item span  { font-weight: 600; font-size: 13px; }
+  .valor-destaque { color: #1a56db; font-size: 20px; font-weight: 700; }
+  table.itens { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  table.itens th { background: #1a56db; color: #fff; padding: 9px 10px; text-align: left; font-size: 12px; }
+  table.itens th:last-child { text-align: right; }
+  .footer { margin-top: 24px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  .badge-venc { background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>ERP InLaudo &mdash; Apuração de Serviços</h1>
+    <p>Gerado em {$dataGeracao}</p>
+  </div>
+  <div class="info-box">
+    <div class="info-grid">
+      <div class="info-item"><label>Número</label><span>{$numero}</span></div>
+      <div class="info-item"><label>Cliente</label><span>{$nomeCliente}</span></div>
+      <div class="info-item"><label>Contrato</label><span>{$contrato}</span></div>
+      <div class="info-item"><label>Período</label><span>{$periodoIni} &rarr; {$periodoFim}</span></div>
+      <div class="info-item"><label>Total Exames</label><span>{$totalExames} ({$totalNormal}N + {$totalUrgencia}U)</span></div>
+      <div class="info-item"><label>Valor Total</label><span class="valor-destaque">R\$ {$valor}</span></div>
+    </div>
+    <p style="margin:12px 0 0;font-size:12px;color:#6b7280;">Vencimento: <span class="badge-venc">{$vencimento}</span></p>
+  </div>
+  <table class="itens">
+    <thead>
+      <tr>
+        <th style="width:40px;">#</th>
+        <th>Paciente</th>
+        <th>Exame</th>
+        <th style="width:70px;text-align:center;">Mod.</th>
+        <th style="width:70px;text-align:center;">Prioridade</th>
+        <th style="width:90px;text-align:right;">Valor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {$linhasItens}
+    </tbody>
+    <tfoot>
+      <tr style="background:#f3f4f6;">
+        <td colspan="5" style="padding:10px;font-weight:700;text-align:right;">Total:</td>
+        <td style="padding:10px;font-weight:700;text-align:right;color:#1a56db;">R\$ {$valor}</td>
+      </tr>
+    </tfoot>
+  </table>
+  <div class="footer">
+    ERP InLaudo &mdash; Documento gerado automaticamente em {$dataGeracao}
+  </div>
+</body>
+</html>
+HTML;
+
+        $tmpHtml = sys_get_temp_dir() . '/apuracao_cli_' . $apuracao->id . '_' . time() . '.html';
+        $tmpPdf  = sys_get_temp_dir() . '/apuracao_cli_' . $apuracao->id . '_' . time() . '.pdf';
+        file_put_contents($tmpHtml, $html);
+        $cmd = 'weasyprint ' . escapeshellarg($tmpHtml) . ' ' . escapeshellarg($tmpPdf) . ' 2>&1';
+        shell_exec($cmd);
+        @unlink($tmpHtml);
+        if (!file_exists($tmpPdf) || filesize($tmpPdf) < 100) {
+            throw new \RuntimeException('weasyprint não gerou o PDF do cliente corretamente.');
+        }
         return $tmpPdf;
     }
 }

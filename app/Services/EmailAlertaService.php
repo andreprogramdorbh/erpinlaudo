@@ -323,6 +323,8 @@ class EmailAlertaService
             // ── Corpo Clínico: disparos transacionais (não usam buscarRegistros) ──
             case 'corpo_clinico_provisionamento_criado':
             case 'corpo_clinico_apuracao_concluida':
+            // ── Apuração Cliente: disparo transacional ao faturar ──
+            case 'apuracao_cliente_faturada':
                 // Disparados diretamente via disparar() — sem busca agendada
                 return [];
 
