@@ -1243,7 +1243,7 @@ class IntegracaoController extends Controller
             'frequencia'        => trim($_POST['frequencia'] ?? 'unico'),
             'hora_disparo'      => trim($_POST['hora_disparo'] ?? '08:00:00'),
             'destinatarios'     => $_POST['destinatarios'] ?? '["admin"]',
-            'cc'                => $_POST['cc'] ?? null,
+            'cc'                => $this->normalizarCcParaJson($_POST['cc'] ?? null),
             'assunto_template'  => trim($_POST['assunto_template'] ?? ''),
             'corpo_template'    => trim($_POST['corpo_template'] ?? ''),
             'ativo'             => isset($_POST['ativo']) ? (int) $_POST['ativo'] : 1,
@@ -1363,5 +1363,29 @@ class IntegracaoController extends Controller
             ],
             '_layout' => 'erp'
         ]);
+    }
+
+    /**
+     * Normaliza o campo CC para JSON array.
+     * Aceita tanto string pura ("a@b.com, c@d.com") quanto JSON já formatado ("[\"a@b.com\"]").
+     * Sempre salva no banco como JSON array para garantir que JSON.parse funcione no frontend.
+     */
+    private function normalizarCcParaJson(?string $cc): ?string
+    {
+        if ($cc === null || trim($cc) === '') {
+            return null;
+        }
+        $cc = trim($cc);
+        // Se já é um JSON válido, retorna como está
+        $decoded = json_decode($cc, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $cc; // já é JSON array válido
+        }
+        // Caso contrário, trata como lista de e-mails separados por vírgula
+        $emails = array_filter(
+            array_map('trim', explode(',', $cc)),
+            fn($e) => filter_var($e, FILTER_VALIDATE_EMAIL)
+        );
+        return json_encode(array_values($emails));
     }
 }

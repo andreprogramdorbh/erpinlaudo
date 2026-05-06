@@ -716,9 +716,17 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             document.getElementById('ea_dest_extra').value = extrasEmails.join(', ');
 
-            // CC
-            const cc = JSON.parse(alerta.cc || '[]');
-            document.getElementById('ea_cc').value = Array.isArray(cc) ? cc.join(', ') : (cc || '');
+            // CC — pode estar salvo como JSON array ou como string pura de e-mails (registros legados)
+            let ccEmails = [];
+            try {
+                const ccRaw = alerta.cc || '[]';
+                const ccParsed = JSON.parse(ccRaw);
+                ccEmails = Array.isArray(ccParsed) ? ccParsed : (ccParsed ? [String(ccParsed)] : []);
+            } catch (_) {
+                // Valor legado: string pura de e-mails separados por vírgula
+                ccEmails = (alerta.cc || '').split(',').map(e => e.trim()).filter(e => e.length > 0);
+            }
+            document.getElementById('ea_cc').value = ccEmails.join(', ');
 
             const modal = new bootstrap.Modal(document.getElementById('modalEditarAlerta'));
             modal.show();
