@@ -12,6 +12,7 @@ use App\Models\NotaFiscal;
 use App\Core\Audit\AuditLogger;
 use App\Core\Logger;
 use App\Services\AsaasService;
+use App\Services\CoraService;
 use App\Services\CryptoService;
 use App\Services\MailService;
 use App\Services\ContaReceberRecorrenciaService;
@@ -1387,5 +1388,310 @@ class IntegracaoController extends Controller
             fn($e) => filter_var($e, FILTER_VALIDATE_EMAIL)
         );
         return json_encode(array_values($emails));
+    }
+
+    // ================================================================
+    // CORA — Integração de Boletos
+    // ================================================================
+
+    /**
+     * GET /integracao/cora — Página de configuração da Cora.
+     */
+    public function cora(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Location: /dashboard?error=unauthorized');
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+        $row       = $this->integracaoModel->findByNomeAndUsuarioId('cora', $usuarioId);
+        $config    = $row ? $this->integracaoModel->getDecodedConfig($row) : [];
+
+        // Verifica se os arquivos de certificado existem
+        $certDir  = dirname(__DIR__, 2) . '/storage/cora/certs';
+        $certFile = $certDir . '/cora_cert_' . $usuarioId . '.pem';
+        $keyFile  = $certDir . '/cora_key_' . $usuarioId . '.key';
+
+        View::render('integracoes/cora', [
+            'title'      => 'Configuração Cora — Boletos',
+            'config'     => $config,
+            'row'        => $row,
+            'cert_exists'=> file_exists($certFile),
+            'key_exists' => file_exists($keyFile),
+            'breadcrumb' => [
+                'Configurações' => '/configuracoes',
+                'Integrações'   => '#',
+                'Cora'          => '/integracao/cora',
+            ],
+            '_layout' => 'erp',
+        ]);
+    }
+
+    /**
+     * POST /integracao/cora/save — Salva configuração e faz upload dos certificados.
+     */
+    public function saveCora(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+            return;
+        }
+
+        try {
+            $usuarioId = (int) Auth::user()->id;
+            $clientId  = trim((string)($_POST['client_id'] ?? ''));
+            $environment = $_POST['environment'] ?? 'production';
+            $status      = ($_POST['status'] ?? 'active') === 'inactive' ? 'inativo' : 'ativo';
+
+            if (empty($clientId)) {
+                throw new \Exception('O Client ID é obrigatório.');
+            }
+
+            $certDir = dirname(__DIR__, 2) . '/storage/cora/certs';
+            if (!is_dir($certDir)) {
+                mkdir($certDir, 0700, true);
+            }
+
+            $certFile = $certDir . '/cora_cert_' . $usuarioId . '.pem';
+            $keyFile  = $certDir . '/cora_key_' . $usuarioId . '.key';
+
+            // Upload do certificado (.pem)
+            if (!empty($_FILES['cert_file']['tmp_name'])) {
+                $ext = strtolower(pathinfo($_FILES['cert_file']['name'], PATHINFO_EXTENSION));
+                if (!in_array($ext, ['pem', 'crt'], true)) {
+                    throw new \Exception('O certificado deve ser um arquivo .pem ou .crt.');
+                }
+                if (!move_uploaded_file($_FILES['cert_file']['tmp_name'], $certFile)) {
+                    throw new \Exception('Falha ao salvar o certificado.');
+                }
+                chmod($certFile, 0600);
+            }
+
+            // Upload da chave privada (.key)
+            if (!empty($_FILES['key_file']['tmp_name'])) {
+                $ext = strtolower(pathinfo($_FILES['key_file']['name'], PATHINFO_EXTENSION));
+                if (!in_array($ext, ['key', 'pem'], true)) {
+                    throw new \Exception('A chave privada deve ser um arquivo .key ou .pem.');
+                }
+                if (!move_uploaded_file($_FILES['key_file']['tmp_name'], $keyFile)) {
+                    throw new \Exception('Falha ao salvar a chave privada.');
+                }
+                chmod($keyFile, 0600);
+            }
+
+            // Salva configuração no banco
+            $row    = $this->integracaoModel->findByNomeAndUsuarioId('cora', $usuarioId);
+            $existing = $row ? $this->integracaoModel->getDecodedConfig($row) : [];
+
+            $config = array_merge($existing, [
+                'client_id'   => $clientId,
+                'environment' => $environment,
+                'cert_path'   => $certFile,
+                'key_path'    => $keyFile,
+            ]);
+
+            $ok = $this->integracaoModel->upsertConfigJson('cora', $usuarioId, [
+                'tipo'   => 'Financeira',
+                'status' => $status,
+                'config' => $config,
+            ]);
+
+            if (!$ok) {
+                throw new \Exception('Erro ao salvar no banco de dados.');
+            }
+
+            AuditLogger::log('update_cora_config', [
+                'environment' => $environment,
+                'status'      => $status,
+            ]);
+
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Configuração Cora salva com sucesso!']);
+        } catch (\Exception $e) {
+            $this->logger->error('Erro ao salvar config Cora: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * POST /integracao/cora/test — Testa a conexão com a API Cora.
+     */
+    public function testCora(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+            return;
+        }
+
+        try {
+            $usuarioId = (int) Auth::user()->id;
+            $row       = $this->integracaoModel->findByNomeAndUsuarioId('cora', $usuarioId);
+
+            if (!$row) {
+                throw new \Exception('Configure a integração Cora antes de testar.');
+            }
+
+            $config = $this->integracaoModel->getDecodedConfig($row);
+
+            if (empty($config['client_id'])) {
+                throw new \Exception('Client ID não configurado.');
+            }
+            if (empty($config['cert_path']) || !file_exists($config['cert_path'])) {
+                throw new \Exception('Certificado (.pem) não encontrado. Faça o upload novamente.');
+            }
+            if (empty($config['key_path']) || !file_exists($config['key_path'])) {
+                throw new \Exception('Chave privada (.key) não encontrada. Faça o upload novamente.');
+            }
+
+            $cora = new CoraService(
+                $config['client_id'],
+                $config['cert_path'],
+                $config['key_path'],
+                $config['environment'] ?? 'production'
+            );
+
+            // Testa obtendo o token — se falhar, lança exceção
+            $token = $cora->getAccessToken();
+
+            if (empty($token)) {
+                throw new \Exception('Não foi possível obter o token de acesso.');
+            }
+
+            // Atualiza last_test_at
+            $existing = $config;
+            $existing['last_test_at'] = date('Y-m-d H:i:s');
+            $this->integracaoModel->upsertConfigJson('cora', $usuarioId, [
+                'tipo'   => 'Financeira',
+                'status' => $row->status ?? 'ativo',
+                'config' => $existing,
+            ]);
+
+            AuditLogger::log('test_cora_connection_success', [
+                'environment' => $config['environment'] ?? 'production',
+            ]);
+
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Conexão com a Cora estabelecida com sucesso!']);
+        } catch (\Exception $e) {
+            $this->logger->error('Erro no teste conexão Cora: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * POST /api/webhooks/cora — Recebe notificações de pagamento da Cora.
+     * Rota pública — validada pelo header X-Cora-Signature ou token configurado.
+     */
+    public function webhookCora(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $rawBody = file_get_contents('php://input');
+        $payload = json_decode($rawBody, true);
+
+        if (empty($payload) || !is_array($payload)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'payload_invalido']);
+            return;
+        }
+
+        // Valida o token de webhook (se configurado)
+        $integracaoModel = new Integracao();
+        $rowCora = $integracaoModel->findByProviderAtivo('cora');
+        if ($rowCora) {
+            $cfg = $integracaoModel->getDecodedConfig($rowCora);
+            $webhookToken = $cfg['webhook_token'] ?? '';
+            if (!empty($webhookToken)) {
+                $headerToken = $_SERVER['HTTP_X_CORA_SIGNATURE'] ?? '';
+                if ($headerToken !== $webhookToken) {
+                    http_response_code(401);
+                    echo json_encode(['error' => 'token_invalido']);
+                    return;
+                }
+            }
+        }
+
+        $event     = $payload['event'] ?? '';
+        $invoiceId = $payload['invoice']['id'] ?? '';
+        $status    = $payload['invoice']['status'] ?? '';
+
+        $this->logger->info('[Cora Webhook] Evento recebido', [
+            'event'      => $event,
+            'invoice_id' => $invoiceId,
+            'status'     => $status,
+        ]);
+
+        if (empty($invoiceId)) {
+            http_response_code(200);
+            echo json_encode(['received' => true]);
+            return;
+        }
+
+        // Busca a conta a receber pelo cora_invoice_id
+        $contaModel = new ContaReceber();
+        $conta      = $contaModel->findByCoraInvoiceId($invoiceId);
+
+        if (!$conta) {
+            $this->logger->warning('[Cora Webhook] Conta não encontrada', ['invoice_id' => $invoiceId]);
+            http_response_code(200);
+            echo json_encode(['received' => true, 'warning' => 'conta_nao_encontrada']);
+            return;
+        }
+
+        $novoStatus = CoraService::mapearStatus($status);
+
+        switch (strtoupper($event)) {
+            case 'INVOICE.PAID':
+            case 'INVOICE.IN_PAYMENT':
+                $dataRecebimento = substr($payload['invoice']['paid_at'] ?? '', 0, 10) ?: date('Y-m-d');
+                $contaModel->update((int) $conta->id, [
+                    'status'           => 'recebida',
+                    'data_recebimento' => $dataRecebimento,
+                    'meio_pagamento'   => 'boleto',
+                ]);
+                AuditLogger::log('cora_webhook_pago', [
+                    'conta_id'         => $conta->id,
+                    'cora_invoice_id'  => $invoiceId,
+                    'data_recebimento' => $dataRecebimento,
+                ]);
+                break;
+
+            case 'INVOICE.OVERDUE':
+                $this->logger->warning('[Cora Webhook] Fatura vencida', [
+                    'conta_id'        => $conta->id,
+                    'cora_invoice_id' => $invoiceId,
+                ]);
+                break;
+
+            case 'INVOICE.CANCELED':
+                $contaModel->update((int) $conta->id, [
+                    'status' => 'cancelada',
+                ]);
+                AuditLogger::log('cora_webhook_cancelado', [
+                    'conta_id'        => $conta->id,
+                    'cora_invoice_id' => $invoiceId,
+                ]);
+                break;
+
+            default:
+                $this->logger->info('[Cora Webhook] Evento não tratado: ' . $event);
+        }
+
+        http_response_code(200);
+        echo json_encode(['received' => true]);
+    }
+
+    /**
+     * GET /api/webhooks/cora/ping — Health-check do webhook Cora.
+     */
+    public function webhookCoraPing(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['status' => 'ok', 'service' => 'cora_webhook', 'ts' => time()]);
     }
 }

@@ -15,6 +15,8 @@ Router::post("/reset-password/{token}", "AuthController@resetPassword");
 // Webhooks Públicos
 Router::post("/api/webhooks/asaas", "IntegracaoController@webhook");
 Router::get("/api/webhooks/asaas/ping", "IntegracaoController@webhookPing");
+Router::post("/api/webhooks/cora", "IntegracaoController@webhookCora");
+Router::get("/api/webhooks/cora/ping", "IntegracaoController@webhookCoraPing");
 
 // ============================================================
 // Primeiro Acesso — Clientes do Portal (via login unificado /login)
@@ -279,6 +281,11 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/integracao/asaas", "IntegracaoController@asaas");
         Router::post("/integracao/asaas/save", "IntegracaoController@saveAsaas");
         Router::post("/integracao/asaas/test", "IntegracaoController@testAsaas");
+
+        // Integração Cora — Boletos
+        Router::get("/integracao/cora", "IntegracaoController@cora");
+        Router::post("/integracao/cora/save", "IntegracaoController@saveCora");
+        Router::post("/integracao/cora/test", "IntegracaoController@testCora");
 
         Router::get("/integracao/email", "IntegracaoController@emailComAlertas");
         Router::post("/integracao/email/save", "IntegracaoController@saveEmail");

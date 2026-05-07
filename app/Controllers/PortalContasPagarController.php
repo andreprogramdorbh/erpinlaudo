@@ -11,6 +11,7 @@ use App\Models\ContaReceberAnexo;
 use App\Models\Integracao;
 use App\Models\Cliente;
 use App\Services\AsaasService;
+use App\Services\CoraService;
 
 /**
  * Controller de Contas a Pagar do Portal do Cliente.
@@ -392,6 +393,48 @@ class PortalContasPagarController extends Controller
             ]);
             return;
         }
+
+        // ── Fluxo Cora (boleto_cora) ──────────────────────────────────
+        if ($meio === 'boleto_cora') {
+            $cora = $this->getCoraService($tenantId);
+            if (!$cora) {
+                header('Location: /portal/contas-a-pagar?error=pagamento_indisponivel');
+                exit();
+            }
+            try {
+                // Gera boleto Cora se ainda não existir
+                if (empty($conta->cora_invoice_id)) {
+                    $conta = $this->gerarBoletoCora($conta, $portal, $cora);
+                }
+                // Redireciona para URL do boleto
+                $boletoUrl = $conta->cora_boleto_url ?? '';
+                if (empty($boletoUrl)) {
+                    // Tenta buscar novamente via API
+                    $invoice = $cora->consultarFatura((string) $conta->cora_invoice_id);
+                    $boletoUrl = $invoice['bank_slip']['url_slip'] ?? $invoice['bank_slip']['url_slip_pdf'] ?? '';
+                }
+                if (empty($boletoUrl)) {
+                    header('Location: /portal/contas-a-pagar?error=boleto_indisponivel');
+                    exit();
+                }
+                AuditLogger::log('portal_pagamento_cora_iniciado', [
+                    'portal_id'       => $portal->id,
+                    'cliente_id'      => $clienteId,
+                    'conta_id'        => $id,
+                    'cora_invoice_id' => $conta->cora_invoice_id,
+                ]);
+                header("Location: {$boletoUrl}");
+                exit();
+            } catch (\Throwable $e) {
+                $this->logger->error('[Portal] Erro ao processar boleto Cora: ' . $e->getMessage(), [
+                    'conta_id' => $id, 'trace' => $e->getTraceAsString(),
+                ]);
+                header('Location: /portal/contas-a-pagar?error=erro_pagamento');
+                exit();
+            }
+        }
+
+        // ── Fluxo Asaas (padrão) ──────────────────────────────────────
         $asaas = $this->getAsaasService($tenantId);
         if (!$asaas) {
             header('Location: /portal/contas-a-pagar?error=pagamento_indisponivel');
@@ -465,6 +508,65 @@ class PortalContasPagarController extends Controller
         }
     }
 
+    /**
+     * Gera um boleto Cora on-the-fly para contas que ainda não possuem.
+     */
+    private function gerarBoletoCora(object $conta, object $portal, CoraService $cora): object
+    {
+        $cpfCnpj = preg_replace('/\D/', '', $portal->cpf_cnpj ?? '');
+        $nome    = $portal->razao_social ?? $portal->nome_fantasia ?? '';
+        $email   = $portal->email_principal ?? '';
+
+        $dadosFatura = [
+            'code'            => 'CR-' . $conta->id . '-' . time(),
+            'customer'        => [
+                'name'     => $nome,
+                'email'    => $email,
+                'document' => [
+                    'identity' => $cpfCnpj,
+                    'type'     => strlen($cpfCnpj) === 14 ? 'CNPJ' : 'CPF',
+                ],
+                'address'  => [
+                    'street'       => $portal->endereco ?? '',
+                    'number'       => $portal->numero ?? 'S/N',
+                    'complement'   => $portal->complemento ?? '',
+                    'district'     => $portal->bairro ?? '',
+                    'city'         => $portal->cidade ?? '',
+                    'state'        => $portal->estado ?? '',
+                    'zip_code'     => preg_replace('/\D/', '', $portal->cep ?? ''),
+                    'country'      => 'BR',
+                ],
+            ],
+            'payment_terms'   => [
+                'due_date' => date('Y-m-d', strtotime($conta->data_vencimento)),
+            ],
+            'payment_forms'   => [['type' => 'BANK_SLIP']],
+            'services'        => [
+                [
+                    'name'     => $conta->descricao,
+                    'amount'   => 1,
+                    'unit_value' => (float) $conta->valor,
+                ],
+            ],
+        ];
+
+        $fatura = $cora->emitirFatura($dadosFatura);
+
+        $invoiceId = $fatura['id'] ?? '';
+        $boletoUrl = $fatura['bank_slip']['url_slip']     ??
+                     $fatura['bank_slip']['url_slip_pdf'] ?? '';
+        $pixQrcode = $fatura['pix']['qr_code']            ?? '';
+
+        $this->contaModel->update((int) $conta->id, [
+            'cora_invoice_id' => $invoiceId,
+            'cora_boleto_url' => $boletoUrl,
+            'cora_pix_qrcode' => $pixQrcode,
+            'external_reference' => 'cora:' . $invoiceId,
+        ]);
+
+        return $this->contaModel->findById((int) $conta->id);
+    }
+
     // ---------------------------------------------------------------
     // Download de anexo
     // ---------------------------------------------------------------
@@ -497,6 +599,49 @@ class PortalContasPagarController extends Controller
         } catch (\Exception $e) {
             $this->logger->error('[Portal] Erro ao baixar anexo: ' . $e->getMessage());
             http_response_code(500); echo 'Erro ao baixar arquivo'; exit();
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Helper: obtém CoraService configurado
+    // ---------------------------------------------------------------
+    private function getCoraService(int $tenantId): ?CoraService
+    {
+        $integracaoModel = new Integracao();
+
+        // 1º tenta buscar a integração Cora pelo tenantId específico
+        $config = $integracaoModel->findByProvider('cora', $tenantId);
+
+        // 2º fallback: busca qualquer integração Cora ativa (single-tenant)
+        if (!$config || empty($config->api_key)) {
+            $rowFallback = $integracaoModel->findByProviderAtivo('cora');
+            if ($rowFallback) {
+                $config = $integracaoModel->findByProvider('cora', (int) $rowFallback->usuario_id);
+            }
+        }
+
+        if (!$config || $config->status !== 'active' || empty($config->api_key)) {
+            return null;
+        }
+
+        // Monta caminhos dos certificados
+        $certDir    = BASE_PATH . '/storage/cora/certs/';
+        $configData = json_decode($config->config_json ?? '{}', true) ?? [];
+        $certPath   = $certDir . ($configData['cert_file']    ?? '');
+        $keyPath    = $certDir . ($configData['key_file']     ?? '');
+        $chainPath  = !empty($configData['chain_file']) ? $certDir . $configData['chain_file'] : null;
+
+        try {
+            return new CoraService(
+                $config->api_key,
+                $certPath,
+                $keyPath,
+                $chainPath,
+                $config->environment ?? 'production'
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('[Portal] Falha ao instanciar CoraService: ' . $e->getMessage());
+            return null;
         }
     }
 

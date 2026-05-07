@@ -157,6 +157,9 @@ $roleLabels = [
           <a href="/integracao/asaas" class="btn btn-outline-primary btn-sm">
             <i class="fas fa-credit-card me-1"></i> Asaas — Pagamentos
           </a>
+          <a href="/integracao/cora" class="btn btn-outline-warning btn-sm">
+            <i class="fas fa-university me-1"></i> Cora — Boletos
+          </a>
           <a href="/integracao/email" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-envelope me-1"></i> E-mail (SMTP)
           </a>

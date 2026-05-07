@@ -209,6 +209,19 @@ class ContaReceber extends Model
         return $stmt->fetch(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Busca uma conta a receber pelo ID de fatura da Cora.
+     * Usado pelo webhook da Cora para identificar a conta a atualizar.
+     */
+    public function findByCoraInvoiceId(string $coraInvoiceId): object|false
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM {$this->table} WHERE cora_invoice_id = :cora_invoice_id LIMIT 1"
+        );
+        $stmt->execute([':cora_invoice_id' => $coraInvoiceId]);
+        return $stmt->fetch(PDO::FETCH_OBJ) ?: false;
+    }
+
     public function existsRecorrenciaGerada(int $usuarioId, int $prevContaReceberId, int $rootId, string $dataVencimento): bool
     {
         $sql = "SELECT id FROM {$this->table}
@@ -235,11 +248,11 @@ class ContaReceber extends Model
     {
         $sql = "INSERT INTO {$this->table}
                 (usuario_id, cliente_id, plano_conta_id, descricao, valor, data_vencimento, data_recebimento, status, observacoes,
-                 meio_pagamento, recorrente, recorrencia_tipo, recorrencia_intervalo, asaas_payment_id, asaas_subscription_id, external_reference,
+                 meio_pagamento, recorrente, recorrencia_tipo, recorrencia_intervalo, asaas_payment_id, asaas_subscription_id, cora_invoice_id, external_reference,
                  numero_parcela, total_parcelas, grupo_parcelas, recorrencia_modo, contrato_id)
                 VALUES
                 (:usuario_id, :cliente_id, :plano_conta_id, :descricao, :valor, :data_vencimento, :data_recebimento, :status, :observacoes,
-                 :meio_pagamento, :recorrente, :recorrencia_tipo, :recorrencia_intervalo, :asaas_payment_id, :asaas_subscription_id, :external_reference,
+                 :meio_pagamento, :recorrente, :recorrencia_tipo, :recorrencia_intervalo, :asaas_payment_id, :asaas_subscription_id, :cora_invoice_id, :external_reference,
                  :numero_parcela, :total_parcelas, :grupo_parcelas, :recorrencia_modo, :contrato_id)";
 
         $stmt = $this->pdo->prepare($sql);
@@ -313,6 +326,13 @@ class ContaReceber extends Model
             $stmt->bindValue(':asaas_subscription_id', (string)$subId);
         }
 
+        $coraInvoiceId = $data['cora_invoice_id'] ?? null;
+        if ($coraInvoiceId === '' || $coraInvoiceId === null) {
+            $stmt->bindValue(':cora_invoice_id', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':cora_invoice_id', (string)$coraInvoiceId);
+        }
+
         $extRef = $data['external_reference'] ?? null;
         if ($extRef === '' || $extRef === null) {
             $stmt->bindValue(':external_reference', null, PDO::PARAM_NULL);
@@ -360,6 +380,7 @@ class ContaReceber extends Model
             'recorrencia_intervalo',
             'asaas_payment_id',
             'asaas_subscription_id',
+            'cora_invoice_id',
             'external_reference',
             'numero_parcela',
             'total_parcelas',
