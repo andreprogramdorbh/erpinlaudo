@@ -48,6 +48,10 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     Router::get("/portal/contas-a-pagar/link/{id}", "PortalContasPagarController@getLink");
     Router::get("/portal/contas-a-pagar/anexos/download/{id}", "PortalContasPagarController@downloadAnexo");
 
+    // Apurações do Cliente
+    Router::get("/portal/apuracoes", "PortalApuracoesController@index");
+    Router::get("/portal/apuracoes/{id}", "PortalApuracoesController@show");
+
     // Faturamento
     Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");
     Router::post("/portal/faturamento/emitir-nfs/{id}", "PortalFaturamentoController@emitirNfs");

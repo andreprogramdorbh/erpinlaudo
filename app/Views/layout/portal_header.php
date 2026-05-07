@@ -88,6 +88,10 @@ $currentUri  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
                 <i class="fa fa-chart-pie"></i>
                 <span>Meu Financeiro</span>
             </a>
+            <a href="/portal/apuracoes" class="portal-nav-item <?php echo str_starts_with($currentUri, '/portal/apuracoes') ? 'active' : ''; ?>">
+                <i class="fa fa-chart-bar"></i>
+                <span>Apurações</span>
+            </a>
             <div class="portal-nav-group">
                 <div class="portal-nav-group-label">
                     <i class="fa fa-receipt"></i>

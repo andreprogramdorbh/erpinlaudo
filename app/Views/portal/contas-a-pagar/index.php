@@ -139,6 +139,13 @@ $meioPagIcon = [
             $ehMeioManual  = in_array($meioPag, $meiosManuais, true);
             $podeUsarAsaas = $asaasEnabled && !$ehMeioManual;
             $jaPago        = ($conta->status === 'recebida');
+            // Verifica se esta conta foi gerada por uma apuracao
+            $textoRef   = ($conta->observacoes ?? '') . ' ' . ($conta->descricao ?? '');
+            $isApuracao = stripos($textoRef, 'apura') !== false;
+            $numApuracao = '';
+            if ($isApuracao && preg_match('/apura[cç][aã]o\s+([A-Z0-9\-]+)/i', $textoRef, $m)) {
+                $numApuracao = $m[1];
+            }
         ?>
         <div class="portal-conta-card <?php echo $vencida ? 'portal-conta-vencida' : ''; ?> <?php echo $jaPago ? 'portal-conta-paga' : ''; ?>"
              id="conta-card-<?php echo (int)$conta->id; ?>"
@@ -146,6 +153,11 @@ $meioPagIcon = [
              data-status="<?php echo htmlspecialchars($conta->status); ?>">
             <div class="portal-conta-header">
                 <div class="portal-conta-title">
+                    <?php if ($isApuracao): ?>
+                        <span class="portal-badge" style="background:#ede9fe;color:#6d28d9;border-radius:20px;padding:3px 10px;font-size:.75rem;font-weight:600;margin-right:4px">
+                            <i class="fa fa-chart-bar me-1"></i>Apuração
+                        </span>
+                    <?php endif; ?>
                     <?php if ($vencida): ?>
                         <span class="portal-badge portal-badge-danger me-1"><i class="fa fa-exclamation-triangle me-1"></i>Vencida</span>
                     <?php endif; ?>
@@ -161,6 +173,13 @@ $meioPagIcon = [
             </div>
             <div class="portal-conta-body">
                 <div class="portal-conta-desc fw-semibold mb-2"><?php echo htmlspecialchars($conta->descricao ?? '—'); ?></div>
+                <?php if ($isApuracao): ?>
+                <div style="margin-bottom:8px">
+                    <a href="/portal/apuracoes" style="font-size:.8rem;color:#6d28d9;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+                        <i class="fa fa-chart-bar"></i> Ver relatório da apuração<?php echo $numApuracao !== '' ? ' ' . htmlspecialchars($numApuracao) : ''; ?>
+                    </a>
+                </div>
+                <?php endif; ?>
                 <div class="portal-conta-details">
                     <div class="portal-conta-detail">
                         <span class="portal-detail-label"><i class="fa fa-dollar-sign me-1"></i>Valor</span>
