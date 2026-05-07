@@ -244,6 +244,30 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/financeiro/contas-a-receber/receber-manual/{id}", "ContasReceberController@receberManual");
     });
 
+    // ─── Contas Bancárias ─────────────────────────────────────────────────────
+    Router::get("/financeiro/contas",                                        "ContasBancariasController@index");
+    Router::get("/financeiro/contas/create",                                 "ContasBancariasController@create");
+    Router::post("/financeiro/contas",                                       "ContasBancariasController@store");
+    Router::get("/financeiro/contas/{id}/edit",                              "ContasBancariasController@edit");
+    Router::post("/financeiro/contas/{id}/update",                           "ContasBancariasController@update");
+    Router::post("/financeiro/contas/{id}/delete",                           "ContasBancariasController@delete");
+    // Movimentações (extrato)
+    Router::get("/financeiro/contas/{id}/movimentacoes",                     "ContasBancariasController@movimentacoes");
+    Router::get("/financeiro/contas/{id}/movimentacoes/nova",                "ContasBancariasController@novaMovimentacao");
+    Router::post("/financeiro/contas/{id}/movimentacoes",                    "ContasBancariasController@storeMovimentacao");
+    Router::post("/financeiro/contas/{id}/movimentacoes/{mid}/delete",       "ContasBancariasController@deleteMovimentacao");
+    Router::get("/financeiro/contas/{id}/movimentacoes/export",              "ContasBancariasController@exportarExtrato");
+    // Open Finance
+    Router::get("/financeiro/contas/{id}/openfinance",                       "ContasBancariasController@openfinance");
+    Router::post("/financeiro/contas/{id}/openfinance/connect-token",        "ContasBancariasController@connectToken");
+    Router::post("/financeiro/contas/{id}/openfinance/salvar",               "ContasBancariasController@salvarConexao");
+    Router::post("/financeiro/contas/{id}/openfinance/sincronizar",          "ContasBancariasController@sincronizar");
+    Router::get("/financeiro/contas/{id}/openfinance/desconectar",           "ContasBancariasController@desconectar");
+    // Importação OFX
+    Router::post("/financeiro/contas/{id}/importar-ofx",                     "ContasBancariasController@importarOfx");
+    // API JSON para gráficos
+    Router::get("/api/financeiro/contas/{id}/saldo",                         "ContasBancariasController@apiSaldo");
+
     // Faturamento
     Router::group(["middleware" => ["Permission:view_faturamento"]], function () {
         Router::get("/faturamento", "FaturamentoController@index");

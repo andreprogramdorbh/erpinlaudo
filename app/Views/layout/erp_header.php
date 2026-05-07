@@ -559,6 +559,8 @@
               <li><a href="/financeiro/plano-contas"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/financeiro/plano-contas') !== false ? 'active' : ''; ?>">PLANO
                   DE CONTAS</a></li>
+              <li><a href="/financeiro/contas"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/financeiro/contas') !== false ? 'active' : ''; ?>"><i class="fas fa-university me-1"></i> CONTAS</a></li>
             </ul>
           </li>
 
