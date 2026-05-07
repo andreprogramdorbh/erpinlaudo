@@ -606,6 +606,9 @@
               <li><a href="/integracao/asaas"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/asaas') !== false ? 'active' : ''; ?>">ASAAS</a>
               </li>
+              <li><a href="/integracao/cora"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/cora') !== false ? 'active' : ''; ?>">CORA</a>
+              </li>
               <li><a href="/integracao/email"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/integracao/email') !== false ? 'active' : ''; ?>">E-MAIL</a>
               </li>
