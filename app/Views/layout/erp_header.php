@@ -537,6 +537,23 @@
             </ul>
           </li>
 
+          <?php if (\App\Core\Auth::can('view_colaboradores')): ?>
+          <li class="nav-item has-submenu <?php echo strpos($_SERVER['REQUEST_URI'], '/colaboradores') !== false ? 'open active' : ''; ?>">
+            <a href="/colaboradores" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Colaboradores">
+              <i class="fas fa-users-gear"></i>
+              <span class="link-text">COLABORADORES</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/colaboradores"
+                  class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/colaboradores') !== false && strpos($_SERVER['REQUEST_URI'], '/colaboradores/create') === false) ? 'active' : ''; ?>">LISTAR</a></li>
+              <?php if (\App\Core\Auth::can('create_colaboradores')): ?>
+              <li><a href="/colaboradores/create"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/colaboradores/create') !== false ? 'active' : ''; ?>">NOVO COLABORADOR</a></li>
+              <?php endif; ?>
+            </ul>
+          </li>
+          <?php endif; ?>
+
           <div class="nav-label">Operacional</div>
           <li class="nav-item <?php echo strpos($_SERVER['REQUEST_URI'], '/contratos') !== false ? 'active' : ''; ?>">
             <a href="/contratos" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Contratos">

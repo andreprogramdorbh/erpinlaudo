@@ -59,6 +59,11 @@ class Permission implements PermissionProviderInterface
 
             'view_settings',
             'manage_settings',
+
+            'view_colaboradores',
+            'create_colaboradores',
+            'edit_colaboradores',
+            'delete_colaboradores',
         ],
 
         'admin' => [
@@ -110,6 +115,11 @@ class Permission implements PermissionProviderInterface
 
             'view_settings',
             'manage_settings',
+
+            'view_colaboradores',
+            'create_colaboradores',
+            'edit_colaboradores',
+            'delete_colaboradores',
         ],
 
         'financeiro' => [
@@ -142,6 +152,8 @@ class Permission implements PermissionProviderInterface
 
             'view_profile',
             'edit_profile',
+
+            'view_colaboradores',
         ],
 
         'operador' => [
@@ -156,6 +168,10 @@ class Permission implements PermissionProviderInterface
 
             'view_profile',
             'edit_profile',
+
+            'view_colaboradores',
+            'create_colaboradores',
+            'edit_colaboradores',
         ],
 
         'leitura' => [
@@ -172,6 +188,8 @@ class Permission implements PermissionProviderInterface
 
             // CRM — leitura pode visualizar o funil
             'view_crm',
+
+            'view_colaboradores',
 
             'view_profile',
         ],

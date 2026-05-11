@@ -184,6 +184,33 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::get("/especialidades/create", "EspecialidadesController@create");
     Router::post("/especialidades/store", "EspecialidadesController@store");
 
+    // ─── Colaboradores ───────────────────────────────────────────────────────
+    Router::group(["middleware" => ["Permission:view_colaboradores"]], function () {
+        Router::get("/colaboradores", "ColaboradorController@index");
+        Router::get("/colaboradores/buscar-cnpj", "ColaboradorController@buscarCnpj");
+    });
+    Router::group(["middleware" => ["Permission:create_colaboradores"]], function () {
+        Router::get("/colaboradores/create", "ColaboradorController@create");
+        Router::post("/colaboradores/store", "ColaboradorController@store");
+    });
+    Router::group(["middleware" => ["Permission:edit_colaboradores"]], function () {
+        Router::get("/colaboradores/edit/{id}", "ColaboradorController@edit");
+        Router::post("/colaboradores/update/{id}", "ColaboradorController@update");
+        // Anexos
+        Router::post("/colaboradores/anexos/add", "ColaboradorController@addAnexo");
+        Router::get("/colaboradores/anexos/download/{id}", "ColaboradorController@downloadAnexo");
+        Router::post("/colaboradores/anexos/remove", "ColaboradorController@removeAnexo");
+        // Comissoes
+        Router::post("/colaboradores/comissoes/store", "ColaboradorController@storeComissao");
+        Router::post("/colaboradores/comissoes/update/{id}", "ColaboradorController@updateComissao");
+        Router::post("/colaboradores/comissoes/delete/{id}", "ColaboradorController@deleteComissao");
+        // Vinculo de Usuario
+        Router::post("/colaboradores/vincular-usuario/{id}", "ColaboradorController@vincularUsuario");
+    });
+    Router::group(["middleware" => ["Permission:delete_colaboradores"]], function () {
+        Router::post("/colaboradores/delete/{id}", "ColaboradorController@delete");
+    });
+
     Router::get("/escalas", "CorpoClinicoController@escalas");
 
     Router::get("/exames-tabela", "CorpoClinicoController@examesTabela");
