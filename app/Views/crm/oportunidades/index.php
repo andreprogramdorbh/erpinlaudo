@@ -186,7 +186,15 @@ $usuariosComOportunidades = $usuariosComOportunidades ?? [];
             <td>
               <div><?php echo htmlspecialchars($op->nome_contato ?? '—'); ?></div>
               <?php if ($op->lead_email): ?>
-              <div class="op-sub"><?php echo htmlspecialchars($op->lead_email); ?></div>
+              <div class="op-sub"><i class="fas fa-envelope me-1"></i><?php echo htmlspecialchars($op->lead_email); ?></div>
+              <?php endif; ?>
+              <?php if (!empty($op->lead_telefone)): ?>
+              <div class="op-sub">
+                <i class="fas fa-phone me-1"></i><?php echo htmlspecialchars($op->lead_telefone); ?>
+                <?php $rawOT = preg_replace('/\D/', '', $op->lead_telefone); if (strlen($rawOT) >= 10): $waOT = (substr($rawOT,0,2)==='55')?$rawOT:'55'.$rawOT; ?>
+                <a href="https://wa.me/<?php echo $waOT; ?>" target="_blank" title="WhatsApp" class="ms-1 text-success" onclick="event.stopPropagation()"><i class="fab fa-whatsapp"></i></a>
+                <?php endif; ?>
+              </div>
               <?php endif; ?>
             </td>
             <?php if ($isAdmin && $filtroUid == 0): ?>

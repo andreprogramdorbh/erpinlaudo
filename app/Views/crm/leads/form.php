@@ -201,13 +201,41 @@ $tiposIcones = [
         <div class="form-grid form-grid-3 mt-3">
           <div class="form-group">
             <label class="form-label">Telefone</label>
-            <input type="text" name="telefone" id="telefone_lead" class="form-control"
-                   value="<?php echo htmlspecialchars($lead->telefone ?? ''); ?>">
+            <div class="input-group">
+              <input type="text" name="telefone" id="telefone_lead" class="form-control"
+                     value="<?php echo htmlspecialchars($lead->telefone ?? ''); ?>">
+              <?php $rawTF = preg_replace('/\D/', '', $lead->telefone ?? ''); if (strlen($rawTF) >= 10): $waTF = (substr($rawTF,0,2)==='55')?$rawTF:'55'.$rawTF; ?>
+              <a href="https://wa.me/<?php echo $waTF; ?>" target="_blank"
+                 class="btn btn-success" title="Abrir no WhatsApp" id="wa_telefone">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <?php else: ?>
+              <a href="#" target="_blank"
+                 class="btn btn-success" title="Abrir no WhatsApp" id="wa_telefone"
+                 onclick="return abrirWaInput('telefone_lead', event)">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <?php endif; ?>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Celular / WhatsApp</label>
-            <input type="text" name="celular" class="form-control"
-                   value="<?php echo htmlspecialchars($lead->celular ?? ''); ?>">
+            <div class="input-group">
+              <input type="text" name="celular" id="celular_lead" class="form-control"
+                     value="<?php echo htmlspecialchars($lead->celular ?? ''); ?>">
+              <?php $rawCF = preg_replace('/\D/', '', $lead->celular ?? ''); if (strlen($rawCF) >= 10): $waCF = (substr($rawCF,0,2)==='55')?$rawCF:'55'.$rawCF; ?>
+              <a href="https://wa.me/<?php echo $waCF; ?>" target="_blank"
+                 class="btn btn-success" title="Abrir no WhatsApp" id="wa_celular">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <?php else: ?>
+              <a href="#" target="_blank"
+                 class="btn btn-success" title="Abrir no WhatsApp" id="wa_celular"
+                 onclick="return abrirWaInput('celular_lead', event)">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <?php endif; ?>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Data Próximo Contato</label>
@@ -394,8 +422,22 @@ $tiposIcones = [
           </div>
           <div class="form-group">
             <label class="form-label">Telefone do Responsável</label>
-            <input type="text" name="responsavel_telefone" class="form-control"
-                   value="<?php echo htmlspecialchars($lead->responsavel_telefone ?? ''); ?>">
+            <div class="input-group">
+              <input type="text" name="responsavel_telefone" id="responsavel_telefone_lead" class="form-control"
+                     value="<?php echo htmlspecialchars($lead->responsavel_telefone ?? ''); ?>">
+              <?php $rawRF = preg_replace('/\D/', '', $lead->responsavel_telefone ?? ''); if (strlen($rawRF) >= 10): $waRF = (substr($rawRF,0,2)==='55')?$rawRF:'55'.$rawRF; ?>
+              <a href="https://wa.me/<?php echo $waRF; ?>" target="_blank"
+                 class="btn btn-success" title="Abrir no WhatsApp">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <?php else: ?>
+              <a href="#" target="_blank"
+                 class="btn btn-success" title="Abrir no WhatsApp"
+                 onclick="return abrirWaInput('responsavel_telefone_lead', event)">
+                <i class="fab fa-whatsapp"></i>
+              </a>
+              <?php endif; ?>
+            </div>
           </div>
         </div>
       </section>
@@ -753,6 +795,19 @@ function deletarAnexo(id) {
       }
     })
     .catch(() => alert('Erro de conexão.'));
+}
+
+// ── WhatsApp: abre a partir do valor atual do input ──
+function abrirWaInput(inputId, e) {
+    e.preventDefault();
+    const raw = document.getElementById(inputId).value.replace(/\D/g, '');
+    if (!raw || raw.length < 10) {
+        alert('Informe um número válido antes de abrir o WhatsApp.');
+        return false;
+    }
+    const numero = raw.startsWith('55') ? raw : '55' + raw;
+    window.open('https://wa.me/' + numero, '_blank');
+    return false;
 }
 </script>
 

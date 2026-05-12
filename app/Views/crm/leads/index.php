@@ -148,7 +148,20 @@ $statusIcons = [
               </div>
               <div class="lead-sub">
                 <?php if ($lead->email): ?><i class="fas fa-envelope me-1"></i><?php echo htmlspecialchars($lead->email); ?><?php endif; ?>
-                <?php if ($lead->telefone): ?> &nbsp;·&nbsp; <i class="fas fa-phone me-1"></i><?php echo htmlspecialchars($lead->telefone); ?><?php endif; ?>
+                <?php if ($lead->telefone): ?>
+                  &nbsp;&middot;&nbsp;
+                  <i class="fas fa-phone me-1"></i><?php echo htmlspecialchars($lead->telefone); ?>
+                  <?php $rawT = preg_replace('/\D/', '', $lead->telefone); if (strlen($rawT) >= 10): $waT = (substr($rawT,0,2)==='55')?$rawT:'55'.$rawT; ?>
+                  <a href="https://wa.me/<?php echo $waT; ?>" target="_blank" title="WhatsApp" class="ms-1 text-success" onclick="event.stopPropagation()"><i class="fab fa-whatsapp"></i></a>
+                  <?php endif; ?>
+                <?php endif; ?>
+                <?php if (!empty($lead->celular)): ?>
+                  &nbsp;&middot;&nbsp;
+                  <i class="fas fa-mobile-alt me-1"></i><?php echo htmlspecialchars($lead->celular); ?>
+                  <?php $rawC = preg_replace('/\D/', '', $lead->celular); if (strlen($rawC) >= 10): $waC = (substr($rawC,0,2)==='55')?$rawC:'55'.$rawC; ?>
+                  <a href="https://wa.me/<?php echo $waC; ?>" target="_blank" title="WhatsApp" class="ms-1 text-success" onclick="event.stopPropagation()"><i class="fab fa-whatsapp"></i></a>
+                  <?php endif; ?>
+                <?php endif; ?>
               </div>
             </td>
             <?php if ($isAdmin && $filtroUid == 0): ?>
