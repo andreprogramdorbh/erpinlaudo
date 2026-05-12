@@ -104,7 +104,14 @@ if ($error && isset($errs[$error])): ?>
         $rowRenderer = function ($col) use ($statusLabels, $tipoLabels) {
             $nome   = htmlspecialchars($col->nome ?? '');
             $email  = htmlspecialchars($col->email ?? '');
-            $doc    = htmlspecialchars($col->cpf_cnpj ?? '');
+            $rawDoc = preg_replace('/\D/', '', $col->cpf_cnpj ?? '');
+            if (strlen($rawDoc) === 14) {
+                $doc = preg_replace('/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/', '$1.$2.$3/$4-$5', $rawDoc);
+            } elseif (strlen($rawDoc) === 11) {
+                $doc = preg_replace('/^(\d{3})(\d{3})(\d{3})(\d{2})$/', '$1.$2.$3-$4', $rawDoc);
+            } else {
+                $doc = htmlspecialchars($col->cpf_cnpj ?? '');
+            }
             $cargo  = htmlspecialchars($col->cargo ?? '—');
             $tipo   = $tipoLabels[$col->tipo_contratacao] ?? $col->tipo_contratacao;
             $status = $statusLabels[$col->status] ?? $col->status;

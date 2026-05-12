@@ -187,8 +187,19 @@ $action = $isEdit ? '/colaboradores/update/' . (int)$c->id : '/colaboradores/sto
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fw-bold">Celular</label>
-                    <input type="text" name="celular" class="form-control"
-                        value="<?php echo htmlspecialchars($c->celular ?? ''); ?>">
+                    <div class="input-group">
+                        <input type="text" name="celular" id="celular" class="form-control"
+                            placeholder="(00) 00000-0000"
+                            maxlength="15"
+                            value="<?php echo htmlspecialchars($c->celular ?? ''); ?>"
+                            oninput="mascaraCelular(this)">
+                        <a id="btnWhatsapp" href="#" target="_blank"
+                           class="btn btn-success d-flex align-items-center px-3"
+                           title="Abrir no WhatsApp"
+                           onclick="abrirWhatsapp(event)">
+                            <i class="fab fa-whatsapp fs-5"></i>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -286,8 +297,351 @@ $action = $isEdit ? '/colaboradores/update/' . (int)$c->id : '/colaboradores/sto
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label fw-bold">Banco</label>
-                    <input type="text" name="banco" class="form-control"
-                        value="<?php echo htmlspecialchars($c->banco ?? ''); ?>">
+                    <select name="banco" id="banco" class="form-select">
+                        <option value="">Selecione o banco</option>
+                        <?php
+                        $bancos = [
+                            '001' => 'Banco do Brasil',
+                            '003' => 'Banco da Amazônia',
+                            '004' => 'Banco do Nordeste',
+                            '021' => 'Banestes',
+                            '025' => 'Banco Alfa',
+                            '033' => 'Santander',
+                            '036' => 'Banco BBI',
+                            '037' => 'Banco do Estado do Pará',
+                            '040' => 'Banco Cargill',
+                            '041' => 'Banrisul',
+                            '047' => 'Banco do Estado de Sergipe',
+                            '069' => 'Banco Crefisa',
+                            '070' => 'BRB — Banco de Brasília',
+                            '077' => 'Banco Inter',
+                            '084' => 'Uniprime Norte do Paraná',
+                            '085' => 'Cooperativa Central de Crédito Urbano (Cecred)',
+                            '089' => 'Credisan',
+                            '097' => 'Credisis',
+                            '099' => 'Uniprime Central',
+                            '104' => 'Caixa Econômica Federal',
+                            '107' => 'Banco Bocom BBM',
+                            '114' => 'Central das Cooperativas de Economia e Crédito Mútuo (Cecoopes)',
+                            '119' => 'Banco Western Union',
+                            '120' => 'Banco Rodobens',
+                            '121' => 'Banco Agiplan',
+                            '125' => 'Banco Genial',
+                            '128' => 'MS Bank',
+                            '129' => 'UBS Brasil',
+                            '130' => 'Caruana SCFI',
+                            '131' => 'Tullett Prebon Brasil',
+                            '132' => 'ICBC do Brasil',
+                            '133' => 'Cresol Confederação',
+                            '136' => 'Unicred',
+                            '144' => 'Bexs Banco de Câmbio',
+                            '149' => 'Facta Financeira',
+                            '169' => 'Banco Olé Bonsucesso',
+                            '173' => 'BRL Trust DTVM',
+                            '174' => 'Pernambucanas Financiadora',
+                            '177' => 'Guide Investimentos',
+                            '180' => 'CM Capital Markets',
+                            '183' => 'Socred',
+                            '184' => 'Banco Itaú BBA',
+                            '190' => 'Servicoop',
+                            '191' => 'Nova Futura',
+                            '194' => 'Parmetal DTVM',
+                            '196' => 'Fair CC',
+                            '197' => 'Stone Pagamentos',
+                            '208' => 'Banco BTG Pactual',
+                            '212' => 'Banco Original',
+                            '213' => 'Banco Arbi',
+                            '217' => 'Banco John Deere',
+                            '218' => 'Banco BS2',
+                            '222' => 'Banco Credit Agricole Brasil',
+                            '224' => 'Banco Fibra',
+                            '233' => 'Banco Cifra',
+                            '237' => 'Bradesco',
+                            '241' => 'Banco Clássico',
+                            '243' => 'Banco Master',
+                            '246' => 'Banco ABC Brasil',
+                            '249' => 'Banco Investcred Unibanco',
+                            '250' => 'BCV — Banco de Crédito e Varejo',
+                            '253' => 'Bexs CC',
+                            '254' => 'Parana Banco',
+                            '260' => 'Nubank',
+                            '265' => 'Banco Fator',
+                            '266' => 'Banco Cédula',
+                            '268' => 'Barigui Companhia Hipotecária',
+                            '269' => 'HSBC Brasil',
+                            '270' => 'Sagitur CC',
+                            '271' => 'IB CCTVM',
+                            '272' => 'AGK CC',
+                            '273' => 'CCR de São Miguel do Oeste',
+                            '274' => 'Money Plus SCMEPP',
+                            '276' => 'Senff',
+                            '278' => 'Genial Investimentos CVM',
+                            '279' => 'CCR de Primavera do Leste',
+                            '280' => 'Avista',
+                            '281' => 'CCR Coopavel',
+                            '283' => 'RB Capital Investimentos DTVM',
+                            '285' => 'Frente CC',
+                            '286' => 'CCR de Ouro',
+                            '288' => 'Carol DTVM',
+                            '289' => 'EFX CC',
+                            '290' => 'PagSeguro Internet',
+                            '292' => 'BS2 DTVM',
+                            '293' => 'Lastro RDV DTVM',
+                            '296' => 'OZ Investimentos DTVM',
+                            '298' => 'Vips CC',
+                            '299' => 'Sorocred',
+                            '300' => 'Banco de la Nacion Argentina',
+                            '301' => 'BPP Instituição de Pagamento',
+                            '306' => 'Portopar DTVM',
+                            '307' => 'Terra Investimentos DTVM',
+                            '309' => 'Cambionet CC',
+                            '310' => 'VORTX DTVM',
+                            '315' => 'PI DTVM',
+                            '318' => 'Banco BMG',
+                            '319' => 'OM DTVM',
+                            '320' => 'China Construction Bank',
+                            '321' => 'Crefaz SCMEPP',
+                            '322' => 'CCR de Abelardo Luz',
+                            '323' => 'Mercado Pago',
+                            '324' => 'Cartos SCD',
+                            '325' => 'Órama DTVM',
+                            '326' => 'Parati — CFI',
+                            '328' => 'Cecm Fabric Calçados Sapiranga',
+                            '329' => 'QI SCD',
+                            '330' => 'Banco Bari',
+                            '331' => 'Fram Capital DTVM',
+                            '332' => 'Acesso Soluções de Pagamento',
+                            '335' => 'Banco Digio',
+                            '336' => 'Banco C6',
+                            '340' => 'Super Pagamentos',
+                            '341' => 'Itaú Unibanco',
+                            '342' => 'Creditas SCD',
+                            '343' => 'FFA SCMEPP',
+                            '348' => 'Banco XP',
+                            '349' => 'AL5 SCD',
+                            '350' => 'Crehnor Laranjeiras',
+                            '352' => 'Toro CTVM',
+                            '354' => 'Necton Investimentos',
+                            '355' => 'Ótimo SCD',
+                            '356' => 'Banco Real (ABN AMRO)',
+                            '358' => 'Midway',
+                            '359' => 'Zema CFI',
+                            '360' => 'Trinus Capital DTVM',
+                            '362' => 'Cielo',
+                            '363' => 'Singulare CTVM',
+                            '364' => 'Gerencianet Pagamentos',
+                            '365' => 'Solidus CCVM',
+                            '366' => 'Banco Societe Generale Brasil',
+                            '368' => 'Banco CSF',
+                            '370' => 'Banco Mizuho',
+                            '371' => 'Warren CVMC',
+                            '372' => 'Oliveira Trust DTVM',
+                            '373' => 'UP.p SEP',
+                            '374' => 'Realize CFI',
+                            '376' => 'Banco J. P. Morgan',
+                            '377' => 'BMS SCD',
+                            '378' => 'BBC Leasing',
+                            '379' => 'Cecm Cooperforte',
+                            '380' => 'PicPay',
+                            '381' => 'Banco Municipal de Osasco',
+                            '382' => 'Fiducia SCMEPP',
+                            '383' => 'Ebanx IP',
+                            '384' => 'Global SCM',
+                            '385' => 'Cecm dos Trabalhadores Portuários de Paranaguá',
+                            '386' => 'Nu Financeira',
+                            '387' => 'Banco Toyota do Brasil',
+                            '389' => 'Banco Mercantil do Brasil',
+                            '390' => 'GM Financial',
+                            '391' => 'CCR de Ibiam',
+                            '393' => 'Banco Volkswagen',
+                            '394' => 'Banco Bradesco Financiamentos',
+                            '395' => 'FD Gold CC',
+                            '396' => 'Hub IP',
+                            '397' => 'Listo SCD',
+                            '398' => 'Ideal CTVM',
+                            '399' => 'Kirton Bank',
+                            '400' => 'Cooperativa de Crédito Rural de Pequenos Agricultores e da Reforma Agrária',
+                            '401' => 'Iugu IP',
+                            '402' => 'Cobuccio SCD',
+                            '403' => 'Cora SCD',
+                            '404' => 'Sumup SCD',
+                            '406' => 'Accredito SCD',
+                            '407' => 'Índigo Investimentos DTVM',
+                            '408' => 'Bonuspago SCD',
+                            '410' => 'Planner CV',
+                            '411' => 'Via Certa Financiadora',
+                            '412' => 'Banco Capital',
+                            '413' => 'Banco BV',
+                            '414' => 'Work SCD',
+                            '415' => 'Lamara SCD',
+                            '416' => 'Lamara SCD',
+                            '418' => 'Zipdin SCD',
+                            '419' => 'Numbrs SCD',
+                            '421' => 'Celcoin IP',
+                            '422' => 'Banco Safra',
+                            '423' => 'Coluna SCD',
+                            '425' => 'Treviso CC',
+                            '426' => 'Neon Financeira',
+                            '427' => 'Cresol',
+                            '428' => 'Credsystem SCD',
+                            '429' => 'Crediare CFI',
+                            '430' => 'CCR Seara',
+                            '433' => 'BR-Capital DTVM',
+                            '435' => 'Delcred SCD',
+                            '438' => 'Planner Trustee DTVM',
+                            '440' => 'Credibrf Coop',
+                            '443' => 'Credihome SCD',
+                            '444' => 'Trinus SCD',
+                            '445' => 'Plantae CFI',
+                            '447' => 'Mirae Asset CCTVM',
+                            '448' => 'Hemera DTVM',
+                            '449' => 'Dmcard SCD',
+                            '450' => 'Fitbank IP',
+                            '451' => 'J17 — MEP',
+                            '452' => 'Credifit SCD',
+                            '453' => 'Mérito DTVM',
+                            '454' => 'Mérito DTVM',
+                            '455' => 'Fênix DTVM',
+                            '456' => 'Banco MUFG Brasil',
+                            '457' => 'UY3 SCD',
+                            '458' => 'Hedge Investments DTVM',
+                            '459' => 'CCR Nosso Crédito',
+                            '460' => 'Unavanti SCD',
+                            '461' => 'Asaas IP',
+                            '462' => 'Stark SCD',
+                            '463' => 'Azumi DTVM',
+                            '464' => 'Banco Sumitomo Mitsui Brasileiro',
+                            '465' => 'Capital Consig SCD',
+                            '467' => 'Master S/A CCTVM',
+                            '469' => 'Picpay Bank',
+                            '470' => 'CDC SCD',
+                            '473' => 'Banco Caixa Geral Brasil',
+                            '477' => 'Citibank',
+                            '478' => 'Gazincred SCD',
+                            '479' => 'Banco ItauBank',
+                            '481' => 'Superlógica SCD',
+                            '482' => 'SBCASH SCD',
+                            '484' => 'MAF DTVM',
+                            '487' => 'Deutsche Bank',
+                            '488' => 'JPMorgan Chase Bank',
+                            '492' => 'ING Bank',
+                            '495' => 'Banco de La Provincia de Buenos Aires',
+                            '505' => 'Banco Credit Suisse',
+                            '506' => 'RJI',
+                            '507' => 'Scfi e Bancos com Carteiras de Crédito Imobiliário',
+                            '509' => 'Celcoin IP',
+                            '511' => 'Magnum SCD',
+                            '512' => 'Captalys DTVM',
+                            '516' => 'Qista SCD',
+                            '519' => 'Ewally IP',
+                            '521' => 'Peak SEP',
+                            '522' => 'Red Financeira',
+                            '523' => 'HR Digital SCD',
+                            '524' => 'WNT Capital DTVM',
+                            '525' => 'Intercam CC',
+                            '526' => 'Nagro SCD',
+                            '527' => 'Aticca SCD',
+                            '528' => 'Reag DTVM',
+                            '529' => 'Pinbank IP',
+                            '530' => 'Sarbabu SCD',
+                            '531' => 'BMP SCD',
+                            '532' => 'Eagle SCD',
+                            '533' => 'SRM Bank',
+                            '534' => 'Ewally IP',
+                            '535' => 'Opea SCD',
+                            '536' => 'Neon Pagamentos',
+                            '537' => 'Microcash SCMEPP',
+                            '538' => 'Sudacred SCD',
+                            '539' => 'Santinvest SCD',
+                            '540' => 'Bukly IP',
+                            '541' => 'Fundo de Garantia do Estado de Minas Gerais',
+                            '543' => 'Cooperativa de Crédito Rural de Planalto das Araucárias',
+                            '544' => 'Multicred SCD',
+                            '545' => 'Senso CCVM',
+                            '546' => 'Unfocused SCD',
+                            '547' => 'BRL Trust DTVM',
+                            '548' => 'RPW SCD',
+                            '549' => 'Intra SCD',
+                            '550' => 'Beeteller',
+                            '552' => 'Num Financeira',
+                            '553' => 'Percapita SCD',
+                            '554' => 'Proseftur SCD',
+                            '556' => 'Prosper Soluções Financeiras',
+                            '558' => 'Zipdin SCD',
+                            '559' => 'Kanastra SCD',
+                            '560' => 'Maru SCD',
+                            '561' => 'Pay4Fun IP',
+                            '562' => 'Azimut Brasil DTVM',
+                            '563' => 'Grão Direto SCD',
+                            '564' => 'Finabank SCD',
+                            '565' => 'Ágora CTVM',
+                            '566' => 'Flagship SCD',
+                            '567' => 'Libra IP',
+                            '568' => 'Blu Financeira',
+                            '569' => 'Conta Simples SCD',
+                            '571' => 'Brcondos SCD',
+                            '572' => 'Zro IP',
+                            '574' => 'Finaxis CTVM',
+                            '576' => 'Banco Guanabara',
+                            '577' => 'Reag DTVM',
+                            '579' => 'RFB SCD',
+                            '580' => 'Portoseg CFI',
+                            '581' => 'Banco Brasileiro de Crédito',
+                            '582' => 'Vortx DTVM',
+                            '583' => 'Vert Financeira',
+                            '584' => 'Lecca CFI',
+                            '585' => 'Itaú Unibanco Holding',
+                            '586' => 'Finvest DTVM',
+                            '588' => 'Prover IP',
+                            '589' => 'Creditas SCD',
+                            '590' => 'Moneycorp Banco de Câmbio',
+                            '591' => 'Banco Bradesco Cartões',
+                            '600' => 'Banco Luso Brasileiro',
+                            '604' => 'Banco Industrial do Brasil',
+                            '610' => 'Banco VR',
+                            '611' => 'Banco Paulista',
+                            '612' => 'Banco Guanabara',
+                            '613' => 'Omni Banco',
+                            '620' => 'Banco Crédit Agricole Brasil',
+                            '623' => 'Banco Pan',
+                            '626' => 'Banco C6 Consignado',
+                            '630' => 'Banco Intercap',
+                            '633' => 'Banco Rendimento',
+                            '634' => 'Banco Triângulo',
+                            '637' => 'Banco Sofisa',
+                            '643' => 'Banco Pine',
+                            '652' => 'Itaú Unibanco Holding',
+                            '653' => 'Banco Indusval',
+                            '654' => 'Banco A.J. Renner',
+                            '655' => 'Banco Votorantim',
+                            '707' => 'Banco Daycoval',
+                            '712' => 'Banco Ourinvest',
+                            '719' => 'Banif',
+                            '720' => 'Banco RNX',
+                            '739' => 'Banco Cetelem',
+                            '741' => 'Banco Ribeirão Preto',
+                            '743' => 'Banco Semear',
+                            '745' => 'Banco Citibank',
+                            '746' => 'Banco Modal',
+                            '747' => 'Banco Rabobank',
+                            '748' => 'Sicredi',
+                            '751' => 'Scotiabank Brasil',
+                            '752' => 'Banco BNP Paribas Brasil',
+                            '753' => 'Novo Banco Continental',
+                            '754' => 'Banco Sistema',
+                            '755' => 'Bank of America Merrill Lynch',
+                            '756' => 'Sicoob',
+                            '757' => 'Banco Keb Hana do Brasil',
+                        ];
+                        $bancoSalvo = $c->banco ?? '';
+                        foreach ($bancos as $cod => $nome):
+                            $selected = ($bancoSalvo === $cod || $bancoSalvo === $nome || $bancoSalvo === "$cod - $nome") ? 'selected' : '';
+                        ?>
+                            <option value="<?php echo $cod; ?>" <?php echo $selected; ?>>
+                                <?php echo $cod . ' — ' . $nome; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-bold">Agência</label>
@@ -355,6 +709,40 @@ function alternarTipo(tipo) {
 
 // Inicializa com o tipo correto ao carregar
 alternarTipo(tipoAtual);
+
+// ─── Máscara de celular ──────────────────────────────────────────────────────
+function mascaraCelular(input) {
+    let v = input.value.replace(/\D/g, '').substring(0, 11);
+    if (v.length > 10) {
+        v = v.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    } else if (v.length > 6) {
+        v = v.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+    } else if (v.length > 2) {
+        v = v.replace(/(\d{2})(\d{0,5})/, '($1) $2');
+    } else if (v.length > 0) {
+        v = v.replace(/(\d{0,2})/, '($1');
+    }
+    input.value = v;
+}
+
+// Aplica máscara ao valor já salvo no banco
+(function() {
+    const cel = document.getElementById('celular');
+    if (cel && cel.value) mascaraCelular(cel);
+})();
+
+// ─── WhatsApp ────────────────────────────────────────────────────────────────
+function abrirWhatsapp(e) {
+    e.preventDefault();
+    const raw = document.getElementById('celular').value.replace(/\D/g, '');
+    if (!raw || raw.length < 10) {
+        alert('Informe um número de celular válido antes de abrir o WhatsApp.');
+        return;
+    }
+    // Adiciona DDI 55 (Brasil) se não estiver presente
+    const numero = raw.startsWith('55') ? raw : '55' + raw;
+    window.open('https://wa.me/' + numero, '_blank');
+}
 
 // Busca CNPJ na Receita Federal
 function buscarCnpj() {
