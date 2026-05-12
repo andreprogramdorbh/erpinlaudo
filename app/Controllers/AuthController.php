@@ -394,7 +394,16 @@ class AuthController extends Controller
             $tokenModel = new PasswordResetToken();
             $result     = $tokenModel->createForUser((int) $user->id);
             $rawToken   = $result['raw'];
-            $baseUrl    = rtrim($_ENV['APP_URL'] ?? ($_SERVER['REQUEST_SCHEME'] . '://' . ($_SERVER['HTTP_HOST'] ?? '')), '/');
+            // Determina o scheme correto: prioriza APP_URL do .env, depois detecta HTTPS
+            if (!empty($_ENV['APP_URL'])) {
+                $baseUrl = rtrim($_ENV['APP_URL'], '/');
+            } else {
+                $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+                    || (($_SERVER['SERVER_PORT'] ?? 80) == 443);
+                $scheme  = $isHttps ? 'https' : 'http';
+                $baseUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br');
+            }
             $resetUrl   = $baseUrl . '/reset-password/' . $rawToken;
             AuditLogger::log('forgot_password_requested', ['user_id' => $user->id]);
             Mail::sendPasswordResetLink($user->email, $resetUrl, (int) $user->id);
