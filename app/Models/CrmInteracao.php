@@ -35,6 +35,7 @@ class CrmInteracao extends Model
 
     // ---------------------------------------------------------------
     // Garante que a coluna data_retorno existe (auto-migration)
+    // Compatível com MySQL 5.7+ (não usa IF NOT EXISTS no ALTER TABLE)
     // ---------------------------------------------------------------
     private bool $colunaGarantida = false;
 
@@ -44,14 +45,28 @@ class CrmInteracao extends Model
             return;
         }
         try {
-            $this->pdo->exec(
-                "ALTER TABLE {$this->table}
-                 ADD COLUMN IF NOT EXISTS `data_retorno` DATE NULL DEFAULT NULL
-                 COMMENT 'Data programada para o próximo retorno após esta interação'
-                 AFTER `resumo`"
+            // Verifica via INFORMATION_SCHEMA se a coluna já existe
+            $stmt = $this->pdo->prepare(
+                "SELECT COUNT(*) AS cnt
+                 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME   = :tbl
+                   AND COLUMN_NAME  = 'data_retorno'"
             );
+            $stmt->execute([':tbl' => $this->table]);
+            $exists = (int) $stmt->fetchColumn();
+
+            if (!$exists) {
+                $this->pdo->exec(
+                    "ALTER TABLE `{$this->table}`
+                     ADD COLUMN `data_retorno` DATE NULL DEFAULT NULL
+                     COMMENT 'Data programada para o próximo retorno após esta interação'
+                     AFTER `resumo`"
+                );
+            }
         } catch (\Throwable $e) {
-            // ignora se já existe ou se o driver não suporta IF NOT EXISTS
+            // Falha silenciosa — não impede a operação principal
+            error_log('[CrmInteracao] garantirColunaRetorno falhou: ' . $e->getMessage());
         }
         $this->colunaGarantida = true;
     }
