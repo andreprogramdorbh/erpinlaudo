@@ -50,6 +50,7 @@ class ColaboradorController extends Controller
             'title'         => 'Colaboradores',
             'colaboradores' => $colaboradores,
             'filtros'       => $filtros,
+            '_layout'       => 'erp',
         ]);
     }
 
@@ -64,6 +65,7 @@ class ColaboradorController extends Controller
             'title'       => 'Novo Colaborador',
             'colaborador' => null,
             'isEdit'      => false,
+            '_layout'     => 'erp',
         ]);
     }
 
@@ -128,6 +130,7 @@ class ColaboradorController extends Controller
             'comissoes'     => $comissoes,
             'faturamentos'  => $faturamentos,
             'usuarios'      => $usuarios,
+            '_layout'       => 'erp',
         ]);
     }
 
