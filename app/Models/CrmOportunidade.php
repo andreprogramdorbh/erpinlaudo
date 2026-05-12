@@ -218,6 +218,23 @@ class CrmOportunidade extends Model
         return $stmt->execute([$id]);
     }
 
+    /** Atualiza um único campo permitido (usado para sync de data_proximo_contato via JS) */
+    public function updateField(int $id, string $field, mixed $value): bool
+    {
+        $allowed = [
+            'lead_id','cliente_id','titulo_oportunidade','etapa_funil',
+            'valor_estimado','data_fechamento_prevista','probabilidade_sucesso',
+            'status_oportunidade','motivo_perda','modalidade_principal',
+            'modalidades_interesse','tipo_contrato','volume_estimado_mes',
+            'observacoes','data_proximo_contato','usuario_id',
+        ];
+        if (!in_array($field, $allowed, true)) return false;
+        $stmt = $this->pdo->prepare(
+            "UPDATE {$this->table} SET {$field} = :val WHERE id = :id"
+        );
+        return $stmt->execute([':val' => $value, ':id' => $id]);
+    }
+
     /** Atualiza apenas a etapa do funil (usado pelo drag-and-drop) */
     public function updateEtapa(int $id, string $etapa): bool
     {

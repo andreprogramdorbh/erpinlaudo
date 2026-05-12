@@ -314,6 +314,8 @@ class CrmOportunidadesController extends Controller
             return;
         }
 
+        $dataRetorno = trim($_POST['data_retorno'] ?? '');
+
         $data = [
             'usuario_id'     => $uid,
             'related_id'     => $opId,
@@ -321,6 +323,7 @@ class CrmOportunidadesController extends Controller
             'data_interacao' => trim($_POST['data_interacao'] ?? date('Y-m-d H:i:s')),
             'tipo_interacao' => trim($_POST['tipo_interacao'] ?? 'outro'),
             'resumo'         => trim($_POST['resumo'] ?? ''),
+            'data_retorno'   => $dataRetorno ?: null,
         ];
 
         if (empty($data['resumo'])) {
@@ -358,6 +361,31 @@ class CrmOportunidadesController extends Controller
         }
 
         $this->interacaoModel->delete($id);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/oportunidades/update-retorno/{id}
+    // Atualiza apenas o campo data_proximo_contato (chamado pelo JS após salvar interação)
+    // ---------------------------------------------------------------
+    public function updateRetorno(int $id): void
+    {
+        $uid = $this->usuarioId();
+        $op  = $this->opModel->findById($id);
+
+        if (!$op || (int) $op->usuario_id !== $uid) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Não autorizado.']);
+            exit();
+        }
+
+        $dataRetorno = trim($_POST['data_proximo_contato'] ?? '');
+        if ($dataRetorno) {
+            $this->opModel->updateField($id, 'data_proximo_contato', $dataRetorno);
+        }
+
         header('Content-Type: application/json');
         echo json_encode(['success' => true]);
         exit();

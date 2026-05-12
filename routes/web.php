@@ -383,6 +383,7 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/crm/oportunidades/mover",                   "CrmOportunidadesController@moverEtapa");
         Router::post("/crm/oportunidades/interacao/add",           "CrmOportunidadesController@addInteracao");
         Router::post("/crm/oportunidades/interacao/delete/{id}",   "CrmOportunidadesController@deleteInteracao");
+        Router::post("/crm/oportunidades/update-retorno/{id}",       "CrmOportunidadesController@updateRetorno");
         // Anexos de Oportunidades
         Router::post("/crm/oportunidades/anexo/upload",            "CrmOportunidadesController@uploadAnexo");
         Router::get("/crm/oportunidades/anexo/download/{id}",      "CrmOportunidadesController@downloadAnexo");

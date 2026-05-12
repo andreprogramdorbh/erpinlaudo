@@ -302,8 +302,11 @@ $tiposIcones = [
           </div>
           <div class="form-group">
             <label class="form-label">Data do Próximo Contato</label>
-            <input type="date" name="data_proximo_contato" class="form-control"
+            <input type="date" name="data_proximo_contato" id="data_proximo_contato" class="form-control"
                    value="<?php echo htmlspecialchars($op->data_proximo_contato ?? ''); ?>">
+            <small class="text-muted" style="font-size:.7rem">
+              <i class="fas fa-sync-alt me-1"></i> Atualizado automaticamente ao registrar interação com Retorno
+            </small>
           </div>
         </div>
         <div class="form-group mt-3">
@@ -321,6 +324,8 @@ $tiposIcones = [
   <div class="crm-body" id="tab-interacoes" style="display:<?php echo $activeTab === 'interacoes' ? 'block' : 'none'; ?>">
 
     <!-- Formulário nova interação -->
+    <?php $statusAtual = $op->status_oportunidade ?? 'aberta'; ?>
+    <?php $retornoObrigatorio = !in_array($statusAtual, ['perdida', 'ganha']); ?>
     <div class="int-form-card">
       <h3><i class="fas fa-plus-circle me-1"></i> Registrar Nova Interação</h3>
       <div class="form-grid form-grid-3">
@@ -336,16 +341,29 @@ $tiposIcones = [
             <?php endforeach; ?>
           </select>
         </div>
-        <div class="form-group d-flex align-items-end">
-          <button type="button" class="btn btn-success w-100" onclick="salvarInteracao()">
-            <i class="fas fa-save me-1"></i> Salvar Interação
-          </button>
+        <div class="form-group">
+          <label class="form-label<?php echo $retornoObrigatorio ? ' required' : ''; ?>" id="label_retorno">
+            <i class="fas fa-calendar-check me-1 text-warning"></i> Retorno
+            <small class="text-muted fw-normal">(<?php echo $retornoObrigatorio ? 'obrigatório' : 'opcional'; ?>)</small>
+          </label>
+          <input type="date" id="int_retorno" class="form-control"
+                 min="<?php echo date('Y-m-d'); ?>"
+                 title="Data do próximo retorno/contato">
+          <small class="text-muted" style="font-size:.7rem">
+            <i class="fas fa-sync-alt me-1"></i>
+            Atualiza automaticamente &quot;Data do Próximo Contato&quot;
+          </small>
         </div>
       </div>
       <div class="form-group mt-2">
         <label class="form-label required">Resumo</label>
         <textarea id="int_resumo" class="form-control" rows="3"
                   placeholder="Descreva o que foi discutido, resultado, próximos passos..."></textarea>
+      </div>
+      <div class="mt-2 d-flex justify-content-end">
+        <button type="button" class="btn btn-success" onclick="salvarInteracao()">
+          <i class="fas fa-save me-1"></i> Salvar Interação
+        </button>
       </div>
     </div>
 
@@ -366,6 +384,27 @@ $tiposIcones = [
             <button class="timeline-del ms-auto" onclick="deletarInteracao(<?php echo $int->id; ?>)"><i class="fas fa-trash"></i> Excluir</button>
           </div>
           <div class="timeline-resumo"><?php echo nl2br(htmlspecialchars($int->resumo)); ?></div>
+          <?php if (!empty($int->data_retorno)): ?>
+          <?php
+            $hoje = date('Y-m-d');
+            $semana = date('Y-m-d', strtotime('+7 days'));
+            $dr = $int->data_retorno;
+            if ($dr < $hoje) {
+                $retCor = '#dc2626'; $retBg = '#fee2e2'; $retIcon = 'fa-exclamation-circle'; $retLabel = 'Atrasado';
+            } elseif ($dr === $hoje) {
+                $retCor = '#dc2626'; $retBg = '#fee2e2'; $retIcon = 'fa-bell'; $retLabel = 'Hoje';
+            } elseif ($dr <= $semana) {
+                $retCor = '#d97706'; $retBg = '#fef3c7'; $retIcon = 'fa-clock'; $retLabel = 'Esta semana';
+            } else {
+                $retCor = '#059669'; $retBg = '#d1fae5'; $retIcon = 'fa-calendar-check'; $retLabel = 'Programado';
+            }
+          ?>
+          <div class="mt-2" style="display:inline-flex;align-items:center;gap:.4rem;background:<?php echo $retBg; ?>;color:<?php echo $retCor; ?>;font-size:.75rem;font-weight:600;padding:.25rem .6rem;border-radius:.375rem">
+            <i class="fas <?php echo $retIcon; ?>"></i>
+            Retorno: <?php echo date('d/m/Y', strtotime($dr)); ?>
+            <span style="font-weight:400;opacity:.8">(<?php echo $retLabel; ?>)</span>
+          </div>
+          <?php endif; ?>
         </div>
       </div>
       <?php endforeach; ?>
@@ -569,22 +608,49 @@ function toggleMotivoPerdas() {
 }
 
 function salvarInteracao() {
-  const data   = document.getElementById('int_data').value;
-  const tipo   = document.getElementById('int_tipo').value;
-  const resumo = document.getElementById('int_resumo').value.trim();
+  const data    = document.getElementById('int_data').value;
+  const tipo    = document.getElementById('int_tipo').value;
+  const resumo  = document.getElementById('int_resumo').value.trim();
+  const retorno = document.getElementById('int_retorno').value;
+
+  // Validação: resumo sempre obrigatório
   if (!resumo) { alert('O resumo é obrigatório.'); return; }
+
+  // Validação: retorno obrigatório exceto para status perdida/ganha
+  const retornoObrigatorio = <?php echo json_encode($retornoObrigatorio); ?>;
+  if (retornoObrigatorio && !retorno) {
+    alert('O campo Retorno é obrigatório. Informe a data do próximo contato.');
+    document.getElementById('int_retorno').focus();
+    return;
+  }
 
   const form = new FormData();
   form.append('related_id',     '<?php echo $op->id ?? 0; ?>');
   form.append('data_interacao', data.replace('T', ' '));
   form.append('tipo_interacao', tipo);
   form.append('resumo',         resumo);
+  form.append('data_retorno',   retorno);
   form.append('_token',         document.querySelector('input[name="_token"]')?.value || '');
 
   fetch('/crm/oportunidades/interacao/add', { method: 'POST', body: form })
     .then(r => r.json())
     .then(res => {
       if (!res.success) { alert(res.error || 'Erro ao salvar.'); return; }
+
+      // Se preencheu retorno, sincroniza o campo Data do Próximo Contato
+      // e salva via PATCH para não perder os outros dados do formulário
+      if (retorno) {
+        const campoProximo = document.getElementById('data_proximo_contato');
+        if (campoProximo) { campoProximo.value = retorno; }
+        // Persiste no banco via endpoint de atualização parcial
+        const patchForm = new FormData();
+        patchForm.append('data_proximo_contato', retorno);
+        patchForm.append('_token', document.querySelector('input[name="_token"]')?.value || '');
+        fetch('/crm/oportunidades/update-retorno/<?php echo $op->id ?? 0; ?>', {
+          method: 'POST', body: patchForm
+        }).catch(() => {/* não bloqueia o redirect */});
+      }
+
       // Redireciona preservando a aba de interações
       const url = new URL(window.location.href);
       url.searchParams.set('tab', 'interacoes');

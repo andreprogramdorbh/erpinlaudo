@@ -213,6 +213,30 @@ $etapaConfig = [
             <div class="kanban-card-prob-fill" style="width:<?php echo $prob; ?>%" title="Probabilidade: <?php echo $prob; ?>%"></div>
           </div>
           <?php endif; ?>
+
+          <?php
+            // Indicador de próximo retorno
+            $drCard = $op->data_proximo_contato ?? null;
+            if ($drCard):
+              $hojeCard   = date('Y-m-d');
+              $semanaCard = date('Y-m-d', strtotime('+7 days'));
+              if ($drCard < $hojeCard) {
+                  $rCor = '#dc2626'; $rBg = '#fee2e2'; $rIcon = 'fa-exclamation-circle'; $rLabel = 'Atrasado';
+              } elseif ($drCard === $hojeCard) {
+                  $rCor = '#dc2626'; $rBg = '#fee2e2'; $rIcon = 'fa-bell'; $rLabel = 'Hoje';
+              } elseif ($drCard <= $semanaCard) {
+                  $rCor = '#d97706'; $rBg = '#fef3c7'; $rIcon = 'fa-clock'; $rLabel = 'Esta semana';
+              } else {
+                  $rCor = '#059669'; $rBg = '#d1fae5'; $rIcon = 'fa-calendar-check'; $rLabel = 'Programado';
+              }
+          ?>
+          <div style="margin-top:.4rem;display:flex;align-items:center;gap:.3rem;background:<?php echo $rBg; ?>;color:<?php echo $rCor; ?>;font-size:.68rem;font-weight:600;padding:.2rem .5rem;border-radius:.3rem;width:fit-content">
+            <i class="fas <?php echo $rIcon; ?>"></i>
+            <?php echo date('d/m/Y', strtotime($drCard)); ?>
+            <span style="font-weight:400;opacity:.8">&bull; <?php echo $rLabel; ?></span>
+          </div>
+          <?php endif; ?>
+
         </div>
         <?php endforeach; ?>
 
