@@ -515,7 +515,8 @@ class IntegracaoController extends Controller
                 : 'https://sandbox.asaas.com/api/v3';
 
             $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $baseUrl . '/accounts/profile');
+            // Endpoint correto da API Asaas v3 para verificar status da conta
+            curl_setopt($ch, CURLOPT_URL, $baseUrl . '/myAccount/status');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             // User-Agent é obrigatório pela API do Asaas (HTTP 400 sem ele)
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
