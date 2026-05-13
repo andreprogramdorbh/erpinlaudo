@@ -1,6 +1,6 @@
 <?php
 $editando = !empty($conta);
-$action   = $editando ? "/financeiro/contas/update/{$conta->id}" : '/financeiro/contas/store';
+$action   = $editando ? "/financeiro/contas/{$conta->id}/update" : '/financeiro/contas';
 $error    = $_GET['error'] ?? '';
 
 $tipoOptions = [
