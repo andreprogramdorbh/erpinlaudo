@@ -79,13 +79,17 @@ $roleLabels = [
   $successMessages = [
       'user_created'   => 'Usuário criado com sucesso!',
       'user_updated'   => 'Usuário atualizado com sucesso!',
-      'password_reset' => 'E-mail de redefinição de senha enviado com sucesso!',
+      'password_reset'     => 'E-mail de redefinição de senha enviado com sucesso!',
+      'financeiro_salvo'   => 'Configurações financeiras salvas com sucesso!',
+      'nfs_salvo'          => 'Configurações de Notas Fiscais salvas com sucesso!',
   ];
   $errorMessages = [
       'unauthorized'  => 'Você não tem permissão para esta ação.',
       'cannot_edit'   => 'Você não pode editar este usuário.',
       'cannot_reset'  => 'Você não pode resetar a senha deste usuário.',
-      'reset_failed'  => 'Falha ao enviar e-mail de redefinição.',
+      'reset_failed'   => 'Falha ao enviar e-mail de redefinição.',
+      'save_failed'   => 'Falha ao salvar as configurações. Tente novamente.',
+      'json_invalido' => 'O JSON do template personalizado é inválido.',
   ];
   if ($success && isset($successMessages[$success])): ?>
   <div class="cfg-alert cfg-alert-success"><i class="fas fa-check-circle"></i> <?php echo $successMessages[$success]; ?></div>
@@ -108,6 +112,9 @@ $roleLabels = [
     <?php if (Auth::can('manage_settings')): ?>
     <button class="cfg-tab <?php echo $activeTab === 'notas-fiscais' ? 'active' : ''; ?>" onclick="switchTab('notas-fiscais', this)">
       <i class="fas fa-file-invoice"></i> Notas Fiscais
+    </button>
+    <button class="cfg-tab <?php echo $activeTab === 'financeiro' ? 'active' : ''; ?>" onclick="switchTab('financeiro', this)">
+      <i class="fas fa-dollar-sign"></i> Financeiro
     </button>
     <button class="cfg-tab <?php echo $activeTab === 'cnes' ? 'active' : ''; ?>" onclick="switchTab('cnes', this)">
       <i class="fas fa-hospital"></i> CNES
@@ -527,6 +534,372 @@ $roleLabels = [
   </div>
   <?php endif; ?>
 
+
+
+
+  <!-- ===== ABA: FINANCEIRO ===== -->
+  <?php if (Auth::can('manage_settings')): ?>
+  <?php $cf = $configFinanceiro ?? (object)[]; ?>
+  <div id="tab-financeiro" style="display:<?php echo $activeTab === 'financeiro' ? 'block' : 'none'; ?>">
+
+    <!-- Hero Financeiro -->
+    <div style="background:linear-gradient(135deg,#00529B 0%,#0284c7 100%);border-radius:12px;padding:1.75rem 2rem;color:#fff;margin-bottom:1.5rem;position:relative;overflow:hidden">
+      <div style="position:absolute;right:1.5rem;top:50%;transform:translateY(-50%);font-size:5rem;opacity:.1">&#128176;</div>
+      <h2 style="font-size:1.35rem;font-weight:700;margin:0 0 .3rem"><i class="fas fa-dollar-sign me-2"></i>Configurações Financeiras</h2>
+      <p style="margin:0;opacity:.9;font-size:.9rem">Defina o meio de pagamento padrão, juros, multa, desconto e parâmetros por forma de cobrança (Asaas).</p>
+    </div>
+
+    <form method="POST" action="/configuracoes/financeiro/salvar">
+      <?php echo View::csrfField(); ?>
+
+      <!-- ===== MEIO DE PAGAMENTO PADRÃO ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-credit-card text-primary"></i> Meio de Pagamento Padrão</h3>
+        </div>
+        <div class="cfg-section">
+          <p class="text-muted" style="font-size:.875rem;margin-bottom:1rem">
+            Utilizado quando um contrato gera contas a receber sem meio de pagamento definido.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Meio padrão</label>
+              <select name="meio_pagamento_padrao" class="form-select form-select-sm">
+                <?php
+                $meios = [
+                  'checkout'     => 'Checkout (aceita todos)',
+                  'boleto'       => 'Boleto Bancário',
+                  'pix'          => 'PIX',
+                  'cartao'       => 'Cartão de Crédito',
+                  'dinheiro'     => 'Dinheiro',
+                  'transferencia'=> 'Transferência Bancária',
+                  'outro'        => 'Outro',
+                ];
+                $meioPadrao = $cf->meio_pagamento_padrao ?? 'checkout';
+                foreach ($meios as $val => $label):
+                ?>
+                <option value="<?php echo $val; ?>" <?php echo $meioPadrao === $val ? 'selected' : ''; ?>>
+                  <?php echo $label; ?>
+                </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== JUROS POR ATRASO ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-percentage text-warning"></i> Juros por Atraso (Boleto)</h3>
+        </div>
+        <div class="cfg-section">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Tipo</label>
+              <select name="juros_tipo" class="form-select form-select-sm">
+                <option value="PERCENTAGE" <?php echo ($cf->juros_tipo ?? 'PERCENTAGE') === 'PERCENTAGE' ? 'selected' : ''; ?>>Percentual (% ao mês)</option>
+                <option value="FIXED"      <?php echo ($cf->juros_tipo ?? '') === 'FIXED' ? 'selected' : ''; ?>>Valor fixo (R$)</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Valor</label>
+              <div class="input-group input-group-sm">
+                <input type="number" name="juros_valor" class="form-control" step="0.01" min="0" max="100"
+                       value="<?php echo number_format((float)($cf->juros_valor ?? 1.00), 2, '.', ''); ?>">
+                <span class="input-group-text">% / R$</span>
+              </div>
+              <div class="form-text">Padrão: 1% ao mês</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Carência (dias)</label>
+              <input type="number" name="juros_dias_carencia" class="form-control form-control-sm" min="0" max="30"
+                     value="<?php echo (int)($cf->juros_dias_carencia ?? 0); ?>">
+              <div class="form-text">Dias após vencimento para começar a cobrar</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== MULTA POR ATRASO ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-exclamation-circle text-danger"></i> Multa por Atraso (Boleto)</h3>
+        </div>
+        <div class="cfg-section">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Tipo</label>
+              <select name="multa_tipo" class="form-select form-select-sm">
+                <option value="PERCENTAGE" <?php echo ($cf->multa_tipo ?? 'PERCENTAGE') === 'PERCENTAGE' ? 'selected' : ''; ?>>Percentual (%)</option>
+                <option value="FIXED"      <?php echo ($cf->multa_tipo ?? '') === 'FIXED' ? 'selected' : ''; ?>>Valor fixo (R$)</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Valor</label>
+              <div class="input-group input-group-sm">
+                <input type="number" name="multa_valor" class="form-control" step="0.01" min="0" max="100"
+                       value="<?php echo number_format((float)($cf->multa_valor ?? 2.00), 2, '.', ''); ?>">
+                <span class="input-group-text">% / R$</span>
+              </div>
+              <div class="form-text">Padrão: 2% (máx. legal)</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Carência (dias)</label>
+              <input type="number" name="multa_dias_carencia" class="form-control form-control-sm" min="0" max="30"
+                     value="<?php echo (int)($cf->multa_dias_carencia ?? 0); ?>">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== DESCONTO POR PONTUALIDADE ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-tag text-success"></i> Desconto por Pontualidade</h3>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" name="desconto_ativo" id="desconto_ativo"
+                   value="1" <?php echo ($cf->desconto_ativo ?? 0) ? 'checked' : ''; ?>
+                   onchange="document.getElementById('desconto_panel').style.display=this.checked?'block':'none'">
+            <label class="form-check-label fw-semibold" for="desconto_ativo">Habilitar desconto</label>
+          </div>
+        </div>
+        <div id="desconto_panel" class="cfg-section" style="display:<?php echo ($cf->desconto_ativo ?? 0) ? 'block' : 'none'; ?>">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Tipo</label>
+              <select name="desconto_tipo" class="form-select form-select-sm">
+                <option value="PERCENTAGE" <?php echo ($cf->desconto_tipo ?? 'PERCENTAGE') === 'PERCENTAGE' ? 'selected' : ''; ?>>Percentual (%)</option>
+                <option value="FIXED"      <?php echo ($cf->desconto_tipo ?? '') === 'FIXED' ? 'selected' : ''; ?>>Valor fixo (R$)</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Valor</label>
+              <div class="input-group input-group-sm">
+                <input type="number" name="desconto_valor" class="form-control" step="0.01" min="0"
+                       value="<?php echo number_format((float)($cf->desconto_valor ?? 0), 2, '.', ''); ?>">
+                <span class="input-group-text">% / R$</span>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Dias antes do vencimento</label>
+              <input type="number" name="desconto_dias_antes" class="form-control form-control-sm" min="0" max="30"
+                     value="<?php echo (int)($cf->desconto_dias_antes ?? 0); ?>">
+              <div class="form-text">0 = até o dia do vencimento</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Data limite (opcional)</label>
+              <input type="date" name="desconto_limite_data" class="form-control form-control-sm"
+                     value="<?php echo htmlspecialchars($cf->desconto_limite_data ?? ''); ?>">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== BOLETO ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-barcode text-secondary"></i> Boleto Bancário</h3>
+        </div>
+        <div class="cfg-section">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Dias para vencimento</label>
+              <input type="number" name="boleto_dias_vencimento" class="form-control form-control-sm" min="1" max="60"
+                     value="<?php echo (int)($cf->boleto_dias_vencimento ?? 3); ?>">
+              <div class="form-text">Dias corridos após a emissão</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Aceite</label>
+              <select name="boleto_aceite" class="form-select form-select-sm">
+                <option value="N" <?php echo ($cf->boleto_aceite ?? 'N') === 'N' ? 'selected' : ''; ?>>Não</option>
+                <option value="A" <?php echo ($cf->boleto_aceite ?? '') === 'A' ? 'selected' : ''; ?>>Sim</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Banco (código)</label>
+              <input type="text" name="boleto_banco" class="form-control form-control-sm" maxlength="10"
+                     value="<?php echo htmlspecialchars($cf->boleto_banco ?? ''); ?>"
+                     placeholder="Ex: 341 (Itaú)">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Instruções do boleto</label>
+              <textarea name="boleto_instrucoes" class="form-control form-control-sm" rows="3" maxlength="500"
+                        placeholder="Ex: Não receber após 30 dias do vencimento."><?php echo htmlspecialchars($cf->boleto_instrucoes ?? ''); ?></textarea>
+              <div class="form-text">Máx. 500 caracteres. Exibido no rodapé do boleto.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PIX ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-qrcode" style="color:#32bcad"></i> PIX</h3>
+        </div>
+        <div class="cfg-section">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Expiração do QR Code</label>
+              <select name="pix_expiracao_segundos" class="form-select form-select-sm">
+                <?php
+                $expiracoes = [
+                  300    => '5 minutos',
+                  900    => '15 minutos',
+                  1800   => '30 minutos',
+                  3600   => '1 hora',
+                  7200   => '2 horas',
+                  21600  => '6 horas',
+                  43200  => '12 horas',
+                  86400  => '1 dia (padrão)',
+                  172800 => '2 dias',
+                  259200 => '3 dias',
+                  604800 => '7 dias',
+                ];
+                $pixExp = (int)($cf->pix_expiracao_segundos ?? 86400);
+                foreach ($expiracoes as $seg => $label):
+                ?>
+                <option value="<?php echo $seg; ?>" <?php echo $pixExp === $seg ? 'selected' : ''; ?>>
+                  <?php echo $label; ?>
+                </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Chave PIX (opcional)</label>
+              <input type="text" name="pix_chave" class="form-control form-control-sm" maxlength="150"
+                     value="<?php echo htmlspecialchars($cf->pix_chave ?? ''); ?>"
+                     placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CARTÃO DE CRÉDITO ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-credit-card text-info"></i> Cartão de Crédito</h3>
+        </div>
+        <div class="cfg-section">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Máx. parcelas</label>
+              <select name="cartao_max_parcelas" class="form-select form-select-sm">
+                <?php for ($i = 1; $i <= 12; $i++): ?>
+                <option value="<?php echo $i; ?>" <?php echo ((int)($cf->cartao_max_parcelas ?? 1)) === $i ? 'selected' : ''; ?>>
+                  <?php echo $i === 1 ? '1x (à vista)' : "{$i}x"; ?>
+                </option>
+                <?php endfor; ?>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Parcela mínima (R$)</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">R$</span>
+                <input type="number" name="cartao_parcela_minima" class="form-control" step="0.01" min="0"
+                       value="<?php echo number_format((float)($cf->cartao_parcela_minima ?? 50.00), 2, '.', ''); ?>">
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Juros no parcelamento (%)</label>
+              <div class="input-group input-group-sm">
+                <input type="number" name="cartao_juros_parcelamento" class="form-control" step="0.01" min="0"
+                       value="<?php echo number_format((float)($cf->cartao_juros_parcelamento ?? 0), 2, '.', ''); ?>">
+                <span class="input-group-text">%</span>
+              </div>
+              <div class="form-text">0 = sem juros (parcelamento lojista)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CHECKOUT (UNDEFINED) ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-shopping-cart text-primary"></i> Checkout (aceita todos)</h3>
+        </div>
+        <div class="cfg-section">
+          <p class="text-muted" style="font-size:.875rem;margin-bottom:1rem">
+            No modo Checkout, o cliente escolhe a forma de pagamento. Selecione quais formas habilitar:
+          </p>
+          <?php
+          $checkoutHabilitados = explode(',', $cf->checkout_meios_habilitados ?? 'BOLETO,PIX,CREDIT_CARD');
+          ?>
+          <div class="d-flex gap-4 flex-wrap">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="checkout_boleto" id="checkout_boleto" value="1"
+                     <?php echo in_array('BOLETO', $checkoutHabilitados) ? 'checked' : ''; ?>>
+              <label class="form-check-label" for="checkout_boleto">
+                <i class="fas fa-barcode me-1 text-secondary"></i> Boleto
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="checkout_pix" id="checkout_pix" value="1"
+                     <?php echo in_array('PIX', $checkoutHabilitados) ? 'checked' : ''; ?>>
+              <label class="form-check-label" for="checkout_pix">
+                <i class="fas fa-qrcode me-1" style="color:#32bcad"></i> PIX
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="checkout_cartao" id="checkout_cartao" value="1"
+                     <?php echo in_array('CREDIT_CARD', $checkoutHabilitados) ? 'checked' : ''; ?>>
+              <label class="form-check-label" for="checkout_cartao">
+                <i class="fas fa-credit-card me-1 text-info"></i> Cartão de Crédito
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== NOTIFICAÇÕES ===== -->
+      <div class="cfg-card mb-3">
+        <div class="cfg-card-header">
+          <h3 class="cfg-card-title"><i class="fas fa-bell text-warning"></i> Notificações de Cobrança</h3>
+        </div>
+        <div class="cfg-section">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Avisar antes do vencimento (dias)</label>
+              <input type="number" name="dias_aviso_vencimento" class="form-control form-control-sm" min="0" max="30"
+                     value="<?php echo (int)($cf->dias_aviso_vencimento ?? 3); ?>">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label fw-semibold d-block">Canais de notificação</label>
+              <div class="d-flex gap-4 flex-wrap mt-1">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="notificar_email" id="notificar_email" value="1"
+                         <?php echo ($cf->notificar_email ?? 1) ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="notificar_email"><i class="fas fa-envelope me-1"></i> E-mail</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="notificar_sms" id="notificar_sms" value="1"
+                         <?php echo ($cf->notificar_sms ?? 0) ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="notificar_sms"><i class="fas fa-sms me-1"></i> SMS</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="notificar_whatsapp" id="notificar_whatsapp" value="1"
+                         <?php echo ($cf->notificar_whatsapp ?? 0) ? 'checked' : ''; ?>>
+                  <label class="form-check-label" for="notificar_whatsapp"><i class="fab fa-whatsapp me-1 text-success"></i> WhatsApp</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Botões -->
+      <div class="d-flex justify-content-end gap-2 mb-4">
+        <a href="/configuracoes?tab=financeiro" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-undo me-1"></i> Cancelar
+        </a>
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="fas fa-save me-1"></i> Salvar Configurações Financeiras
+        </button>
+      </div>
+
+    </form>
+  </div>
+  <?php endif; ?>
 
   <!-- ===== ABA: CNES ===== -->
   <?php if (Auth::can('manage_settings')): ?>

@@ -13,6 +13,7 @@ use App\Models\PlanoConta;
 use App\Models\Cliente;
 use App\Services\ContaReceberRecorrenciaService;
 use App\Services\AsaasService;
+use App\Models\ConfiguracaoFinanceira;
 use App\Services\MailService;
 
 class ContasReceberController extends Controller
@@ -25,6 +26,7 @@ class ContasReceberController extends Controller
     // AsaasService e MailService são instanciados sob demanda (lazy)
     // para não causar erro fatal quando ASAAS_API_KEY não está configurado.
     private ?AsaasService $asaasService = null;
+    private ConfiguracaoFinanceira $configFinanceiroModel;
     private ?MailService $mailService = null;
 
     public function __construct()
@@ -33,7 +35,8 @@ class ContasReceberController extends Controller
         $this->anexoModel      = new ContaReceberAnexo();
         $this->planoContaModel = new PlanoConta();
         $this->clienteModel    = new Cliente();
-        $this->logger          = new Logger();
+        $this->logger                = new Logger();
+        $this->configFinanceiroModel = new ConfiguracaoFinanceira();
     }
 
     /**
@@ -252,9 +255,18 @@ class ContasReceberController extends Controller
                     }
                 }
 
-                // Integrar com Asaas apenas se meio de pagamento for digital E a chave estiver configurada
+                // Integrar com Asaas se meio de pagamento for digital E a chave estiver configurada
                 $meioPagamento = $dados['meio_pagamento'] ?? null;
-                if (in_array($meioPagamento, ['boleto', 'cartao', 'pix']) && AsaasService::isConfigured()) {
+                // Usar meio padrão das configurações financeiras se não definido
+                if (empty($meioPagamento) || $meioPagamento === 'outro') {
+                    $cfin = $this->configFinanceiroModel->findByUsuarioId((int)$usuarioId);
+                    $meioPadrao = $cfin->meio_pagamento_padrao ?? 'checkout';
+                    if (in_array($meioPadrao, ['boleto', 'cartao', 'pix', 'checkout'])) {
+                        $meioPagamento = $meioPadrao;
+                        $dados['meio_pagamento'] = $meioPagamento;
+                    }
+                }
+                if (in_array($meioPagamento, ['boleto', 'cartao', 'pix', 'checkout']) && AsaasService::isConfigured()) {
                     $this->integrarComAsaas((int)$id, $dados, $cliente);
                 }
 
@@ -295,7 +307,15 @@ class ContasReceberController extends Controller
         try {
             $asaasCliente = $this->buscarOuCriarClienteAsaas($cliente);
             $usuarioId    = $_SESSION['usuario_id'] ?? 0;
-            $meio         = $dados['meio_pagamento'] ?? '';
+            $meio         = $dados['meio_pagamento'] ?? 'checkout';
+
+            // Carregar configurações financeiras do tenant para juros/multa/desconto
+            $cfin = $this->configFinanceiroModel->findByUsuarioId((int)$usuarioId);
+
+            // Se meio não definido, usar padrão das configurações
+            if (empty($meio) || $meio === 'outro') {
+                $meio = $cfin->meio_pagamento_padrao ?? 'checkout';
+            }
 
             $dadosBase = [
                 'customer'          => $asaasCliente['id'],
@@ -306,6 +326,27 @@ class ContasReceberController extends Controller
                 'postalService'     => false,
             ];
 
+            // Adicionar juros, multa e desconto para boleto via ConfiguracaoFinanceira
+            if ($meio === 'boleto') {
+                $fine     = $this->configFinanceiroModel->montarFine($cfin);
+                $interest = $this->configFinanceiroModel->montarInterest($cfin);
+                $discount = $this->configFinanceiroModel->montarDiscount($cfin);
+                if (!empty($fine))     $dadosBase['fine']     = $fine;
+                if (!empty($interest)) $dadosBase['interest'] = $interest;
+                if (!empty($discount)) $dadosBase['discount'] = $discount;
+                if (!empty($cfin->boleto_instrucoes)) {
+                    $dadosBase['bankSlipInstructions'] = $cfin->boleto_instrucoes;
+                }
+            }
+
+            // PIX — expiração do QR Code
+            if ($meio === 'pix') {
+                $expSeg = (int)($cfin->pix_expiracao_segundos ?? 86400);
+                if ($expSeg > 0) {
+                    $dadosBase['pixExpirationDate'] = date('Y-m-d\\TH:i:s', time() + $expSeg);
+                }
+            }
+
             $asaas = $this->getAsaasService();
 
             switch ($meio) {
@@ -315,6 +356,10 @@ class ContasReceberController extends Controller
 
                 case 'boleto':
                     $cobranca = $asaas->criarBoleto($dadosBase);
+                    break;
+
+                case 'cartao':
+                    $cobranca = $asaas->criarCheckout($dadosBase); // Cartão via checkout Asaas
                     break;
 
                 case 'checkout':

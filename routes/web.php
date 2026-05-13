@@ -449,5 +449,7 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/configuracoes/usuarios/toggle-status/{id}", "ConfiguracoesController@usuariosToggleStatus");
         // Configurações NFS-e Nacional
         Router::post("/configuracoes/nfs/salvar", "ConfiguracoesController@nfsSalvar");
+        // Configurações Financeiras
+        Router::post("/configuracoes/financeiro/salvar", "ConfiguracoesController@financeiroSalvar");
     });
 });

@@ -614,6 +614,24 @@
 
           <div class="nav-label">Configurações</div>
           <li
+            class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/configuracoes') !== false) ? 'open active' : ''; ?>">
+            <a href="/configuracoes" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Configurações">
+              <i class="fas fa-cog"></i>
+              <span class="link-text">CONFIGURAÇÕES</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/configuracoes?tab=geral"
+                  class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/configuracoes') !== false && ($_GET['tab'] ?? 'geral') === 'geral') ? 'active' : ''; ?>">GERAL</a>
+              </li>
+              <li><a href="/configuracoes?tab=financeiro"
+                  class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/configuracoes') !== false && ($_GET['tab'] ?? '') === 'financeiro') ? 'active' : ''; ?>">FINANCEIRO</a>
+              </li>
+              <li><a href="/configuracoes?tab=notas-fiscais"
+                  class="nav-link <?php echo (strpos($_SERVER['REQUEST_URI'], '/configuracoes') !== false && ($_GET['tab'] ?? '') === 'notas-fiscais') ? 'active' : ''; ?>">NOTA FISCAL</a>
+              </li>
+            </ul>
+          </li>
+          <li
             class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/integracao') !== false) ? 'open active' : ''; ?>">
             <a href="#" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Integração">
               <i class="fas fa-plug"></i>

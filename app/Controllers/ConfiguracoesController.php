@@ -9,6 +9,7 @@ use App\Core\Audit\AuditLogger;
 use App\Models\User;
 use App\Models\PasswordResetToken;
 use App\Models\ConfigNfs;
+use App\Models\ConfiguracaoFinanceira;
 use App\Models\Integracao;
 use App\Services\MailService;
 use App\Services\CryptoService;
@@ -20,6 +21,7 @@ class ConfiguracoesController extends Controller
     private User $userModel;
     private PasswordResetToken $passwordResetModel;
     private ConfigNfs $configNfsModel;
+    private ConfiguracaoFinanceira $configFinanceiroModel;
     private Integracao $integracaoModel;
     private CnesImportService $cnesImportService;
 
@@ -27,7 +29,8 @@ class ConfiguracoesController extends Controller
     {
         $this->userModel          = new User();
         $this->passwordResetModel = new PasswordResetToken();
-        $this->configNfsModel     = new ConfigNfs();
+        $this->configNfsModel        = new ConfigNfs();
+        $this->configFinanceiroModel = new ConfiguracaoFinanceira();
         $this->integracaoModel    = new Integracao();
         $this->cnesImportService  = new CnesImportService();
     }
@@ -90,7 +93,8 @@ class ConfiguracoesController extends Controller
 
         $activeTab  = $_GET['tab'] ?? 'geral';
         $usuarios   = Auth::can('manage_users') ? $this->userModel->findAll() : [];
-        $configNfs  = $this->configNfsModel->findByUsuarioId((int) Auth::user()->id);
+        $configNfs        = $this->configNfsModel->findByUsuarioId((int) Auth::user()->id);
+        $configFinanceiro = $this->configFinanceiroModel->findByUsuarioId((int) Auth::user()->id);
 
         // Dados CNES para a aba de importação
         $cnesHistorico  = [];
@@ -114,7 +118,8 @@ class ConfiguracoesController extends Controller
             'activeTab'      => $activeTab,
             'usuarios'       => $usuarios,
             'currentUser'    => Auth::user(),
-            'configNfs'      => $configNfs,
+            'configNfs'       => $configNfs,
+            'configFinanceiro'=> $configFinanceiro,
             'cnesHistorico'  => $cnesHistorico,
             'cnesTotalEstab' => $cnesTotalEstab,
             'cnesTotalEquip' => $cnesTotalEquip,
@@ -388,6 +393,82 @@ class ConfiguracoesController extends Controller
             header('Location: /configuracoes?tab=notas-fiscais&success=nfs_salvo');
         } else {
             header('Location: /configuracoes?tab=notas-fiscais&error=save_failed');
+        }
+        exit();
+    }
+
+    // ================================================================
+    // FINANCEIRO — Configurações de cobrança
+    // ================================================================
+
+    /**
+     * POST /configuracoes/financeiro/salvar
+     * Salva as configurações financeiras do tenant (juros, multa, desconto, meio padrão).
+     */
+    public function financeiroSalvar(): void
+    {
+        if (!Auth::can('manage_settings')) {
+            header('Location: /configuracoes?error=unauthorized');
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: /configuracoes?tab=financeiro');
+            exit();
+        }
+
+        $usuarioId = (int) Auth::user()->id;
+
+        $meiosValidos = ['pix', 'boleto', 'checkout', 'cartao', 'dinheiro', 'transferencia', 'outro', ''];
+        $meioPadrao   = in_array($_POST['meio_pagamento_padrao'] ?? '', $meiosValidos)
+                        ? ($_POST['meio_pagamento_padrao'] ?? 'checkout')
+                        : 'checkout';
+
+        // Checkboxes para checkout_meios_habilitados
+        $checkoutMeios = [];
+        if (isset($_POST['checkout_boleto']))  $checkoutMeios[] = 'BOLETO';
+        if (isset($_POST['checkout_pix']))     $checkoutMeios[] = 'PIX';
+        if (isset($_POST['checkout_cartao']))  $checkoutMeios[] = 'CREDIT_CARD';
+        $checkoutMeiosStr = !empty($checkoutMeios) ? implode(',', $checkoutMeios) : 'BOLETO,PIX,CREDIT_CARD';
+
+        $data = [
+            'meio_pagamento_padrao'       => $meioPadrao,
+            'juros_tipo'                  => in_array($_POST['juros_tipo'] ?? '', ['PERCENTAGE','FIXED'])
+                                             ? $_POST['juros_tipo'] : 'PERCENTAGE',
+            'juros_valor'                 => max(0, (float)($_POST['juros_valor'] ?? 1.00)),
+            'juros_dias_carencia'         => max(0, (int)($_POST['juros_dias_carencia'] ?? 0)),
+            'multa_tipo'                  => in_array($_POST['multa_tipo'] ?? '', ['PERCENTAGE','FIXED'])
+                                             ? $_POST['multa_tipo'] : 'PERCENTAGE',
+            'multa_valor'                 => max(0, (float)($_POST['multa_valor'] ?? 2.00)),
+            'multa_dias_carencia'         => max(0, (int)($_POST['multa_dias_carencia'] ?? 0)),
+            'desconto_ativo'              => isset($_POST['desconto_ativo']) ? 1 : 0,
+            'desconto_tipo'               => in_array($_POST['desconto_tipo'] ?? '', ['PERCENTAGE','FIXED'])
+                                             ? $_POST['desconto_tipo'] : 'PERCENTAGE',
+            'desconto_valor'              => max(0, (float)($_POST['desconto_valor'] ?? 0)),
+            'desconto_dias_antes'         => max(0, (int)($_POST['desconto_dias_antes'] ?? 0)),
+            'desconto_limite_data'        => !empty($_POST['desconto_limite_data'])
+                                             ? $_POST['desconto_limite_data'] : null,
+            'boleto_dias_vencimento'      => max(1, (int)($_POST['boleto_dias_vencimento'] ?? 3)),
+            'boleto_instrucoes'           => substr(trim($_POST['boleto_instrucoes'] ?? ''), 0, 500),
+            'boleto_aceite'               => ($_POST['boleto_aceite'] ?? 'N') === 'A' ? 'A' : 'N',
+            'boleto_banco'                => trim($_POST['boleto_banco'] ?? ''),
+            'pix_expiracao_segundos'      => max(300, (int)($_POST['pix_expiracao_segundos'] ?? 86400)),
+            'pix_chave'                   => substr(trim($_POST['pix_chave'] ?? ''), 0, 150),
+            'cartao_max_parcelas'         => min(12, max(1, (int)($_POST['cartao_max_parcelas'] ?? 1))),
+            'cartao_parcela_minima'       => max(0, (float)($_POST['cartao_parcela_minima'] ?? 50.00)),
+            'cartao_juros_parcelamento'   => max(0, (float)($_POST['cartao_juros_parcelamento'] ?? 0)),
+            'checkout_meios_habilitados'  => $checkoutMeiosStr,
+            'notificar_email'             => isset($_POST['notificar_email']) ? 1 : 0,
+            'notificar_sms'               => isset($_POST['notificar_sms']) ? 1 : 0,
+            'notificar_whatsapp'          => isset($_POST['notificar_whatsapp']) ? 1 : 0,
+            'dias_aviso_vencimento'       => max(0, (int)($_POST['dias_aviso_vencimento'] ?? 3)),
+        ];
+
+        $ok = $this->configFinanceiroModel->upsert($usuarioId, $data);
+
+        if ($ok) {
+            header('Location: /configuracoes?tab=financeiro&success=financeiro_salvo');
+        } else {
+            header('Location: /configuracoes?tab=financeiro&error=save_failed');
         }
         exit();
     }

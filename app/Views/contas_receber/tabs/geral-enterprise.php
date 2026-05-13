@@ -5,7 +5,7 @@ $planos   = $planos   ?? [];
 $clientes = $clientes ?? [];
 
 // Meios de pagamento Asaas (geram cobrança automática)
-$meiosAsaas = ['pix', 'boleto', 'checkout'];
+$meiosAsaas = ['pix', 'boleto', 'cartao', 'checkout'];
 $meioPagamentoAtual = $conta->meio_pagamento ?? '';
 ?>
 
@@ -99,7 +99,8 @@ $meioPagamentoAtual = $conta->meio_pagamento ?? '';
                     </optgroup>
                     <optgroup label="— Via Asaas (cobrança automática) —">
                         <option value="pix"      <?php echo $meioPagamentoAtual === 'pix'      ? 'selected' : ''; ?>>PIX (gerado pelo sistema)</option>
-                        <option value="boleto"   <?php echo $meioPagamentoAtual === 'boleto'   ? 'selected' : ''; ?>>Boleto (gerado pelo sistema)</option>
+                        <option value="boleto"   <?php echo $meioPagamentoAtual === 'boleto'   ? 'selected' : ''; ?>>Boleto Bancário (gerado pelo sistema)</option>
+                        <option value="cartao"   <?php echo $meioPagamentoAtual === 'cartao'   ? 'selected' : ''; ?>>Cartão de Crédito (gerado pelo sistema)</option>
                         <option value="checkout" <?php echo $meioPagamentoAtual === 'checkout' ? 'selected' : ''; ?>>Checkout Asaas (cliente escolhe o meio)</option>
                     </optgroup>
                 </select>
@@ -126,6 +127,15 @@ $meioPagamentoAtual = $conta->meio_pagamento ?? '';
                     Ao salvar, o sistema gerará um boleto bancário no Asaas.
                     O link do boleto ficará disponível no portal do cliente para download e pagamento.
                     O status é atualizado automaticamente via webhook após a compensação.
+                </div>
+            </div>
+            <!-- Cartão -->
+            <div id="asaas-info-cartao" class="alert alert-info d-flex align-items-start gap-2" style="display:none!important;">
+                <i class="fas fa-credit-card fa-lg mt-1"></i>
+                <div>
+                    <strong>Cartão de Crédito via Asaas</strong><br>
+                    Ao salvar, o sistema gerará um link de pagamento por cartão de crédito no Asaas.
+                    O cliente poderá pagar via cartão no portal. O status é atualizado automaticamente via webhook.
                 </div>
             </div>
             <!-- Checkout -->
@@ -262,7 +272,7 @@ $meioPagamentoAtual = $conta->meio_pagamento ?? '';
 // Painel de informação dinâmico para meios de pagamento Asaas
 (function () {
     var asaasConfigured = <?php echo \App\Services\AsaasService::isConfigured() ? 'true' : 'false'; ?>;
-    var meiosAsaas      = ['pix', 'boleto', 'checkout'];
+    var meiosAsaas      = ['pix', 'boleto', 'cartao', 'checkout'];
 
     function updateAsaasPanel() {
         var meio  = document.getElementById('meio_pagamento');
@@ -272,7 +282,7 @@ $meioPagamentoAtual = $conta->meio_pagamento ?? '';
         var val = meio.value;
 
         // Esconde todos os sub-painéis
-        ['pix', 'boleto', 'checkout', 'nao-configurado'].forEach(function (k) {
+        ['pix', 'boleto', 'cartao', 'checkout', 'nao-configurado'].forEach(function (k) {
             var el = document.getElementById('asaas-info-' + k);
             if (el) el.style.display = 'none';
         });
