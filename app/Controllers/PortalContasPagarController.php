@@ -66,9 +66,9 @@ class PortalContasPagarController extends Controller
         // 1º tenta buscar a integração pelo tenantId específico do cliente
         $config = $integracaoModel->findByProvider('asaas', $tenantId);
 
-        // 2º fallback: sistema single-tenant — busca qualquer integração Asaas ativa
-        // Isso ocorre quando o cliente foi cadastrado por um usuário diferente do que
-        // configurou a integração Asaas, ou quando o tenantId não tem integração própria.
+        // 2º fallback: sistema single-tenant — busca qualquer integração Asaas ativa.
+        // Ocorre quando o cliente foi cadastrado por um sub-usuário diferente do admin
+        // que configurou a integração Asaas, ou quando tenantId = 0.
         if (!$config || empty($config->api_key)) {
             $rowFallback = $integracaoModel->findByProviderAtivo('asaas');
             if ($rowFallback) {
@@ -76,9 +76,20 @@ class PortalContasPagarController extends Controller
             }
         }
 
-        if (!$config || $config->status !== 'active' || empty($config->api_key)) {
+        if (!$config || empty($config->api_key)) {
             $this->logger->error('[Portal] Integração Asaas não encontrada ou inativa', [
                 'tenant_id' => $tenantId,
+            ]);
+            return null;
+        }
+
+        // Normaliza status: findByProvider() retorna 'active'/'inactive',
+        // mas findByProviderAtivo() pode retornar 'ativo'/'inativo' (valor bruto do banco).
+        $statusNorm = strtolower($config->status ?? 'ativo');
+        if (in_array($statusNorm, ['inactive', 'inativo'], true)) {
+            $this->logger->error('[Portal] Integração Asaas está inativa', [
+                'tenant_id' => $tenantId,
+                'status'    => $config->status,
             ]);
             return null;
         }

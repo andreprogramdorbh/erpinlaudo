@@ -509,18 +509,23 @@ class IntegracaoController extends Controller
                 throw new \Exception("Configure a API Key antes de testar.");
             }
 
+            // URL correta de produção: api.asaas.com (não www.asaas.com)
             $baseUrl = $config->environment === 'production'
-                ? 'https://www.asaas.com/api/v3'
+                ? 'https://api.asaas.com/v3'
                 : 'https://sandbox.asaas.com/api/v3';
 
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $baseUrl . '/accounts/profile');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            // User-Agent é obrigatório pela API do Asaas (HTTP 400 sem ele)
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'access_token: ' . $config->api_key,
-                'Content-Type: application/json'
+                'Content-Type: application/json',
+                'User-Agent: ERP-InLaudo/1.0 (erp.inlaudo.com.br)',
             ]);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'ERP-InLaudo/1.0 (erp.inlaudo.com.br)');
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
 
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

@@ -104,7 +104,14 @@ class PortalFaturamentoController extends Controller
             }
         }
 
-        if (!$config || $config->status !== 'active' || empty($config->api_key)) {
+        if (!$config || empty($config->api_key)) {
+            return null;
+        }
+
+        // Normaliza status: findByProvider() retorna 'active'/'inactive',
+        // mas findByProviderAtivo() pode retornar 'ativo'/'inativo' (valor bruto do banco).
+        $statusNorm = strtolower($config->status ?? 'ativo');
+        if (in_array($statusNorm, ['inactive', 'inativo'], true)) {
             return null;
         }
 
