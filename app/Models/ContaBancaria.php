@@ -130,6 +130,7 @@ class ContaBancaria extends Model
             'moeda', 'cor', 'icone', 'ativa', 'observacoes',
             'openfinance_item_id', 'openfinance_account_id', 'openfinance_provider',
             'openfinance_last_sync', 'openfinance_status', 'openfinance_config',
+            'openfinance_connector',
         ];
 
         $sets   = [];

@@ -777,6 +777,283 @@ class ContasBancariasController extends Controller
     }
 
     // ================================================================
+    // OPEN FINANCE — Métodos com nomes corretos das rotas
+    // ================================================================
+
+    /**
+     * GET /financeiro/contas/{id}/openfinance
+     * Exibe a página de gerenciamento do Open Finance para a conta.
+     */
+    public function openfinance(int $id): void
+    {
+        try {
+            $usuarioId = Auth::user()->id;
+            $conta     = $this->model->findById($id);
+            if (!$conta || (int) $conta->usuario_id !== $usuarioId) {
+                header('Location: /financeiro/contas?error=nao_encontrada');
+                exit();
+            }
+
+            $integracaoModel  = new Integracao();
+            $config           = $integracaoModel->findByProvider('pluggy', $usuarioId)
+                             ?: $integracaoModel->findByProviderAtivo('pluggy');
+            $openfinanceAtivo = ($config && !empty($config->api_key) && !empty($config->api_secret));
+
+            View::render('contas_bancarias/openfinance', [
+                '_layout'          => 'erp',
+                'title'            => 'Open Finance — ' . ($conta->nome ?? ''),
+                'breadcrumb'       => [
+                    'Financeiro'   => '/financeiro/contas',
+                    'Contas'       => '/financeiro/contas',
+                    0              => 'Open Finance',
+                ],
+                'conta'            => $conta,
+                'openfinanceAtivo' => $openfinanceAtivo,
+            ]);
+        } catch (\Exception $e) {
+            $this->logger->error('[OpenFinance] Erro ao abrir página: ' . $e->getMessage());
+            header('Location: /financeiro/contas?error=1');
+            exit();
+        }
+    }
+
+    /**
+     * POST /financeiro/contas/{id}/openfinance/connect-token
+     * Retorna um connect token Pluggy para o widget frontend (AJAX).
+     */
+    public function connectToken(int $id): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $conta     = $this->model->findById($id);
+            if (!$conta || (int) $conta->usuario_id !== $usuarioId) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Acesso negado']);
+                exit();
+            }
+
+            $integracaoModel = new Integracao();
+            $config = $integracaoModel->findByProvider('pluggy', $usuarioId)
+                   ?: $integracaoModel->findByProviderAtivo('pluggy');
+
+            if (!$config || empty($config->api_key) || empty($config->api_secret)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Integração Pluggy não configurada. Acesse Configurações → Integrações → Pluggy.']);
+                exit();
+            }
+
+            $service = new OpenFinanceService($config->api_key, $config->api_secret);
+            $itemId  = !empty($conta->openfinance_item_id) ? $conta->openfinance_item_id : null;
+            $token   = $service->gerarConnectToken($itemId);
+
+            if (empty($token)) {
+                http_response_code(500);
+                echo json_encode(['error' => 'Não foi possível gerar o connect token. Verifique as credenciais Pluggy.']);
+                exit();
+            }
+
+            echo json_encode(['connect_token' => $token]);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('[OpenFinance] Erro ao gerar connect token: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+            exit();
+        }
+    }
+
+    /**
+     * POST /financeiro/contas/{id}/openfinance/salvar
+     * Salva o item_id retornado pelo widget Pluggy Connect após conexão bem-sucedida.
+     */
+    public function salvarConexao(int $id): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $conta     = $this->model->findById($id);
+            if (!$conta || (int) $conta->usuario_id !== $usuarioId) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Acesso negado']);
+                exit();
+            }
+
+            $input  = json_decode(file_get_contents('php://input'), true) ?? [];
+            $itemId = trim($input['item_id'] ?? '');
+
+            if (empty($itemId)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'item_id é obrigatório']);
+                exit();
+            }
+
+            $integracaoModel = new Integracao();
+            $config = $integracaoModel->findByProvider('pluggy', $usuarioId)
+                   ?: $integracaoModel->findByProviderAtivo('pluggy');
+
+            $accountId = $input['account_id'] ?? '';
+            $connector = '';
+
+            if ($config && !empty($config->api_key)) {
+                try {
+                    $service   = new OpenFinanceService($config->api_key, $config->api_secret ?? '');
+                    $item      = $service->getItem($itemId);
+                    $connector = $item['connector']['name'] ?? '';
+                    if (empty($accountId)) {
+                        $contas = $service->listarContas($itemId);
+                        if (!empty($contas[0]['id'])) {
+                            $accountId = $contas[0]['id'];
+                        }
+                    }
+                } catch (\Exception $e) {
+                    $this->logger->error('[OpenFinance] Erro ao buscar item/contas: ' . $e->getMessage());
+                }
+            }
+
+            $this->model->update($id, [
+                'openfinance_item_id'    => $itemId,
+                'openfinance_account_id' => $accountId,
+                'openfinance_provider'   => 'pluggy',
+                'openfinance_status'     => 'connected',
+                'openfinance_connector'  => $connector,
+            ]);
+
+            AuditLogger::log('openfinance_conectado', [
+                'conta_id'   => $id,
+                'item_id'    => $itemId,
+                'account_id' => $accountId,
+                'connector'  => $connector,
+            ]);
+
+            echo json_encode(['success' => true, 'account_id' => $accountId]);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('[OpenFinance] Erro ao salvar conexão: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+            exit();
+        }
+    }
+
+    /**
+     * POST /financeiro/contas/{id}/openfinance/sincronizar
+     * Importa as transações da conta via Pluggy (AJAX).
+     */
+    public function sincronizar(int $id): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $usuarioId = Auth::user()->id;
+            $conta     = $this->model->findById($id);
+            if (!$conta || (int) $conta->usuario_id !== $usuarioId) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Acesso negado']);
+                exit();
+            }
+
+            if (empty($conta->openfinance_account_id)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Conta não vinculada ao Open Finance. Conecte primeiro.']);
+                exit();
+            }
+
+            $integracaoModel = new Integracao();
+            $config = $integracaoModel->findByProvider('pluggy', $usuarioId)
+                   ?: $integracaoModel->findByProviderAtivo('pluggy');
+
+            if (!$config || empty($config->api_key)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Integração Pluggy não configurada.']);
+                exit();
+            }
+
+            $service   = new OpenFinanceService($config->api_key, $config->api_secret ?? '');
+            $resultado = $service->sincronizarTransacoes(
+                $conta->openfinance_item_id,
+                $conta->openfinance_account_id,
+                $id,
+                $usuarioId,
+                $this->movModel
+            );
+
+            $this->model->update($id, [
+                'openfinance_last_sync' => date('Y-m-d H:i:s'),
+                'openfinance_status'    => 'connected',
+            ]);
+
+            $this->recalcularSaldo($id);
+
+            AuditLogger::log('openfinance_sincronizado', [
+                'conta_id'   => $id,
+                'importadas' => $resultado['importadas'],
+                'duplicadas' => $resultado['duplicadas'],
+            ]);
+
+            echo json_encode([
+                'success'    => true,
+                'importadas' => $resultado['importadas'],
+                'duplicadas' => $resultado['duplicadas'],
+                'erros'      => $resultado['erros'] ?? 0,
+                'msg'        => "{$resultado['importadas']} transações importadas, {$resultado['duplicadas']} duplicadas ignoradas.",
+            ]);
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('[OpenFinance] Erro ao sincronizar: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+            exit();
+        }
+    }
+
+    /**
+     * GET /financeiro/contas/{id}/openfinance/desconectar
+     * Desconecta a conta do Open Finance.
+     */
+    public function desconectar(int $id): void
+    {
+        try {
+            $usuarioId = Auth::user()->id;
+            $conta     = $this->model->findById($id);
+            if (!$conta || (int) $conta->usuario_id !== $usuarioId) {
+                header('Location: /financeiro/contas?error=nao_encontrada');
+                exit();
+            }
+
+            if (!empty($conta->openfinance_item_id)) {
+                $integracaoModel = new Integracao();
+                $config = $integracaoModel->findByProvider('pluggy', $usuarioId)
+                       ?: $integracaoModel->findByProviderAtivo('pluggy');
+                if ($config && !empty($config->api_key)) {
+                    try {
+                        $service = new OpenFinanceService($config->api_key, $config->api_secret ?? '');
+                        $service->desconectarItem($conta->openfinance_item_id);
+                    } catch (\Exception $e) {
+                        $this->logger->error('[OpenFinance] Erro ao remover item Pluggy: ' . $e->getMessage());
+                    }
+                }
+            }
+
+            $this->model->update($id, [
+                'openfinance_item_id'    => null,
+                'openfinance_account_id' => null,
+                'openfinance_provider'   => null,
+                'openfinance_status'     => 'disconnected',
+                'openfinance_connector'  => null,
+            ]);
+
+            AuditLogger::log('openfinance_desconectado', ['conta_id' => $id]);
+
+            header('Location: /financeiro/contas/' . $id . '/openfinance?success=desconectado');
+            exit();
+        } catch (\Exception $e) {
+            $this->logger->error('[OpenFinance] Erro ao desconectar: ' . $e->getMessage());
+            header('Location: /financeiro/contas/' . $id . '/openfinance?error=desconectar');
+            exit();
+        }
+    }
+
+    // ================================================================
     // HELPER PRIVADO: Recalcular saldo atual da conta
     // ================================================================
 
