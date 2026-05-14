@@ -8,16 +8,42 @@ class ContaBancaria extends Model
 {
     protected string $table = 'contas_bancarias';
 
+    public function __construct()
+    {
+        parent::__construct();
+        $this->garantirColunas();
+    }
+
+    /**
+     * Garante que colunas adicionadas após a migration inicial existam.
+     * Compatível com MySQL 5.7 (não suporta ADD COLUMN IF NOT EXISTS).
+     */
+    private function garantirColunas(): void
+    {
+        try {
+            $colunas = $this->pdo->query("SHOW COLUMNS FROM `{$this->table}`")->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!in_array('openfinance_connector', $colunas, true)) {
+                $this->pdo->exec("
+                    ALTER TABLE `{$this->table}`
+                    ADD COLUMN `openfinance_connector` VARCHAR(150) DEFAULT NULL
+                    COMMENT 'Nome do conector/institui\u00e7\u00e3o no Pluggy'
+                    AFTER `openfinance_config`
+                ");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ContaBancaria] Erro ao garantir colunas: ' . $e->getMessage());
+        }
+    }
+
     // -------------------------------------------------------
     // Leitura
-    // -------------------------------------------------------
+    // --------------------------------------------------------
 
     public function findById(int $id): object|false
     {
-        $sql = "SELECT cb.*, pc.codigo AS plano_codigo, pc.nome AS plano_nome
-                FROM {$this->table} cb
-                LEFT JOIN plano_contas pc ON pc.id = cb.plano_conta_id
-                WHERE cb.id = ?";
+        // contas_bancarias não possui plano_conta_id — JOIN removido
+        $sql  = "SELECT * FROM {$this->table} WHERE id = ? LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([$id]);
         return $stmt->fetch(PDO::FETCH_OBJ);
