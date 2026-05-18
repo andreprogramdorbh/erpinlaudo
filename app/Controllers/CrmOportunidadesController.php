@@ -12,6 +12,7 @@ use App\Models\CrmLead;
 use App\Models\CrmInteracao;
 use App\Models\CrmOportunidadeModalidade;
 use App\Models\CrmAnexo;
+use App\Models\CrmTransferencia;
 use App\Models\Cliente;
 use App\Models\User;
 
@@ -21,15 +22,19 @@ class CrmOportunidadesController extends Controller
     private CrmInteracao $interacaoModel;
     private CrmOportunidadeModalidade $modModel;
     private CrmAnexo $anexoModel;
+    private CrmTransferencia $transferenciaModel;
+    private User $userModel;
     private Logger $logger;
 
     public function __construct()
     {
-        $this->opModel        = new CrmOportunidade();
-        $this->interacaoModel = new CrmInteracao();
-        $this->modModel       = new CrmOportunidadeModalidade();
-        $this->anexoModel     = new CrmAnexo();
-        $this->logger         = new Logger();
+        $this->opModel              = new CrmOportunidade();
+        $this->interacaoModel       = new CrmInteracao();
+        $this->modModel             = new CrmOportunidadeModalidade();
+        $this->anexoModel           = new CrmAnexo();
+        $this->transferenciaModel   = new CrmTransferencia();
+        $this->userModel            = new User();
+        $this->logger               = new Logger();
     }
 
     private function usuarioId(): int
@@ -169,19 +174,18 @@ class CrmOportunidadesController extends Controller
 
         $interacoes = $this->interacaoModel->findByRelated('oportunidade', $id);
         $anexos     = $this->anexoModel->findByRelated('oportunidade', $id);
-
         // Herda interações do lead de origem
         $interacoesLead = [];
         if ($op->lead_id) {
             $interacoesLead = $this->interacaoModel->findByRelated('lead', (int) $op->lead_id);
         }
-
         $leads             = (new CrmLead())->findByUsuarioId($uid, []);
         $linhasModalidades = $this->modModel->findByOportunidadeId($id);
-
         // Decodifica modalidades de interesse salvas (chips)
         $modalidadesAtivas = json_decode($op->modalidades_interesse ?? '[]', true) ?: [];
-
+        // Transferências e lista de usuários
+        $transferencias = $this->transferenciaModel->findByRelated('oportunidade', $id);
+        $todosUsuarios  = $this->userModel->findAll();
         View::render('crm/oportunidades/form', [
             'title'              => 'Oportunidade — ' . htmlspecialchars($op->titulo_oportunidade),
             '_layout'            => 'erp',
@@ -191,6 +195,9 @@ class CrmOportunidadesController extends Controller
             'interacoes'         => $interacoes,
             'interacoesLead'     => $interacoesLead,
             'anexos'             => $anexos,
+            'transferencias'     => $transferencias,
+            'todosUsuarios'      => $todosUsuarios,
+            'motivosTransferencia' => CrmTransferencia::MOTIVOS,
             'leads'              => $leads,
             'etapas'             => CrmOportunidade::ETAPAS,
             'statusList'         => CrmOportunidade::STATUS,
@@ -724,6 +731,110 @@ class CrmOportunidadesController extends Controller
 
         header('Content-Type: application/json');
         echo json_encode(['success' => true]);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/oportunidades/transferir/{id}
+    // ---------------------------------------------------------------
+    public function transferir(int $id): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $op      = $this->opModel->findById($id);
+
+        // Apenas o dono ou admin pode transferir
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
+            $this->jsonError('Oportunidade não encontrada ou sem permissão.');
+            return;
+        }
+
+        $paraUsuarioId = (int) ($_POST['para_usuario_id'] ?? 0);
+        $motivo        = trim($_POST['motivo'] ?? '');
+        $observacao    = trim($_POST['observacao'] ?? '');
+
+        if (!$paraUsuarioId) {
+            $this->jsonError('Selecione o usuário de destino.');
+            return;
+        }
+        if ((int) $op->usuario_id === $paraUsuarioId) {
+            $this->jsonError('O usuário de destino é o mesmo dono atual.');
+            return;
+        }
+        if (!array_key_exists($motivo, CrmTransferencia::MOTIVOS)) {
+            $this->jsonError('Motivo inválido.');
+            return;
+        }
+
+        $usuarioDestino = $this->userModel->findById($paraUsuarioId);
+        if (!$usuarioDestino) {
+            $this->jsonError('Usuário de destino não encontrado.');
+            return;
+        }
+
+        $deUsuarioId = (int) $op->usuario_id;
+
+        // 1. Registra na tabela de transferências
+        $transId = $this->transferenciaModel->create([
+            'usuario_id'      => $uid,
+            'related_id'      => $id,
+            'related_type'    => 'oportunidade',
+            'de_usuario_id'   => $deUsuarioId,
+            'para_usuario_id' => $paraUsuarioId,
+            'motivo'          => $motivo,
+            'observacao'      => $observacao ?: null,
+        ]);
+
+        if (!$transId) {
+            $this->jsonError('Falha ao registrar transferência.');
+            return;
+        }
+
+        // 2. Atualiza o dono da oportunidade
+        $this->opModel->update($id, ['usuario_id' => $paraUsuarioId]);
+
+        // 3. Registra interação automática na timeline
+        $motivoLabel = CrmTransferencia::MOTIVOS[$motivo];
+        $deNome      = $this->userModel->findById($deUsuarioId)->name ?? 'Desconhecido';
+        $paraNome    = $usuarioDestino->name;
+        $resumo      = "Transferência de Oportunidade\n"
+                     . "De: {$deNome}\n"
+                     . "Para: {$paraNome}\n"
+                     . "Motivo: {$motivoLabel}"
+                     . ($observacao ? "\nObservação: {$observacao}" : '');
+
+        $this->interacaoModel->create([
+            'usuario_id'     => $uid,
+            'related_id'     => $id,
+            'related_type'   => 'oportunidade',
+            'data_interacao' => date('Y-m-d H:i:s'),
+            'tipo_interacao' => 'transferencia',
+            'resumo'         => $resumo,
+            'data_retorno'   => null,
+        ]);
+
+        // 4. Audit log
+        AuditLogger::log('crm_oportunidade_transferida', [
+            'op_id'           => $id,
+            'executor_id'     => $uid,
+            'de_usuario_id'   => $deUsuarioId,
+            'para_usuario_id' => $paraUsuarioId,
+            'motivo'          => $motivo,
+        ]);
+        $this->logger->info('[CRM] Oportunidade transferida', [
+            'op_id'  => $id,
+            'de'     => $deUsuarioId,
+            'para'   => $paraUsuarioId,
+            'motivo' => $motivo,
+        ]);
+
+        echo json_encode([
+            'success'   => true,
+            'para_nome' => $paraNome,
+            'motivo'    => $motivoLabel,
+        ]);
         exit();
     }
 

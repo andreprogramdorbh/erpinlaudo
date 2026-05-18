@@ -10,6 +10,8 @@ use App\Models\CrmLead;
 use App\Models\CrmInteracao;
 use App\Models\CrmOportunidade;
 use App\Models\CrmAnexo;
+use App\Models\CrmTransferencia;
+use App\Models\User;
 use App\Services\CnpjService;
 
 class CrmLeadsController extends Controller
@@ -17,14 +19,18 @@ class CrmLeadsController extends Controller
     private CrmLead $leadModel;
     private CrmInteracao $interacaoModel;
     private CrmAnexo $anexoModel;
+    private CrmTransferencia $transferenciaModel;
+    private User $userModel;
     private Logger $logger;
 
     public function __construct()
     {
-        $this->leadModel      = new CrmLead();
-        $this->interacaoModel = new CrmInteracao();
-        $this->anexoModel     = new CrmAnexo();
-        $this->logger         = new Logger();
+        $this->leadModel          = new CrmLead();
+        $this->interacaoModel     = new CrmInteracao();
+        $this->anexoModel         = new CrmAnexo();
+        $this->transferenciaModel = new CrmTransferencia();
+        $this->userModel          = new User();
+        $this->logger             = new Logger();
     }
 
     private function usuarioId(): int
@@ -150,17 +156,21 @@ class CrmLeadsController extends Controller
             exit();
         }
 
-        $interacoes = $this->interacaoModel->findByRelated('lead', $id);
-        $anexos     = $this->anexoModel->findByRelated('lead', $id);
-
+        $interacoes      = $this->interacaoModel->findByRelated('lead', $id);
+        $anexos          = $this->anexoModel->findByRelated('lead', $id);
+        $transferencias  = $this->transferenciaModel->findByRelated('lead', $id);
+        $todosUsuarios   = $this->userModel->findAll();
         View::render('crm/leads/form', [
             'title'      => 'Editar Lead — ' . htmlspecialchars($lead->nome_lead),
             '_layout'    => 'erp',
             'breadcrumb' => ['CRM' => '/crm/funil', 'Leads' => '/crm/leads', 'Editar Lead'],
             'lead'       => $lead,
             'isEdit'     => true,
-            'interacoes' => $interacoes,
-            'anexos'     => $anexos,
+            'interacoes'     => $interacoes,
+            'anexos'         => $anexos,
+            'transferencias' => $transferencias,
+            'todosUsuarios'  => $todosUsuarios,
+            'motivosTransferencia' => CrmTransferencia::MOTIVOS,
             'statusList' => CrmLead::STATUS,
             'segmentos'  => CrmLead::SEGMENTOS,
             'origens'    => CrmLead::ORIGENS,
@@ -570,6 +580,111 @@ class CrmLeadsController extends Controller
 
         header('Content-Type: application/json');
         echo json_encode(['success' => true]);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /crm/leads/transferir/{id}
+    // ---------------------------------------------------------------
+    public function transferir(int $id): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $uid  = $this->usuarioId();
+        $lead = $this->leadModel->findById($id);
+
+        // Apenas o dono ou admin pode transferir
+        $isAdmin = $this->isAdmin();
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
+            $this->jsonError('Lead não encontrado ou sem permissão.');
+            return;
+        }
+
+        $paraUsuarioId = (int) ($_POST['para_usuario_id'] ?? 0);
+        $motivo        = trim($_POST['motivo'] ?? '');
+        $observacao    = trim($_POST['observacao'] ?? '');
+
+        // Validações
+        if (!$paraUsuarioId) {
+            $this->jsonError('Selecione o usuário de destino.');
+            return;
+        }
+        if ((int) $lead->usuario_id === $paraUsuarioId) {
+            $this->jsonError('O usuário de destino é o mesmo dono atual.');
+            return;
+        }
+        if (!array_key_exists($motivo, CrmTransferencia::MOTIVOS)) {
+            $this->jsonError('Motivo inválido.');
+            return;
+        }
+
+        $usuarioDestino = $this->userModel->findById($paraUsuarioId);
+        if (!$usuarioDestino) {
+            $this->jsonError('Usuário de destino não encontrado.');
+            return;
+        }
+
+        $deUsuarioId = (int) $lead->usuario_id;
+
+        // 1. Registra na tabela de transferências
+        $transId = $this->transferenciaModel->create([
+            'usuario_id'      => $uid,
+            'related_id'      => $id,
+            'related_type'    => 'lead',
+            'de_usuario_id'   => $deUsuarioId,
+            'para_usuario_id' => $paraUsuarioId,
+            'motivo'          => $motivo,
+            'observacao'      => $observacao ?: null,
+        ]);
+
+        if (!$transId) {
+            $this->jsonError('Falha ao registrar transferência.');
+            return;
+        }
+
+        // 2. Atualiza o dono do lead
+        $this->leadModel->update($id, ['usuario_id' => $paraUsuarioId]);
+
+        // 3. Registra interação automática na timeline
+        $motivoLabel  = CrmTransferencia::MOTIVOS[$motivo];
+        $deNome       = $this->userModel->findById($deUsuarioId)->name ?? 'Desconhecido';
+        $paraNome     = $usuarioDestino->name;
+        $resumo       = "Transferência de Lead\n"
+                      . "De: {$deNome}\n"
+                      . "Para: {$paraNome}\n"
+                      . "Motivo: {$motivoLabel}"
+                      . ($observacao ? "\nObservação: {$observacao}" : '');
+
+        $this->interacaoModel->create([
+            'usuario_id'     => $uid,
+            'related_id'     => $id,
+            'related_type'   => 'lead',
+            'data_interacao' => date('Y-m-d H:i:s'),
+            'tipo_interacao' => 'transferencia',
+            'resumo'         => $resumo,
+            'data_retorno'   => null,
+        ]);
+
+        // 4. Audit log
+        AuditLogger::log('crm_lead_transferido', [
+            'lead_id'         => $id,
+            'executor_id'     => $uid,
+            'de_usuario_id'   => $deUsuarioId,
+            'para_usuario_id' => $paraUsuarioId,
+            'motivo'          => $motivo,
+        ]);
+        $this->logger->info('[CRM] Lead transferido', [
+            'lead_id' => $id,
+            'de'      => $deUsuarioId,
+            'para'    => $paraUsuarioId,
+            'motivo'  => $motivo,
+        ]);
+
+        echo json_encode([
+            'success'   => true,
+            'para_nome' => $paraNome,
+            'motivo'    => $motivoLabel,
+        ]);
         exit();
     }
 
