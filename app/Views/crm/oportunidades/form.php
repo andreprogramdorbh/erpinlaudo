@@ -79,6 +79,18 @@ $tiposIcones = [
 .mod-linha:last-child{border-radius:0 0 .5rem .5rem}
 .mod-linha-inner{display:grid;grid-template-columns:1fr 1fr 120px 1fr 40px;gap:.5rem;padding:.5rem .75rem;align-items:center}
 .mod-linha-inner .form-select,.mod-linha-inner .form-control{font-size:.8125rem}
+/* Seção Transferência */
+.transf-section{background:#fffbeb;border:1px solid #fde68a;border-radius:.625rem;padding:1.5rem;margin-top:1.5rem}
+.transf-section-title{font-size:.9375rem;font-weight:600;color:#92400e;margin-bottom:1.25rem;display:flex;align-items:center;gap:.5rem}
+.transf-responsavel-atual{background:#fff;border:1px solid #fde68a;border-radius:.5rem;padding:.75rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:.75rem}
+.transf-responsavel-atual .label{font-size:.75rem;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:.15rem}
+.transf-historico{margin-top:1.25rem;border-top:1px solid #fde68a;padding-top:1rem}
+.transf-historico-title{font-size:.8rem;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem}
+.transf-item{background:#fff;border:1px solid #fde68a;border-radius:.5rem;padding:.75rem 1rem;margin-bottom:.5rem;font-size:.8125rem}
+.transf-item-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.3rem}
+.transf-arrow{color:#d97706;font-weight:700}
+.transf-meta{font-size:.75rem;color:#92400e;opacity:.8}
+.transf-obs{font-size:.75rem;color:#78350f;font-style:italic;margin-top:.25rem}
 </style>
 
 <div class="crm-form-wrap">
@@ -317,6 +329,92 @@ $tiposIcones = [
       </section>
 
     </form>
+
+    <?php if ($isEdit): ?>
+    <!-- ============================================================
+         Seção: Transferência de Oportunidade (dentro da aba Dados)
+    ============================================================ -->
+    <div class="transf-section">
+      <div class="transf-section-title">
+        <i class="fas fa-exchange-alt text-warning"></i>
+        Transferência de Oportunidade
+      </div>
+
+      <div id="transf-op-alert" class="alert d-none mb-3"></div>
+
+      <!-- Responsável atual -->
+      <div class="transf-responsavel-atual">
+        <i class="fas fa-user-circle fa-2x text-warning"></i>
+        <div>
+          <span class="label">Responsável atual</span>
+          <strong><?php echo htmlspecialchars($donomeAtual ?? ($_SESSION['user_name'] ?? 'Usuário')); ?></strong>
+        </div>
+      </div>
+
+      <!-- Formulário de transferência -->
+      <div class="form-grid form-grid-3">
+        <div class="form-group">
+          <label class="form-label fw-semibold">Transferir para <span class="text-danger">*</span></label>
+          <select class="form-select" id="transf-op-para-usuario">
+            <option value="">Selecione o usuário...</option>
+            <?php foreach ($todosUsuarios ?? [] as $u): ?>
+            <?php if ((int)($u['id'] ?? 0) === (int)($op->usuario_id ?? 0)) continue; ?>
+            <option value="<?php echo (int)($u['id'] ?? 0); ?>">
+              <?php echo htmlspecialchars($u['name'] ?? ''); ?>
+              <?php if (!empty($u['role'])): ?>(<?php echo htmlspecialchars($u['role']); ?>)<?php endif; ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label fw-semibold">Motivo <span class="text-danger">*</span></label>
+          <select class="form-select" id="transf-op-motivo">
+            <option value="">Selecione o motivo...</option>
+            <?php foreach ($motivosTransferencia ?? [] as $key => $label): ?>
+            <option value="<?php echo $key; ?>"><?php echo htmlspecialchars($label); ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="form-group d-flex align-items-end">
+          <button type="button" class="btn btn-warning w-100" onclick="confirmarTransferenciaOp()">
+            <i class="fas fa-exchange-alt me-1"></i> Confirmar Transferência
+          </button>
+        </div>
+      </div>
+      <div class="form-group mt-2">
+        <label class="form-label fw-semibold">Observação <small class="text-muted fw-normal">(opcional)</small></label>
+        <textarea class="form-control" id="transf-op-observacao" rows="2"
+                  placeholder="Detalhes adicionais sobre a transferência..."></textarea>
+      </div>
+
+      <!-- Histórico de transferências -->
+      <?php if (!empty($transferencias)): ?>
+      <div class="transf-historico">
+        <div class="transf-historico-title"><i class="fas fa-history me-1"></i>Histórico de Transferências</div>
+        <?php foreach ($transferencias as $t): ?>
+        <div class="transf-item">
+          <div class="transf-item-header">
+            <span>
+              <i class="fas fa-user me-1 text-muted"></i><?php echo htmlspecialchars($t->de_nome ?? 'Desconhecido'); ?>
+              <span class="transf-arrow mx-2">&rarr;</span>
+              <i class="fas fa-user me-1 text-warning"></i><strong><?php echo htmlspecialchars($t->para_nome ?? 'Desconhecido'); ?></strong>
+            </span>
+            <span class="transf-meta"><?php echo date('d/m/Y H:i', strtotime($t->created_at)); ?></span>
+          </div>
+          <div class="transf-meta">
+            <i class="fas fa-tag me-1"></i>Motivo: <strong><?php echo htmlspecialchars(($motivosTransferencia ?? [])[$t->motivo] ?? $t->motivo); ?></strong>
+            &bull; Por: <?php echo htmlspecialchars($t->executor_nome ?? ''); ?>
+          </div>
+          <?php if (!empty($t->observacao)): ?>
+          <div class="transf-obs"><i class="fas fa-comment me-1"></i><?php echo htmlspecialchars($t->observacao); ?></div>
+          <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
   </div>
 
   <!-- Aba: Interações -->
@@ -581,12 +679,6 @@ $tiposIcones = [
   <div class="crm-footer">
     <div></div>
     <div class="d-flex gap-2">
-      <?php if ($isEdit): ?>
-      <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#modalTransferenciaOp"
-              title="Transferir esta oportunidade para outro usuário">
-        <i class="fas fa-exchange-alt me-1"></i> Transferir
-      </button>
-      <?php endif; ?>
       <a href="/crm/oportunidades" class="btn btn-light">Cancelar</a>
       <button type="submit" form="opForm" class="btn btn-success">
         <i class="fas fa-save me-1"></i> <?php echo $isEdit ? 'Salvar Alterações' : 'Criar Oportunidade'; ?>
@@ -595,97 +687,6 @@ $tiposIcones = [
   </div>
 
 </div>
-
-<?php if ($isEdit): ?>
-<!-- ============================================================
-     Modal de Transferência de Oportunidade
-============================================================ -->
-<div class="modal fade" id="modalTransferenciaOp" tabindex="-1" aria-labelledby="modalTransferenciaOpLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header bg-warning bg-opacity-10 border-bottom">
-        <h5 class="modal-title" id="modalTransferenciaOpLabel">
-          <i class="fas fa-exchange-alt me-2 text-warning"></i>Transferir Oportunidade
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="transf-op-alert" class="alert d-none mb-3"></div>
-        <!-- Dono atual -->
-        <div class="mb-3 p-3 bg-light rounded">
-          <small class="text-muted d-block mb-1">Responsável atual</small>
-          <strong><i class="fas fa-user me-1"></i><?php echo htmlspecialchars($_SESSION['user_name'] ?? 'Usuário'); ?></strong>
-        </div>
-        <!-- Usuário destino -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Transferir para <span class="text-danger">*</span></label>
-          <select class="form-select" id="transf-op-para-usuario">
-            <option value="">Selecione o usuário...</option>
-            <?php foreach ($todosUsuarios ?? [] as $u): ?>
-            <?php if ((int)($u['id'] ?? 0) === (int)($op->usuario_id ?? 0)) continue; ?>
-            <option value="<?php echo (int)($u['id'] ?? 0); ?>">
-              <?php echo htmlspecialchars($u['name'] ?? ''); ?>
-              <?php if (!empty($u['role'])): ?>(<?php echo htmlspecialchars($u['role']); ?>)<?php endif; ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <!-- Motivo -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Motivo da Transferência <span class="text-danger">*</span></label>
-          <select class="form-select" id="transf-op-motivo">
-            <option value="">Selecione o motivo...</option>
-            <?php foreach ($motivosTransferencia ?? [] as $key => $label): ?>
-            <option value="<?php echo $key; ?>"><?php echo htmlspecialchars($label); ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <!-- Observação -->
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Observação <small class="text-muted">(opcional)</small></label>
-          <textarea class="form-control" id="transf-op-observacao" rows="3"
-                    placeholder="Descreva detalhes adicionais sobre a transferência..."></textarea>
-        </div>
-        <!-- Histórico -->
-        <?php if (!empty($transferencias)): ?>
-        <div class="mt-4">
-          <h6 class="text-muted mb-2"><i class="fas fa-history me-1"></i>Histórico de Transferências</h6>
-          <div class="list-group list-group-flush" style="max-height:180px;overflow-y:auto">
-            <?php foreach ($transferencias as $t): ?>
-            <div class="list-group-item px-0 py-2">
-              <div class="d-flex justify-content-between align-items-start">
-                <div>
-                  <small class="fw-semibold">
-                    <i class="fas fa-arrow-right text-warning me-1"></i>
-                    <?php echo htmlspecialchars($t->de_nome ?? 'Desconhecido'); ?> &rarr;
-                    <?php echo htmlspecialchars($t->para_nome ?? 'Desconhecido'); ?>
-                  </small><br>
-                  <small class="text-muted">
-                    Motivo: <?php echo htmlspecialchars(($motivosTransferencia ?? [])[$t->motivo] ?? $t->motivo); ?>
-                    &bull; Por: <?php echo htmlspecialchars($t->executor_nome ?? ''); ?>
-                  </small>
-                  <?php if (!empty($t->observacao)): ?>
-                  <br><small class="text-muted fst-italic"><?php echo htmlspecialchars($t->observacao); ?></small>
-                  <?php endif; ?>
-                </div>
-                <small class="text-muted text-nowrap ms-2"><?php echo date('d/m/Y H:i', strtotime($t->created_at)); ?></small>
-              </div>
-            </div>
-            <?php endforeach; ?>
-          </div>
-        </div>
-        <?php endif; ?>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-warning" id="btn-confirmar-transf-op" onclick="confirmarTransferenciaOp()">
-          <i class="fas fa-exchange-alt me-1"></i> Confirmar Transferência
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-<?php endif; ?>
 
 <script>
 function switchTab(tab) {
@@ -864,38 +865,36 @@ function confirmarTransferenciaOp() {
     return;
   }
 
-  const btn = document.getElementById('btn-confirmar-transf-op');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Transferindo...';
+  // Usa o botão inline da seção (event.target ou querySelector)
+  const btn = document.querySelector('.transf-section .btn-warning');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Transferindo...'; }
 
-  const form = new FormData();
-  form.append('para_usuario_id', paraUsuarioId);
-  form.append('motivo',          motivo);
-  form.append('observacao',      observacao);
-  form.append('_token',          document.querySelector('input[name="_token"]')?.value || '');
+  const formData = new FormData();
+  formData.append('para_usuario_id', paraUsuarioId);
+  formData.append('motivo',          motivo);
+  formData.append('observacao',      observacao);
+  formData.append('_token',          document.querySelector('input[name="_token"]')?.value || '');
 
   const opId = <?php echo (int)($op->id ?? 0); ?>;
 
-  fetch('/crm/oportunidades/transferir/' + opId, { method: 'POST', body: form })
+  fetch('/crm/oportunidades/transferir/' + opId, { method: 'POST', body: formData })
     .then(r => r.json())
     .then(res => {
       if (!res.success) {
         alertEl.className = 'alert alert-danger mb-3';
         alertEl.textContent = res.error || 'Erro ao transferir.';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-exchange-alt me-1"></i> Confirmar Transferência';
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-exchange-alt me-1"></i> Confirmar Transferência'; }
         return;
       }
       alertEl.className = 'alert alert-success mb-3';
       alertEl.textContent = 'Oportunidade transferida com sucesso para ' + res.para_nome + ' (Motivo: ' + res.motivo + ').';
-      btn.disabled = true;
+      if (btn) btn.disabled = true;
       setTimeout(() => { window.location.href = '/crm/oportunidades'; }, 2000);
     })
     .catch(() => {
       alertEl.className = 'alert alert-danger mb-3';
       alertEl.textContent = 'Erro de conexão. Tente novamente.';
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-exchange-alt me-1"></i> Confirmar Transferência';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-exchange-alt me-1"></i> Confirmar Transferência'; }
     });
 }
 </script>

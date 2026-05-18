@@ -186,6 +186,7 @@ class CrmOportunidadesController extends Controller
         // Transferências e lista de usuários
         $transferencias = $this->transferenciaModel->findByRelated('oportunidade', $id);
         $todosUsuarios  = $this->userModel->findAll();
+        $donoAtual      = $this->userModel->findById((int)($op->usuario_id ?? 0));
         View::render('crm/oportunidades/form', [
             'title'              => 'Oportunidade — ' . htmlspecialchars($op->titulo_oportunidade),
             '_layout'            => 'erp',
@@ -197,6 +198,7 @@ class CrmOportunidadesController extends Controller
             'anexos'             => $anexos,
             'transferencias'     => $transferencias,
             'todosUsuarios'      => $todosUsuarios,
+            'donomeAtual'        => $donoAtual->name ?? ($_SESSION['user_name'] ?? 'Usuário'),
             'motivosTransferencia' => CrmTransferencia::MOTIVOS,
             'leads'              => $leads,
             'etapas'             => CrmOportunidade::ETAPAS,

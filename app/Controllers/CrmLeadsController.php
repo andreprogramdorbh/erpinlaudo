@@ -160,6 +160,7 @@ class CrmLeadsController extends Controller
         $anexos          = $this->anexoModel->findByRelated('lead', $id);
         $transferencias  = $this->transferenciaModel->findByRelated('lead', $id);
         $todosUsuarios   = $this->userModel->findAll();
+        $donoAtual       = $this->userModel->findById((int)($lead->usuario_id ?? 0));
         View::render('crm/leads/form', [
             'title'      => 'Editar Lead — ' . htmlspecialchars($lead->nome_lead),
             '_layout'    => 'erp',
@@ -170,6 +171,7 @@ class CrmLeadsController extends Controller
             'anexos'         => $anexos,
             'transferencias' => $transferencias,
             'todosUsuarios'  => $todosUsuarios,
+            'donomeAtual'    => $donoAtual->name ?? ($_SESSION['user_name'] ?? 'Usuário'),
             'motivosTransferencia' => CrmTransferencia::MOTIVOS,
             'statusList' => CrmLead::STATUS,
             'segmentos'  => CrmLead::SEGMENTOS,
