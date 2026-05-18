@@ -290,6 +290,34 @@ class EmailAlertaService
                 $stmt->execute([':uid' => $uid, ':hoje' => $hoje]);
                 return $stmt->fetchAll(PDO::FETCH_OBJ);
 
+            // ── Próximo contato em ATRASO (diário — dono + admin) ───────────────
+            case 'crm_lead_proximo_contato_atraso':
+                $hoje = date('Y-m-d');
+                $stmt = $this->pdo->prepare(
+                    "SELECT l.*,
+                            DATEDIFF(:hoje_diff, l.data_proximo_contato) AS dias_atraso
+                     FROM crm_leads l
+                     WHERE l.usuario_id = :uid
+                       AND l.status_lead NOT IN ('descartado', 'convertido')
+                       AND l.data_proximo_contato IS NOT NULL
+                       AND l.data_proximo_contato < :hoje"
+                );
+                $stmt->execute([':uid' => $uid, ':hoje' => $hoje, ':hoje_diff' => $hoje]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
+
+            // ── Próximo contato em 2 dias (único — vendedor) ───────────────────
+            case 'crm_lead_proximo_contato_2d':
+                $alvo = date('Y-m-d', strtotime('+2 days'));
+                $stmt = $this->pdo->prepare(
+                    "SELECT l.*
+                     FROM crm_leads l
+                     WHERE l.usuario_id = :uid
+                       AND l.status_lead NOT IN ('descartado', 'convertido')
+                       AND l.data_proximo_contato = :alvo"
+                );
+                $stmt->execute([':uid' => $uid, ':alvo' => $alvo]);
+                return $stmt->fetchAll(PDO::FETCH_OBJ);
+
             // ── Oportunidade vencendo em N dias ───────────────────────────────
             case 'crm_oportunidade_vencer_3d':
                 $dataAlvo = date('Y-m-d', strtotime("+{$dias} days"));
@@ -512,13 +540,23 @@ class EmailAlertaService
 
         // CRM — Lead
         $vars['{lead}']           = $registro->nome_lead ?? '';
-        $vars['{empresa}']        = $registro->cnpj ?? '';
+        $vars['{empresa}']        = $registro->cnpj ?? $registro->razao_social ?? '';
         $vars['{telefone}']       = $registro->telefone ?? $registro->celular ?? '';
         $vars['{status_lead}']    = $registro->status_lead ?? '';
         $vars['{ultimo_contato}'] = !empty($registro->updated_at)
             ? date('d/m/Y', strtotime($registro->updated_at)) : '—';
         $vars['{proximo_contato}'] = !empty($registro->data_proximo_contato)
             ? date('d/m/Y', strtotime($registro->data_proximo_contato)) : '—';
+
+        // CRM — Próximo contato em atraso: dias calculados pela query ou manualmente
+        if (!empty($registro->dias_atraso)) {
+            $vars['{dias}'] = (int) $registro->dias_atraso;
+        } elseif (!empty($registro->data_proximo_contato)) {
+            $diff = (int) floor((time() - strtotime($registro->data_proximo_contato)) / 86400);
+            if (!isset($vars['{dias}'])) {
+                $vars['{dias}'] = max(0, $diff);
+            }
+        }
 
         // CRM — Oportunidade
         $vars['{oportunidade}']  = $registro->titulo_oportunidade ?? $registro->nome_contato ?? '';

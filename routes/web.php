@@ -19,6 +19,14 @@ Router::post("/api/webhooks/cora", "IntegracaoController@webhookCora");
 Router::get("/api/webhooks/cora/ping", "IntegracaoController@webhookCoraPing");
 
 // ============================================================
+// Cron Jobs (protegidos por CRON_KEY no .env)
+// Uso: GET /api/cron/alertas?key=SUA_CRON_KEY
+// crontab: 0 8 * * * curl -s "https://erp.inlaudo.com.br/api/cron/alertas?key=KEY" > /dev/null
+// ============================================================
+Router::get("/api/cron/alertas",     "CronController@alertas");
+Router::get("/api/cron/alertas-crm", "CronController@alertasCrm");
+
+// ============================================================
 // Primeiro Acesso — Clientes do Portal (via login unificado /login)
 // ============================================================
 Router::get("/primeiro-acesso", "AuthController@showPrimeiroAcesso");
