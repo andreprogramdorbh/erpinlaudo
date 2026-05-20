@@ -708,10 +708,18 @@ $tiposIcones = [
 
 <script>
 function switchTab(tab) {
+  // Esconde todas as abas
   document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
-  document.getElementById('tab-' + tab).style.display = 'block';
+  const tabEl = document.getElementById('tab-' + tab);
+  if (tabEl) tabEl.style.display = 'block';
+  // Marca a aba ativa no nav
   document.querySelectorAll('.crm-tab').forEach(el => el.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  document.querySelectorAll('.crm-tab').forEach(el => {
+    const oc = el.getAttribute('onclick') || '';
+    if (oc.includes("'" + tab + "'") || oc.includes('"' + tab + '"')) {
+      el.classList.add('active');
+    }
+  });
   // Atualiza a URL para preservar a aba ativa em reloads
   const url = new URL(window.location.href);
   url.searchParams.set('tab', tab);
