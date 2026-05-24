@@ -609,6 +609,8 @@
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/crm/leads') !== false ? 'active' : ''; ?>"><i class="fas fa-user-plus me-1"></i> LEADS</a></li>
               <li><a href="/crm/oportunidades"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/crm/oportunidades') !== false ? 'active' : ''; ?>"><i class="fas fa-chart-line me-1"></i> OPORTUNIDADES</a></li>
+              <li><a href="/crm/propostas"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/crm/propostas') !== false ? 'active' : ''; ?>"><i class="fas fa-file-contract me-1"></i> PROPOSTAS</a></li>
             </ul>
           </li>
 

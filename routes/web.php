@@ -400,6 +400,23 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/crm/oportunidades/anexo/delete/{id}",       "CrmOportunidadesController@deleteAnexo");
     });
 
+    // ===== Módulo CRM — Propostas =====
+    Router::group(["middleware" => ["Permission:view_crm"]], function () {
+        Router::get("/crm/propostas",                          "CrmPropostasController@index");
+        Router::get("/crm/propostas/create",                   "CrmPropostasController@create");
+        Router::post("/crm/propostas",                         "CrmPropostasController@store");
+        Router::get("/crm/propostas/buscar-oportunidade",      "CrmPropostasController@buscarOportunidade");
+        Router::get("/crm/propostas/buscar-cliente",           "CrmPropostasController@buscarCliente");
+        Router::get("/crm/propostas/buscar-produto",           "CrmPropostasController@buscarProduto");
+        Router::get("/crm/propostas/{id}",                     "CrmPropostasController@show");
+        Router::get("/crm/propostas/{id}/edit",                "CrmPropostasController@edit");
+        Router::post("/crm/propostas/{id}/update",             "CrmPropostasController@update");
+        Router::post("/crm/propostas/{id}/delete",             "CrmPropostasController@delete");
+        Router::get("/crm/propostas/{id}/pdf",                 "CrmPropostasController@pdf");
+        Router::post("/crm/propostas/{id}/enviar",             "CrmPropostasController@enviar");
+        Router::post("/crm/propostas/{id}/status",             "CrmPropostasController@atualizarStatus");
+    });
+
     // Logging de Erros do Frontend
     Router::post("/api/log/error", "LogController@saveClientError");
 
