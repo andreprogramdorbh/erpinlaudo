@@ -54,6 +54,9 @@ class CrmPropostasController extends Controller
         $kpis      = $this->propostaModel->kpisByUsuarioId($uid);
 
         View::render('crm/propostas/index', [
+            '_layout'   => 'erp',
+            'title'     => 'Propostas',
+            'breadcrumb'=> ['CRM' => '/crm/funil', 'Propostas'],
             'propostas' => $propostas,
             'kpis'      => $kpis,
             'filtros'   => $filtros,
@@ -70,6 +73,9 @@ class CrmPropostasController extends Controller
         $clientes = $this->clienteModel->findByUsuarioId($uid);
 
         View::render('crm/propostas/form', [
+            '_layout'   => 'erp',
+            'title'     => 'Nova Proposta',
+            'breadcrumb'=> ['CRM' => '/crm/funil', 'Propostas' => '/crm/propostas', 'Nova Proposta'],
             'proposta'  => null,
             'itens'     => [],
             'historico' => [],
@@ -185,6 +191,9 @@ class CrmPropostasController extends Controller
         $user      = $this->userModel->findById($uid);
 
         View::render('crm/propostas/show', [
+            '_layout'   => 'erp',
+            'title'     => 'Proposta ' . $proposta->numero,
+            'breadcrumb'=> ['CRM' => '/crm/funil', 'Propostas' => '/crm/propostas', $proposta->numero],
             'proposta'  => $proposta,
             'itens'     => $itens,
             'historico' => $historico,
@@ -211,6 +220,9 @@ class CrmPropostasController extends Controller
         $clientes = $this->clienteModel->findByUsuarioId($uid);
 
         View::render('crm/propostas/form', [
+            '_layout'   => 'erp',
+            'title'     => 'Editar Proposta',
+            'breadcrumb'=> ['CRM' => '/crm/funil', 'Propostas' => '/crm/propostas', 'Editar'],
             'proposta'  => $proposta,
             'itens'     => $itens,
             'historico' => $historico,

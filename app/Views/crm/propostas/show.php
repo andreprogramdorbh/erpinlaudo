@@ -309,7 +309,7 @@ $editavel = in_array($proposta->status, ['gerada', 'enviada', 'visualizada']);
         <?php else: ?>
         <div style="max-height:350px;overflow-y:auto">
           <?php foreach ($historico as $h):
-            $hsc = $statusConfig[$h->status_novo] ?? $statusConfig['gerada'];
+            $hsc = $statusConfig[$h->status_para] ?? $statusConfig['gerada'];
           ?>
           <div class="hist-item">
             <div class="hist-dot" style="background:<?php echo $hsc['text']; ?>"></div>
