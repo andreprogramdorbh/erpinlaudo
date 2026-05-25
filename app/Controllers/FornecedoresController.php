@@ -106,7 +106,7 @@ class FornecedoresController extends Controller
     public function edit($id): void
     {
         $usuarioId  = Auth::user()->id;
-        $isAdmin    = Auth::isAdmin();
+        $isAdmin    = Auth::hasRole('admin') || Auth::hasRole('superadmin');
         $fornecedor = $this->model->findById((int)$id);
 
         if (!$fornecedor || ((int)$fornecedor->usuario_id !== (int)$usuarioId && !$isAdmin)) {
@@ -133,12 +133,12 @@ class FornecedoresController extends Controller
     public function update($id): void
     {
         try {
-            $usuarioId  = Auth::user()->id;
-            $isAdmin    = Auth::isAdmin();
-            $fornecedor = $this->model->findById((int)$id);
+        $usuarioId  = Auth::user()->id;
+        $isAdmin    = Auth::hasRole('admin') || Auth::hasRole('superadmin');
+        $fornecedor = $this->model->findById((int)$id);
 
-            if (!$fornecedor || ((int)$fornecedor->usuario_id !== (int)$usuarioId && !$isAdmin)) {
-                header('Location: ' . self::BASE_ROUTE . '?error=unauthorized');
+        if (!$fornecedor || ((int)$fornecedor->usuario_id !== (int)$usuarioId && !$isAdmin)) {
+            header('Location: ' . self::BASE_ROUTE . '?error=unauthorized');
                 exit();
             }
 
@@ -172,7 +172,7 @@ class FornecedoresController extends Controller
     {
         try {
             $usuarioId  = Auth::user()->id;
-            $isAdmin    = Auth::isAdmin();
+            $isAdmin    = Auth::hasRole('admin') || Auth::hasRole('superadmin');
             $fornecedor = $this->model->findById((int)$id);
 
             if (!$fornecedor || ((int)$fornecedor->usuario_id !== (int)$usuarioId && !$isAdmin)) {
@@ -204,7 +204,7 @@ class FornecedoresController extends Controller
     public function historico($id): void
     {
         $usuarioId  = Auth::user()->id;
-        $isAdmin    = Auth::isAdmin();
+        $isAdmin    = Auth::hasRole('admin') || Auth::hasRole('superadmin');
         $fornecedor = $this->model->findById((int)$id);
 
         if (!$fornecedor || ((int)$fornecedor->usuario_id !== (int)$usuarioId && !$isAdmin)) {
