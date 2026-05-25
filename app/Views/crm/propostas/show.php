@@ -89,8 +89,8 @@ $editavel = in_array($proposta->status, ['gerada', 'enviada', 'visualizada']);
   <!-- Barra de ações -->
   <div class="action-bar">
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <a href="/crm/propostas/<?php echo $proposta->id; ?>/pdf" class="btn btn-outline-success btn-sm">
-        <i class="fas fa-file-pdf me-1"></i>Baixar PDF
+      <a href="/crm/propostas/<?php echo $proposta->id; ?>/pdf" class="btn btn-outline-success btn-sm" target="_blank" rel="noopener noreferrer">
+        <i class="fas fa-file-pdf me-1"></i>Visualizar / Baixar PDF
       </a>
       <?php if (!empty($proposta->cliente_email)): ?>
       <button type="button" class="btn btn-primary btn-sm" onclick="enviarProposta()">
@@ -291,8 +291,8 @@ $editavel = in_array($proposta->status, ['gerada', 'enviada', 'visualizada']);
           <i class="fas fa-paper-plane me-1"></i>Enviar por E-mail
         </button>
         <?php endif; ?>
-        <a href="/crm/propostas/<?php echo $proposta->id; ?>/pdf" class="btn btn-outline-success btn-sm w-100 mt-2">
-          <i class="fas fa-file-pdf me-1"></i>Baixar PDF
+        <a href="/crm/propostas/<?php echo $proposta->id; ?>/pdf" class="btn btn-outline-success btn-sm w-100 mt-2" target="_blank" rel="noopener noreferrer">
+          <i class="fas fa-file-pdf me-1"></i>Visualizar / Baixar PDF
         </a>
         <?php if ($editavel): ?>
         <a href="/crm/propostas/<?php echo $proposta->id; ?>/edit" class="btn btn-outline-secondary btn-sm w-100 mt-2">

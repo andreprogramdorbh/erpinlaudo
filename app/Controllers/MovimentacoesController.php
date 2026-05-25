@@ -684,21 +684,83 @@ class MovimentacoesController extends Controller
     {
         $uid = $this->uid();
         $q   = trim($_GET['q'] ?? '');
-        if (strlen($q) < 2) {
+        // Permite busca com 1 ou mais caracteres para maior flexibilidade
+        if (strlen($q) < 1) {
             $this->json([]);
+            return;
         }
+        // Usa o metodo buscar() do Model que ja trata status=ativo e busca por nome/codigo/marca/modelo
+        // Adiciona busca por nome_tecnico via query direta usando getPdo() exposto
+        try {
+            $like   = '%' . $q . '%';
+            $stmt   = $this->produtoModel->getPdo()->prepare(
+                "SELECT id, codigo, nome, preco_venda, preco_custo, estoque_atual, unidade_medida
+                 FROM produtos
+                 WHERE usuario_id = ?
+                   AND status = 'ativo'
+                   AND (nome LIKE ? OR codigo LIKE ?
+                        OR (nome_tecnico IS NOT NULL AND nome_tecnico LIKE ?)
+                        OR (marca IS NOT NULL AND marca LIKE ?)
+                        OR (modelo IS NOT NULL AND modelo LIKE ?))
+                 ORDER BY nome ASC
+                 LIMIT 30"
+            );
+            $stmt->execute([$uid, $like, $like, $like, $like, $like]);
+            $this->json($stmt->fetchAll(\PDO::FETCH_OBJ));
+        } catch (\Throwable $e) {
+            // Fallback: usa o metodo do model sem nome_tecnico
+            $resultados = $this->produtoModel->buscar($uid, $q, 30);
+            $this->json($resultados);
+        }
+    }
 
-        $stmt = $this->produtoModel->pdo->prepare(
-            "SELECT id, codigo, nome, preco_venda, preco_custo, estoque_atual, unidade_medida
-             FROM produtos
-             WHERE usuario_id = ? AND ativo = 1
-               AND (nome LIKE ? OR codigo LIKE ? OR nome_tecnico LIKE ?)
-             ORDER BY nome
-             LIMIT 20"
-        );
-        $like = '%' . $q . '%';
-        $stmt->execute([$uid, $like, $like, $like]);
-        $this->json($stmt->fetchAll(\PDO::FETCH_OBJ));
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE COMPRA — Index (alias para compras())
+    // GET /estoque/compras  — rota registrada como comprasIndex
+    // ═══════════════════════════════════════════════════════════════════════
+    public function comprasIndex(): void
+    {
+        $this->compras();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE COMPRA — Criar (alias para compraCreate)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function comprasCreate(): void
+    {
+        $this->compraCreate();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE COMPRA — Salvar (alias para compraStore)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function comprasStore(): void
+    {
+        $this->compraStore();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE COMPRA — Show (alias para compraShow)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function comprasShow(int $id): void
+    {
+        $this->compraShow($id);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE COMPRA — Receber (alias para compraReceber)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function comprasReceber(int $id): void
+    {
+        $this->compraReceber($id);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE COMPRA — Cancelar (alias para compraCancelar)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function comprasCancelar(int $id): void
+    {
+        $this->compraCancelar($id);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

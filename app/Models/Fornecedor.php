@@ -209,7 +209,10 @@ class Fornecedor extends Model
         if ($doc === '') {
             return false;
         }
-        $sql    = "SELECT COUNT(*) AS total FROM {$this->table} WHERE documento = ? AND usuario_id = ?";
+        // Compara removendo formatacao dos dois lados: banco pode ter '57.378.542/0001-10' ou '57378542000110'
+        $sql    = "SELECT COUNT(*) AS total FROM {$this->table}
+                   WHERE REPLACE(REPLACE(REPLACE(REPLACE(documento, '.', ''), '/', ''), '-', ''), ' ', '') = ?
+                     AND usuario_id = ?";
         $params = [$doc, $usuarioId];
         if ($excludeId !== null) {
             $sql     .= ' AND id != ?';

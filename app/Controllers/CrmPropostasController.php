@@ -391,7 +391,8 @@ class CrmPropostasController extends Controller
             $pdfPath = $this->gerarPdf($proposta, $itens, $user);
 
             header('Content-Type: application/pdf');
-            header('Content-Disposition: attachment; filename="Proposta_' . $proposta->numero . '.pdf"');
+            // inline: abre no visualizador do navegador; o usuario pode baixar pelo proprio viewer
+            header('Content-Disposition: inline; filename="Proposta_' . $proposta->numero . '.pdf"');
             header('Content-Length: ' . filesize($pdfPath));
             readfile($pdfPath);
             @unlink($pdfPath);

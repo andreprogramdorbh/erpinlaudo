@@ -14,6 +14,39 @@ if (Auth::can('create_fornecedores')) {
 }
 
 UI::sectionHeader('Fornecedores', 'Cadastre e gerencie seus fornecedores', $actions);
+
+// ─── Helpers de formatação ────────────────────────────────────────────────────
+function fmtDocumentoForn(?string $doc): string {
+    if ($doc === null || $doc === '') return '<span class="text-muted">-</span>';
+    $d = preg_replace('/\D/', '', $doc);
+    if (strlen($d) === 14) {
+        $fmt = preg_replace('/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/', '$1.$2.$3/$4-$5', $d);
+        return '<code class="text-dark">' . $fmt . '</code>';
+    }
+    if (strlen($d) === 11) {
+        $fmt = preg_replace('/^(\d{3})(\d{3})(\d{3})(\d{2})$/', '$1.$2.$3-$4', $d);
+        return '<code class="text-dark">' . $fmt . '</code>';
+    }
+    return '<span>' . htmlspecialchars($doc) . '</span>';
+}
+
+function fmtTelefoneForn(?string $tel): string {
+    if ($tel === null || $tel === '') return '<span class="text-muted">-</span>';
+    $t = preg_replace('/\D/', '', $tel);
+    if (strlen($t) === 13) { // +55 (XX) XXXXX-XXXX
+        $fmt = preg_replace('/^55(\d{2})(\d{5})(\d{4})$/', '($1) $2-$3', $t);
+        return htmlspecialchars($fmt);
+    }
+    if (strlen($t) === 11) { // (XX) XXXXX-XXXX
+        $fmt = preg_replace('/^(\d{2})(\d{5})(\d{4})$/', '($1) $2-$3', $t);
+        return htmlspecialchars($fmt);
+    }
+    if (strlen($t) === 10) { // (XX) XXXX-XXXX
+        $fmt = preg_replace('/^(\d{2})(\d{4})(\d{4})$/', '($1) $2-$3', $t);
+        return htmlspecialchars($fmt);
+    }
+    return htmlspecialchars($tel);
+}
 ?>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -66,11 +99,15 @@ UI::sectionHeader('Fornecedores', 'Cadastre e gerencie seus fornecedores', $acti
                 ? '<span class="badge bg-success">Ativo</span>'
                 : '<span class="badge bg-secondary">Inativo</span>';
 
+            $email = ($f->email ?? '') !== ''
+                ? '<a href="mailto:' . htmlspecialchars($f->email) . '" class="text-decoration-none">' . htmlspecialchars($f->email) . '</a>'
+                : '<span class="text-muted">-</span>';
+
             return '<tr>'
                 . '<td><strong>' . htmlspecialchars($f->nome ?? '') . '</strong></td>'
-                . '<td>' . htmlspecialchars($f->documento ?? '') . '</td>'
-                . '<td>' . htmlspecialchars($f->email ?? '') . '</td>'
-                . '<td>' . htmlspecialchars($f->telefone ?? '') . '</td>'
+                . '<td>' . fmtDocumentoForn($f->documento ?? null) . '</td>'
+                . '<td>' . $email . '</td>'
+                . '<td>' . fmtTelefoneForn($f->telefone ?? null) . '</td>'
                 . '<td>' . $statusBadge . '</td>'
                 . '<td>' . $acoes . '</td>'
                 . '</tr>';
