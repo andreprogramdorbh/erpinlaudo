@@ -8,6 +8,30 @@ class Produto extends Model
 {
     protected string $table = 'produtos';
 
+    // ─── Logger interno ──────────────────────────────────────────────────────
+    private function log(string $level, string $msg, array $ctx = []): void
+    {
+        $dir  = defined('BASE_PATH') ? BASE_PATH . '/storage/logs' : sys_get_temp_dir();
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $file = $dir . '/estoque_' . date('Y-m') . '.log';
+        $line = '[' . date('Y-m-d H:i:s') . '] [' . strtoupper($level) . '] ' . $msg;
+        if (!empty($ctx)) {
+            $line .= ' | ctx=' . json_encode($ctx, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+        @file_put_contents($file, $line . PHP_EOL, FILE_APPEND | LOCK_EX);
+        error_log($line);
+    }
+
+    // ─── Converte valor BR (1.234,56) para float ─────────────────────────────
+    private function toFloat(mixed $v): float
+    {
+        if ($v === null || $v === '') return 0.0;
+        $s = (string)$v;
+        // Remove pontos de milhar e substitui vírgula decimal por ponto
+        $s = str_replace(['.', ','], ['', '.'], $s);
+        return (float)$s;
+    }
+
     // ─── Geração de código incremental por tenant ────────────────────────────
     public function gerarCodigo(int $usuarioId): string
     {
@@ -27,12 +51,12 @@ class Produto extends Model
             return 'PRD-' . str_pad($seq, 5, '0', STR_PAD_LEFT);
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
-            error_log("[Produto::gerarCodigo] ERRO: " . $e->getMessage());
+            $this->log('error', '[gerarCodigo] ' . $e->getMessage());
             return 'PRD-' . date('YmdHis');
         }
     }
 
-    // ─── Listagem com filtros e paginação ────────────────────────────────────
+    // ─── Listagem com filtros ────────────────────────────────────────────────
     public function findByUsuarioId(int $usuarioId, array $filtros = []): array
     {
         $where  = ["p.usuario_id = :uid"];
@@ -116,6 +140,12 @@ class Produto extends Model
     // ─── Criar produto ───────────────────────────────────────────────────────
     public function create(array $d): int|false
     {
+        $this->log('info', '[create] Iniciando criação', [
+            'usuario_id' => $d['usuario_id'] ?? null,
+            'nome'       => $d['nome'] ?? '',
+            'codigo'     => $d['codigo'] ?? '',
+        ]);
+
         $sql = "INSERT INTO {$this->table} (
             usuario_id, codigo, tipo, categoria, nome, nome_tecnico,
             descricao_curta, descricao_completa, modelo, marca,
@@ -166,16 +196,23 @@ class Produto extends Model
             :observacoes_internas
         )";
         try {
+            $params = $this->_bindInsertParams($d);
+            $this->log('debug', '[create] Params preparados', array_keys($params));
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($this->_bindParams($d));
+            $stmt->execute($params);
             $id = (int) $this->pdo->lastInsertId();
-            // Registra histórico de preço
             if ($id > 0) {
+                $this->log('info', '[create] Produto criado com sucesso', ['id' => $id]);
                 $this->registrarHistoricoPreco($id, $d);
+            } else {
+                $this->log('warning', '[create] lastInsertId retornou 0');
             }
-            return $id;
+            return $id ?: false;
         } catch (\PDOException $e) {
-            error_log("[Produto::create] ERRO: " . $e->getMessage());
+            $this->log('error', '[create] PDOException: ' . $e->getMessage(), [
+                'code'  => $e->getCode(),
+                'trace' => substr($e->getTraceAsString(), 0, 500),
+            ]);
             return false;
         }
     }
@@ -183,7 +220,11 @@ class Produto extends Model
     // ─── Atualizar produto ───────────────────────────────────────────────────
     public function update(int $id, array $d): bool
     {
-        // Verifica se preço mudou para registrar histórico
+        $this->log('info', '[update] Iniciando atualização', [
+            'produto_id' => $id,
+            'usuario_id' => $d['usuario_id'] ?? null,
+        ]);
+
         $antes = $this->findById($id);
 
         $sql = "UPDATE {$this->table} SET
@@ -217,22 +258,32 @@ class Produto extends Model
             observacoes_internas=:observacoes_internas
         WHERE id = :id AND usuario_id = :usuario_id";
         try {
-            $params = $this->_bindParams($d);
+            $params = $this->_bindUpdateParams($d);
             $params[':id']         = $id;
             $params[':usuario_id'] = $d['usuario_id'];
+            $this->log('debug', '[update] Params preparados', array_keys($params));
             $stmt = $this->pdo->prepare($sql);
             $ok = $stmt->execute($params);
-            // Registra histórico se preço mudou
+            $rowCount = $stmt->rowCount();
+            $this->log('info', '[update] Resultado', [
+                'ok'        => $ok,
+                'rowCount'  => $rowCount,
+                'produto_id'=> $id,
+            ]);
             if ($ok && $antes) {
-                $precoCustoNovo = (float)($d['preco_custo'] ?? 0);
-                $precoVendaNovo = (float)($d['preco_venda'] ?? 0);
+                $precoCustoNovo = $this->toFloat($d['preco_custo'] ?? 0);
+                $precoVendaNovo = $this->toFloat($d['preco_venda'] ?? 0);
                 if ((float)$antes->preco_custo !== $precoCustoNovo || (float)$antes->preco_venda !== $precoVendaNovo) {
                     $this->registrarHistoricoPreco($id, $d);
                 }
             }
             return $ok;
         } catch (\PDOException $e) {
-            error_log("[Produto::update] ERRO: " . $e->getMessage());
+            $this->log('error', '[update] PDOException: ' . $e->getMessage(), [
+                'code'       => $e->getCode(),
+                'produto_id' => $id,
+                'trace'      => substr($e->getTraceAsString(), 0, 500),
+            ]);
             return false;
         }
     }
@@ -244,9 +295,31 @@ class Produto extends Model
             $stmt = $this->pdo->prepare(
                 "DELETE FROM {$this->table} WHERE id = ? AND usuario_id = ?"
             );
-            return $stmt->execute([$id, $usuarioId]);
+            $ok = $stmt->execute([$id, $usuarioId]);
+            $this->log('info', '[delete] Produto excluído', ['id' => $id, 'ok' => $ok]);
+            return $ok;
         } catch (\PDOException $e) {
-            error_log("[Produto::delete] ERRO: " . $e->getMessage());
+            $this->log('error', '[delete] PDOException: ' . $e->getMessage(), ['id' => $id]);
+            return false;
+        }
+    }
+
+    // ─── Atualizar estoque (entrada/saída) ───────────────────────────────────
+    public function atualizarEstoque(int $id, float $quantidade, string $tipo): bool
+    {
+        // tipo: 'entrada' soma, 'saida' subtrai
+        $op = $tipo === 'entrada' ? '+' : '-';
+        try {
+            $stmt = $this->pdo->prepare(
+                "UPDATE {$this->table} SET estoque_atual = estoque_atual {$op} ? WHERE id = ?"
+            );
+            $ok = $stmt->execute([$quantidade, $id]);
+            $this->log('info', '[atualizarEstoque] Estoque atualizado', [
+                'produto_id' => $id, 'quantidade' => $quantidade, 'tipo' => $tipo, 'ok' => $ok,
+            ]);
+            return $ok;
+        } catch (\PDOException $e) {
+            $this->log('error', '[atualizarEstoque] PDOException: ' . $e->getMessage(), ['id' => $id]);
             return false;
         }
     }
@@ -277,7 +350,7 @@ class Produto extends Model
                SUM(preco_venda * estoque_atual)                            AS valor_estoque_venda,
                SUM(preco_custo * estoque_atual)                            AS valor_estoque_custo,
                AVG(markup_percentual)                                      AS markup_medio,
-               AVG(margem_lucro_bruta)                                     AS margem_media
+               AVG(margem_lucro_liquida)                                   AS margem_media
              FROM {$this->table}
              WHERE usuario_id = ?"
         );
@@ -311,28 +384,42 @@ class Produto extends Model
             $stmt->execute([
                 $id,
                 $d['usuario_id'],
-                $d['preco_custo'] ?? 0,
-                $d['preco_venda'] ?? 0,
-                $d['markup_percentual'] ?? 0,
+                $this->toFloat($d['preco_custo'] ?? 0),
+                $this->toFloat($d['preco_venda'] ?? 0),
+                $this->toFloat($d['markup_percentual'] ?? 0),
                 $d['motivo_preco'] ?? null,
                 $d['usuario_id'],
             ]);
         } catch (\Throwable $e) {
-            error_log("[Produto::registrarHistoricoPreco] ERRO: " . $e->getMessage());
+            $this->log('error', '[registrarHistoricoPreco] ' . $e->getMessage(), ['produto_id' => $id]);
         }
     }
 
-    // ─── Bind de parâmetros ──────────────────────────────────────────────────
-    private function _bindParams(array $d): array
+    // ─── Bind para INSERT (inclui :codigo) ───────────────────────────────────
+    private function _bindInsertParams(array $d): array
+    {
+        $p = $this->_bindCommonParams($d);
+        $p[':codigo']        = $d['codigo'] ?? '';
+        $p[':estoque_atual'] = $this->toFloat($d['estoque_atual'] ?? 0);
+        return $p;
+    }
+
+    // ─── Bind para UPDATE (sem :codigo, sem :estoque_atual) ──────────────────
+    private function _bindUpdateParams(array $d): array
+    {
+        return $this->_bindCommonParams($d);
+    }
+
+    // ─── Parâmetros comuns a INSERT e UPDATE ─────────────────────────────────
+    private function _bindCommonParams(array $d): array
     {
         $n = fn($k, $def = null) => isset($d[$k]) && $d[$k] !== '' ? $d[$k] : $def;
-        $f = fn($k) => isset($d[$k]) && $d[$k] !== '' ? (float) str_replace(['.', ','], ['', '.'], $d[$k]) : 0.0;
+        $f = fn($k) => $this->toFloat($d[$k] ?? '');
         $i = fn($k, $def = 0) => isset($d[$k]) && $d[$k] !== '' ? (int) $d[$k] : $def;
         $b = fn($k) => isset($d[$k]) ? (int)(bool)$d[$k] : 0;
 
         return [
             ':usuario_id'               => $d['usuario_id'],
-            ':codigo'                   => $d['codigo'] ?? '',
             ':tipo'                     => $d['tipo'] ?? 'produto',
             ':categoria'                => $d['categoria'] ?? 'equipamento_medico',
             ':nome'                     => $d['nome'] ?? '',
@@ -362,7 +449,6 @@ class Produto extends Model
             ':impostos_percentual'      => $f('impostos_percentual'),
             ':moeda'                    => $d['moeda'] ?? 'BRL',
             ':controla_estoque'         => $b('controla_estoque'),
-            ':estoque_atual'            => $f('estoque_atual'),
             ':estoque_minimo'           => $f('estoque_minimo'),
             ':estoque_maximo'           => $f('estoque_maximo'),
             ':ponto_reposicao'          => $f('ponto_reposicao'),

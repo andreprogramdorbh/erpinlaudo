@@ -634,6 +634,12 @@ if ($_ec) {
             <ul class="submenu">
               <li><a href="/estoque/produtos"
                   class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/estoque/produtos') !== false ? 'active' : ''; ?>"><i class="fas fa-box me-1"></i> PRODUTOS</a></li>
+              <li><a href="/estoque/movimentacoes"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/estoque/movimentacoes') !== false ? 'active' : ''; ?>"><i class="fas fa-exchange-alt me-1"></i> MOVIMENTAÇÕES</a></li>
+              <li><a href="/estoque/compras"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/estoque/compras') !== false ? 'active' : ''; ?>"><i class="fas fa-shopping-cart me-1"></i> PEDIDOS DE COMPRA</a></li>
+              <li><a href="/estoque/vendas"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/estoque/vendas') !== false ? 'active' : ''; ?>"><i class="fas fa-store me-1"></i> PEDIDOS DE VENDA</a></li>
             </ul>
           </li>
 

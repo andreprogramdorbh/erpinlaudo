@@ -387,6 +387,32 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/estoque/produtos/{id}/movimentacao",      "ProdutosController@movimentacao");
         // Upload de imagem
         Router::post("/estoque/produtos/{id}/upload-imagem",     "ProdutosController@uploadImagem");
+
+        // ── Movimentações de Estoque ──────────────────────────────────────────
+        Router::get("/estoque/movimentacoes",                          "MovimentacoesController@index");
+        Router::get("/estoque/movimentacoes/create",                   "MovimentacoesController@create");
+        Router::post("/estoque/movimentacoes",                         "MovimentacoesController@store");
+        Router::get("/estoque/movimentacoes/importar-xml",             "MovimentacoesController@importarXmlForm");
+        Router::post("/estoque/movimentacoes/importar-xml",            "MovimentacoesController@importarXmlProcess");
+        Router::post("/estoque/movimentacoes/importar-xml/confirmar",  "MovimentacoesController@importarXmlConfirmar");
+        Router::get("/estoque/movimentacoes/buscar-produto",           "MovimentacoesController@buscarProduto");
+        Router::get("/estoque/movimentacoes/{id}",                     "MovimentacoesController@show");
+
+        // ── Pedidos de Compra ─────────────────────────────────────────────────
+        Router::get("/estoque/compras",                                "MovimentacoesController@comprasIndex");
+        Router::get("/estoque/compras/create",                         "MovimentacoesController@comprasCreate");
+        Router::post("/estoque/compras",                               "MovimentacoesController@comprasStore");
+        Router::get("/estoque/compras/{id}",                           "MovimentacoesController@comprasShow");
+        Router::post("/estoque/compras/{id}/receber",                  "MovimentacoesController@comprasReceber");
+        Router::post("/estoque/compras/{id}/cancelar",                 "MovimentacoesController@comprasCancelar");
+
+        // ── Pedidos de Venda ──────────────────────────────────────────────────
+        Router::get("/estoque/vendas",                                 "MovimentacoesController@vendasIndex");
+        Router::get("/estoque/vendas/create",                          "MovimentacoesController@vendasCreate");
+        Router::post("/estoque/vendas",                                "MovimentacoesController@vendasStore");
+        Router::get("/estoque/vendas/{id}",                            "MovimentacoesController@vendasShow");
+        Router::post("/estoque/vendas/{id}/expedir",                   "MovimentacoesController@vendasExpedir");
+        Router::post("/estoque/vendas/{id}/cancelar",                  "MovimentacoesController@vendasCancelar");
     });
 
     // ===== Módulo CRM =====
