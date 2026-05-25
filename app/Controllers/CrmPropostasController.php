@@ -538,8 +538,8 @@ class CrmPropostasController extends Controller
         $dataCriacao  = date('d/m/Y', strtotime($proposta->created_at));
 
         // Dados do fornecedor (empresa do usuário)
-        $fornecedorNome  = htmlspecialchars($user->name ?? 'Empresa');
-        $fornecedorEmail = htmlspecialchars($user->email ?? '');
+        $fornecedorNome  = htmlspecialchars(($user !== false ? $user->name  : null) ?? 'Empresa');
+        $fornecedorEmail = htmlspecialchars(($user !== false ? $user->email : null) ?? '');
 
         // Dados do tomador (cliente)
         $clienteNome     = htmlspecialchars($proposta->cliente_nome);
@@ -549,7 +549,7 @@ class CrmPropostasController extends Controller
         $clienteEnd      = htmlspecialchars(
             trim(($proposta->cliente_endereco ?? '') . ', ' .
                  ($proposta->cliente_cidade   ?? '') . ' - ' .
-                 ($proposta->cliente_estado   ?? '')), ', -'
+                 ($proposta->cliente_estado   ?? ''), ', -')
         );
         $clienteResp     = htmlspecialchars($proposta->cliente_responsavel ?? '');
 
@@ -812,7 +812,7 @@ HTML;
         $validade = !empty($proposta->validade_proposta)
                     ? date('d/m/Y', strtotime($proposta->validade_proposta))
                     : '—';
-        $remetente = htmlspecialchars($user->name ?? 'Equipe Comercial');
+        $remetente = htmlspecialchars(($user !== false ? $user->name : null) ?? 'Equipe Comercial');
 
         return <<<HTML
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
