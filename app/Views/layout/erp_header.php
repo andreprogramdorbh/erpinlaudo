@@ -626,6 +626,17 @@ if ($_ec) {
             </ul>
           </li>
 
+          <li class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/estoque') !== false) ? 'open active' : ''; ?>">
+            <a href="#" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Estoque">
+              <i class="fas fa-boxes"></i>
+              <span class="link-text">ESTOQUE</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/estoque/produtos"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/estoque/produtos') !== false ? 'active' : ''; ?>"><i class="fas fa-box me-1"></i> PRODUTOS</a></li>
+            </ul>
+          </li>
+
           <div class="nav-label">CRM</div>
           <li class="nav-item has-submenu <?php echo strpos($_SERVER['REQUEST_URI'], '/crm') !== false ? 'open active' : ''; ?>">
             <a href="/crm/funil" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="CRM">

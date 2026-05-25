@@ -361,6 +361,34 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/integracao/whatsapp/logs/export",   "IntegracaoWhatsappController@exportLogs");
     });
 
+    // ===== Módulo Estoque =====
+    Router::group(["middleware" => ["Permission:view_crm"]], function () {
+        // Listagem e visualização
+        Router::get("/estoque/produtos",                         "ProdutosController@index");
+        Router::get("/estoque/produtos/buscar",                  "ProdutosController@buscar");
+        Router::get("/estoque/produtos/kpis",                    "ProdutosController@kpis");
+        Router::get("/estoque/produtos/exportar",                "ProdutosController@exportar");
+        Router::get("/estoque/produtos/create",                  "ProdutosController@create");
+        Router::post("/estoque/produtos",                        "ProdutosController@store");
+        Router::get("/estoque/produtos/{id}/edit",               "ProdutosController@edit");
+        Router::post("/estoque/produtos/{id}/update",            "ProdutosController@update");
+        Router::post("/estoque/produtos/{id}/delete",            "ProdutosController@delete");
+        Router::post("/estoque/produtos/{id}/duplicar",          "ProdutosController@duplicar");
+        Router::post("/estoque/produtos/{id}/toggle-status",     "ProdutosController@toggleStatus");
+        Router::get("/estoque/produtos/{id}",                    "ProdutosController@show");
+        // Componentes (AJAX)
+        Router::post("/estoque/produtos/{id}/componente/add",    "ProdutosController@addComponente");
+        Router::post("/estoque/produtos/componente/delete/{id}", "ProdutosController@deleteComponente");
+        // Comissões (AJAX)
+        Router::post("/estoque/produtos/{id}/comissao/add",      "ProdutosController@addComissao");
+        Router::post("/estoque/produtos/comissao/delete/{id}",   "ProdutosController@deleteComissao");
+        Router::post("/estoque/produtos/comissao/toggle/{id}",   "ProdutosController@toggleComissao");
+        // Movimentação de estoque
+        Router::post("/estoque/produtos/{id}/movimentacao",      "ProdutosController@movimentacao");
+        // Upload de imagem
+        Router::post("/estoque/produtos/{id}/upload-imagem",     "ProdutosController@uploadImagem");
+    });
+
     // ===== Módulo CRM =====
     Router::group(["middleware" => ["Permission:view_crm"]], function () {
         Router::get("/crm/funil",         "CrmFunilController@index");
