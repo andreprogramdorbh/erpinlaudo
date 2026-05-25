@@ -332,6 +332,7 @@ class Produto extends Model
 
         return [
             ':usuario_id'               => $d['usuario_id'],
+            ':codigo'                   => $d['codigo'] ?? '',
             ':tipo'                     => $d['tipo'] ?? 'produto',
             ':categoria'                => $d['categoria'] ?? 'equipamento_medico',
             ':nome'                     => $d['nome'] ?? '',

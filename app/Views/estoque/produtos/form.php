@@ -1,6 +1,6 @@
 <?php
 $isEdit  = $produto !== null;
-$action  = $isEdit ? "/estoque/produtos/{$produto->id}/update" : "/estoque/produtos/store";
+$action  = $isEdit ? "/estoque/produtos/{$produto->id}/update" : "/estoque/produtos";
 $esc     = fn($v) => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 $val     = fn($k) => $esc($produto->$k ?? '');
 $fmtNum  = fn($v, $dec=2) => $v !== null && $v !== '' ? number_format((float)$v, $dec, ',', '.') : '';
