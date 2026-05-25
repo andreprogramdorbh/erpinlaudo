@@ -93,4 +93,43 @@ class EmpresaConfig extends Model
         $empresa = $this->findByUsuarioId($usuarioId);
         return ($empresa && !empty($empresa->logo_path)) ? $empresa->logo_path : '';
     }
+
+    // ---------------------------------------------------------------
+    // Retorna os dados de assinatura da empresa
+    // Usado em Propostas, Contratos e demais documentos.
+    // ---------------------------------------------------------------
+    public function getAssinatura(int $usuarioId): array
+    {
+        $empresa = $this->findByUsuarioId($usuarioId);
+        if (!$empresa) {
+            return [
+                'nome'                  => '',
+                'cargo'                 => '',
+                'rubrica'               => '',
+                'imagem_path'           => '',
+                'usar_imagem'           => false,
+                'autenticacao_texto'    => '',
+                'autenticacao_ativa'    => false,
+            ];
+        }
+        return [
+            'nome'               => $empresa->assinatura_nome ?? '',
+            'cargo'              => $empresa->assinatura_cargo ?? '',
+            'rubrica'            => $empresa->assinatura_rubrica ?? '',
+            'imagem_path'        => $empresa->assinatura_imagem_path ?? '',
+            'usar_imagem'        => (bool)($empresa->usar_assinatura_imagem ?? false),
+            'autenticacao_texto' => $empresa->autenticacao_texto ?? '',
+            'autenticacao_ativa' => (bool)($empresa->autenticacao_ativa ?? true),
+        ];
+    }
+
+    // ---------------------------------------------------------------
+    // Salva o caminho da imagem de assinatura
+    // ---------------------------------------------------------------
+    public function saveAssinaturaImagem(int $usuarioId, string $path): bool
+    {
+        $empresa = $this->findByUsuarioId($usuarioId);
+        if (!$empresa) return false;
+        return $this->update($empresa->id, ['assinatura_imagem_path' => $path]);
+    }
 }

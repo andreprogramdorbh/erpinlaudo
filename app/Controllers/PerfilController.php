@@ -257,6 +257,36 @@ class PerfilController extends Controller
             $data['logo_path'] = $logoPath;
         }
 
+        // ── Assinatura ──────────────────────────────────────────────
+        $data['assinatura_nome']        = trim($_POST['assinatura_nome']  ?? '');
+        $data['assinatura_cargo']       = trim($_POST['assinatura_cargo'] ?? '');
+        $data['assinatura_rubrica']     = trim($_POST['assinatura_rubrica'] ?? '');
+        $data['usar_assinatura_imagem'] = isset($_POST['usar_assinatura_imagem']) ? 1 : 0;
+        $data['autenticacao_texto']     = trim($_POST['autenticacao_texto'] ?? '');
+        $data['autenticacao_ativa']     = isset($_POST['autenticacao_ativa']) ? 1 : 0;
+
+        // Upload da imagem de assinatura (PNG transparente)
+        if (!empty($_FILES['assinatura_imagem']['name']) && $_FILES['assinatura_imagem']['error'] === UPLOAD_ERR_OK) {
+            $sig     = $_FILES['assinatura_imagem'];
+            $finfo   = new \finfo(FILEINFO_MIME_TYPE);
+            $mime    = $finfo->file($sig['tmp_name']) ?: '';
+            $allowed = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif', 'image/webp' => 'webp'];
+            $ext     = $allowed[$mime] ?? null;
+            if ($ext && $sig['size'] <= 1 * 1024 * 1024) {
+                $dir = BASE_PATH . '/storage/uploads/empresa/' . $usuarioId;
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                // Remove imagem antiga
+                $empresaAtualSig = $this->empresaModel->findByUsuarioId($usuarioId);
+                if ($empresaAtualSig && !empty($empresaAtualSig->assinatura_imagem_path)) {
+                    @unlink(BASE_PATH . '/' . $empresaAtualSig->assinatura_imagem_path);
+                }
+                $sigName = 'assinatura_' . bin2hex(random_bytes(8)) . '.' . $ext;
+                if (move_uploaded_file($sig['tmp_name'], $dir . '/' . $sigName)) {
+                    $data['assinatura_imagem_path'] = 'storage/uploads/empresa/' . $usuarioId . '/' . $sigName;
+                }
+            }
+        }
+
         try {
             $ok = $this->empresaModel->upsert($usuarioId, $data);
             AuditLogger::log('empresa_config_salva', ['usuario_id' => $usuarioId, 'ok' => $ok]);
