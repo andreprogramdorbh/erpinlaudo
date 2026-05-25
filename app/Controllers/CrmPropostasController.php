@@ -543,8 +543,38 @@ class CrmPropostasController extends Controller
                        : '-';
         $dataCriacao = date('d/m/Y', strtotime($proposta->created_at));
 
-        $fornecedorNome  = ($user !== false ? $user->name  : null) ?? 'Empresa';
-        $fornecedorEmail = ($user !== false ? $user->email : null) ?? '';
+        // ── Dados do Fornecedor: usa EmpresaConfig se cadastrado, senão usa User ──
+        $empresaModel  = new \App\Models\EmpresaConfig();
+        $empresaCfg    = $empresaModel->findByUsuarioId((int) $proposta->usuario_id);
+        if ($empresaCfg && !empty($empresaCfg->razao_social)) {
+            $fornecedorNome  = !empty($empresaCfg->nome_fantasia)
+                               ? $empresaCfg->nome_fantasia
+                               : $empresaCfg->razao_social;
+            $fornecedorEmail = $empresaCfg->email_responsavel ?? '';
+            $fornecedorDoc   = $empresaCfg->cpf_cnpj ?? '';
+            if (strlen($fornecedorDoc) === 14) {
+                $fornecedorDoc = preg_replace('/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/', '$1.$2.$3/$4-$5', $fornecedorDoc);
+            } elseif (strlen($fornecedorDoc) === 11) {
+                $fornecedorDoc = preg_replace('/^(\d{3})(\d{3})(\d{3})(\d{2})$/', '$1.$2.$3-$4', $fornecedorDoc);
+            }
+            $fornecedorEnd  = trim(
+                ($empresaCfg->logradouro ?? '') . ', ' .
+                ($empresaCfg->numero     ?? '') . ' - ' .
+                ($empresaCfg->cidade     ?? '') . '/' .
+                ($empresaCfg->estado     ?? ''), ', -/'
+            );
+            $fornecedorTel  = $empresaCfg->telefone ?? '';
+            $fornecedorLogo = !empty($empresaCfg->logo_path)
+                              ? BASE_PATH . '/' . ltrim($empresaCfg->logo_path, '/')
+                              : '';
+        } else {
+            $fornecedorNome  = ($user !== false ? $user->name  : null) ?? 'Empresa';
+            $fornecedorEmail = ($user !== false ? $user->email : null) ?? '';
+            $fornecedorDoc   = '';
+            $fornecedorEnd   = '';
+            $fornecedorTel   = '';
+            $fornecedorLogo  = '';
+        }
 
         $clienteNome  = $proposta->cliente_nome ?? '';
         $clienteDoc   = $proposta->cliente_cnpj_cpf  ?? '';
@@ -577,13 +607,26 @@ class CrmPropostasController extends Controller
         // ── CABEÇALHO ─────────────────────────────────────────────────────────
         $pdf->SetFillColor(26, 86, 219);   // azul
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFont('Arial', 'B', 14);
-        $pdf->Rect(0, 0, 210, 30, 'F');
-        $pdf->SetXY(15, 8);
-        $pdf->Cell(120, 8, $enc($fornecedorNome), 0, 0, 'L');
-        $pdf->SetFont('Arial', '', 9);
-        $pdf->SetXY(15, 17);
-        $pdf->Cell(120, 6, $enc($fornecedorEmail), 0, 0, 'L');
+        $pdf->Rect(0, 0, 210, 32, 'F');
+        // Logo (se existir e for imagem válida)
+        $logoX = 15;
+        if (!empty($fornecedorLogo) && file_exists($fornecedorLogo)) {
+            try {
+                $pdf->Image($fornecedorLogo, 15, 4, 0, 24);
+                $logoX = 50;
+            } catch (\Throwable $__le) { $logoX = 15; }
+        }
+        $pdf->SetFont('Arial', 'B', 13);
+        $pdf->SetXY($logoX, 6);
+        $pdf->Cell(130 - ($logoX - 15), 8, $enc($fornecedorNome), 0, 0, 'L');
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetXY($logoX, 15);
+        $infoLinha = trim(implode('  |  ', array_filter([$fornecedorEmail, $fornecedorDoc, $fornecedorTel])));
+        $pdf->Cell(130 - ($logoX - 15), 5, $enc($infoLinha), 0, 0, 'L');
+        if (!empty($fornecedorEnd)) {
+            $pdf->SetXY($logoX, 21);
+            $pdf->Cell(130 - ($logoX - 15), 5, $enc($fornecedorEnd), 0, 0, 'L');
+        }
         // Badge número
         $pdf->SetFillColor(255, 255, 255);
         $pdf->SetTextColor(26, 86, 219);
@@ -616,26 +659,45 @@ class CrmPropostasController extends Controller
         $pdf->SetX(15); $pdf->Cell(85, 5, 'FORNECEDOR', 0, 0);
         $pdf->Cell(95, 5, 'TOMADOR / CLIENTE', 0, 1);
 
-        $pdf->SetFont('Arial', 'B', 9);
+         $pdf->SetFont('Arial', 'B', 9);
         $pdf->SetTextColor(30, 30, 30);
+        $yPartes = $pdf->GetY();
         $pdf->SetX(15); $pdf->Cell(85, 5, $enc($fornecedorNome), 0, 0);
         $pdf->Cell(95, 5, $enc($clienteNome), 0, 1);
-
         $pdf->SetFont('Arial', '', 8);
         $pdf->SetTextColor(80, 80, 80);
-        $pdf->SetX(15); $pdf->Cell(85, 4, $enc($fornecedorEmail), 0, 0);
-        $pdf->Cell(95, 4, $enc($clienteDoc), 0, 1);
-        if ($clienteEmail) {
-            $pdf->SetX(100); $pdf->Cell(95, 4, $enc($clienteEmail), 0, 1);
+        // Fornecedor: doc
+        if (!empty($fornecedorDoc)) {
+            $pdf->SetX(15); $pdf->Cell(85, 4, $enc($fornecedorDoc), 0, 0);
+        } else {
+            $pdf->SetX(15); $pdf->Cell(85, 4, '', 0, 0);
         }
-        if ($clienteTel) {
-            $pdf->SetX(100); $pdf->Cell(95, 4, $enc($clienteTel), 0, 1);
+        $pdf->Cell(95, 4, $enc($clienteDoc), 0, 1);
+        // Fornecedor: email | Cliente: email
+        if (!empty($fornecedorEmail)) {
+            $pdf->SetX(15); $pdf->Cell(85, 4, $enc($fornecedorEmail), 0, 0);
+        } else {
+            $pdf->SetX(15); $pdf->Cell(85, 4, '', 0, 0);
+        }
+        $pdf->Cell(95, 4, $enc($clienteEmail), 0, 1);
+        // Fornecedor: telefone | Cliente: telefone
+        if (!empty($fornecedorTel)) {
+            $pdf->SetX(15); $pdf->Cell(85, 4, $enc($fornecedorTel), 0, 0);
+        } else {
+            $pdf->SetX(15); $pdf->Cell(85, 4, '', 0, 0);
+        }
+        $pdf->Cell(95, 4, $enc($clienteTel), 0, 1);
+        // Fornecedor: endereço | Cliente: endereço
+        if (!empty($fornecedorEnd)) {
+            $pdf->SetX(15); $pdf->MultiCell(85, 4, $enc($fornecedorEnd), 0, 'L');
         }
         if ($clienteEnd) {
-            $pdf->SetX(100); $pdf->MultiCell(95, 4, $enc($clienteEnd), 0, 'L');
+            $pdf->SetXY(100, $yPartes + 5 + 4 + 4 + 4); // alinhar com a linha de endereço
+            $pdf->MultiCell(95, 4, $enc($clienteEnd), 0, 'L');
         }
         if ($clienteResp) {
-            $pdf->SetX(100); $pdf->Cell(95, 4, 'Resp: ' . $enc($clienteResp), 0, 1);
+            $pdf->SetX(15); $pdf->Cell(85, 4, '', 0, 0);
+            $pdf->Cell(95, 4, 'Resp: ' . $enc($clienteResp), 0, 1);
         }
         $pdf->Ln(3);
 

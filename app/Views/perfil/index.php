@@ -133,6 +133,12 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
     <button class="prf-tab <?php echo $activeTab === 'layout_exames' ? 'active' : ''; ?>" onclick="switchTab('layout_exames', this)">
       <i class="fas fa-file-medical-alt"></i> Layout de Exames
     </button>
+    <button class="prf-tab <?php echo $activeTab === 'empresa' ? 'active' : ''; ?>" onclick="switchTab('empresa', this)">
+      <i class="fas fa-building"></i> Empresa
+      <?php if (!($empresa ?? null)): ?>
+        <span class="badge bg-warning text-dark rounded-pill ms-1" style="font-size:.6rem" title="Dados da empresa n&#227;o cadastrados">!</span>
+      <?php endif; ?>
+    </button>
   </div>
 
   <div id="tab-geral" style="display:<?php echo $activeTab === 'geral' ? 'block' : 'none'; ?>">
@@ -468,6 +474,18 @@ $initials = strtoupper(substr($usuario->name, 0, 1) . (strpos($usuario->name, ' 
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="tab-empresa" style="display:<?php echo $activeTab === 'empresa' ? 'block' : 'none'; ?>">
+    <?php
+      if ($activeTab === 'empresa') {
+          $errEmp = $_GET['error']   ?? '';
+          $okEmp  = $_GET['success'] ?? '';
+          if ($errEmp === 'exception')   echo '<div class="alert alert-danger mx-0 mt-0 mb-3"><i class="fas fa-exclamation-triangle me-2"></i>Erro inesperado ao salvar. Tente novamente.</div>';
+          if ($okEmp  === 'empresa_salva') echo '<div class="alert alert-success mx-0 mt-0 mb-3"><i class="fas fa-check-circle me-2"></i>Dados da empresa salvos com sucesso!</div>';
+      }
+    ?>
+    <?php require_once __DIR__ . '/tabs/empresa.php'; ?>
   </div>
 
 </div>

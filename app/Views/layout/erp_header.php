@@ -1,3 +1,27 @@
+<?php
+// ── Dados da Empresa (carregados uma vez por request) ─────────────
+if (!isset($GLOBALS['_empresaConfig'])) {
+    try {
+        $GLOBALS['_empresaConfig'] = null;
+        if (class_exists('\\App\\Core\\Auth') && \App\Core\Auth::check()) {
+            $__uid = (int)(\App\Core\Auth::user()->id ?? 0);
+            if ($__uid > 0) {
+                $__em = new \App\Models\EmpresaConfig();
+                $GLOBALS['_empresaConfig'] = $__em->findByUsuarioId($__uid);
+            }
+        }
+    } catch (\Throwable $__e) {
+        $GLOBALS['_empresaConfig'] = null;
+    }
+}
+$_ec = $GLOBALS['_empresaConfig'] ?? null;
+$_ecNome = '';
+if ($_ec) {
+    $_ecNome = !empty($_ec->nome_fantasia)
+        ? $_ec->nome_fantasia
+        : (!empty($_ec->razao_social) ? $_ec->razao_social : '');
+}
+?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 
@@ -477,11 +501,17 @@
 
       <!-- TOP: LOGO -->
       <div class="sidebar-header">
-        <svg class="logo-svg" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L2 7L12 12L22 7L12 2Z" />
-          <path d="M2 17L12 22L22 17M2 12L12 17L22 12" />
-        </svg>
-        <span class="logo-text">INLAUDO ERP</span>
+        <?php if (!empty($_ec->logo_path) && file_exists(BASE_PATH . '/' . ltrim($_ec->logo_path, '/'))): ?>
+          <img src="/<?php echo htmlspecialchars(ltrim($_ec->logo_path, '/')); ?>"
+               alt="Logo"
+               style="max-height:34px;max-width:34px;object-fit:contain;border-radius:4px;">
+        <?php else: ?>
+          <svg class="logo-svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+            <path d="M2 17L12 22L22 17M2 12L12 17L22 12" />
+          </svg>
+        <?php endif; ?>
+        <span class="logo-text"><?php echo htmlspecialchars(!empty($_ecNome) ? $_ecNome : 'INLAUDO ERP'); ?></span>
       </div>
 
       <!-- CENTER: NAV -->

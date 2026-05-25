@@ -431,6 +431,9 @@ Router::group(["middleware" => ["Auth"]], function () {
         // Layout de Exames (Padronização de Importação)
         Router::post("/perfil/layout-exame/store", "PerfilController@layoutExameStore");
         Router::get("/perfil/layout-exame/delete/{id}", "PerfilController@layoutExameDelete");
+        // Empresa
+        Router::post("/perfil/empresa/save", "PerfilController@empresaSave");
+        Router::post("/perfil/empresa/logo", "PerfilController@empresaLogoUpload");
     });
 
     // Contratos (Operacional)
