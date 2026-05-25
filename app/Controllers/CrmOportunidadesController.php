@@ -164,10 +164,11 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     public function edit(int $id): void
     {
-        $uid = $this->usuarioId();
-        $op  = $this->opModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $op      = $this->opModel->findById($id);
 
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/oportunidades?error=nao_encontrado');
             exit();
         }
@@ -219,10 +220,11 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     public function update(int $id): void
     {
-        $uid = $this->usuarioId();
-        $op  = $this->opModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $op      = $this->opModel->findById($id);
 
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/oportunidades?error=nao_encontrado');
             exit();
         }
@@ -263,10 +265,11 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     public function delete(int $id): void
     {
-        $uid = $this->usuarioId();
-        $op  = $this->opModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $op      = $this->opModel->findById($id);
 
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/oportunidades?error=nao_encontrado');
             exit();
         }
@@ -293,8 +296,9 @@ class CrmOportunidadesController extends Controller
             return;
         }
 
+        $isAdmin = $this->isAdmin();
         $op = $this->opModel->findById($opId);
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             $this->jsonError('Oportunidade não encontrada.');
             return;
         }
@@ -314,11 +318,12 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     public function addInteracao(): void
     {
-        $uid  = $this->usuarioId();
-        $opId = (int) ($_POST['related_id'] ?? 0);
-        $op   = $this->opModel->findById($opId);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $opId    = (int) ($_POST['related_id'] ?? 0);
+        $op      = $this->opModel->findById($opId);
 
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             $this->jsonError('Oportunidade não encontrada.');
             return;
         }
@@ -364,7 +369,7 @@ class CrmOportunidadesController extends Controller
         $uid       = $this->usuarioId();
         $interacao = $this->interacaoModel->findById($id);
 
-        if (!$interacao || (int) $interacao->usuario_id !== $uid) {
+        if (!$interacao || ((int) $interacao->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Interação não encontrada.');
             return;
         }
@@ -381,10 +386,11 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     public function updateRetorno(int $id): void
     {
-        $uid = $this->usuarioId();
-        $op  = $this->opModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $op      = $this->opModel->findById($id);
 
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Não autorizado.']);
             exit();
@@ -565,11 +571,12 @@ class CrmOportunidadesController extends Controller
     // ---------------------------------------------------------------
     public function uploadAnexo(): void
     {
-        $uid  = $this->usuarioId();
-        $opId = (int) ($_POST['related_id'] ?? 0);
-        $op   = $this->opModel->findById($opId);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $opId    = (int) ($_POST['related_id'] ?? 0);
+        $op      = $this->opModel->findById($opId);
 
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$isAdmin)) {
             header("Location: /crm/oportunidades?error=nao_encontrado");
             exit();
         }
@@ -683,7 +690,7 @@ class CrmOportunidadesController extends Controller
         }
 
         $op = $this->opModel->findById((int) $anexo->related_id);
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$this->isAdmin())) {
             header('Location: /crm/oportunidades?error=sem_permissao');
             exit();
         }
@@ -717,7 +724,7 @@ class CrmOportunidadesController extends Controller
         }
 
         $op = $this->opModel->findById((int) $anexo->related_id);
-        if (!$op || (int) $op->usuario_id !== $uid) {
+        if (!$op || ((int) $op->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Sem permissão para excluir este anexo.');
             return;
         }

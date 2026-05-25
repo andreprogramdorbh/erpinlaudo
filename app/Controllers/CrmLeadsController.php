@@ -148,10 +148,11 @@ class CrmLeadsController extends Controller
     // ---------------------------------------------------------------
     public function edit(int $id): void
     {
-        $uid  = $this->usuarioId();
-        $lead = $this->leadModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $lead    = $this->leadModel->findById($id);
 
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/leads?error=nao_encontrado');
             exit();
         }
@@ -189,10 +190,11 @@ class CrmLeadsController extends Controller
     // ---------------------------------------------------------------
     public function update(int $id): void
     {
-        $uid  = $this->usuarioId();
-        $lead = $this->leadModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $lead    = $this->leadModel->findById($id);
 
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/leads?error=nao_encontrado');
             exit();
         }
@@ -227,10 +229,11 @@ class CrmLeadsController extends Controller
     // ---------------------------------------------------------------
     public function delete(int $id): void
     {
-        $uid  = $this->usuarioId();
-        $lead = $this->leadModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $lead    = $this->leadModel->findById($id);
 
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/leads?error=nao_encontrado');
             exit();
         }
@@ -248,10 +251,11 @@ class CrmLeadsController extends Controller
     // ---------------------------------------------------------------
     public function converter(int $id): void
     {
-        $uid  = $this->usuarioId();
-        $lead = $this->leadModel->findById($id);
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $lead    = $this->leadModel->findById($id);
 
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
             header('Location: /crm/leads?error=nao_encontrado');
             exit();
         }
@@ -298,14 +302,13 @@ class CrmLeadsController extends Controller
     public function addInteracao(): void
     {
         $uid      = $this->usuarioId();
+        $isAdmin  = $this->isAdmin();
         $leadId   = (int) ($_POST['related_id'] ?? 0);
         $lead     = $this->leadModel->findById($leadId);
-
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
             $this->jsonError('Lead não encontrado ou sem permissão.');
             return;
         }
-
         $data = [
             'usuario_id'     => $uid,
             'related_id'     => $leadId,
@@ -414,11 +417,11 @@ class CrmLeadsController extends Controller
     // ---------------------------------------------------------------
     public function uploadAnexo(): void
     {
-        $uid    = $this->usuarioId();
-        $leadId = (int) ($_POST['related_id'] ?? 0);
-        $lead   = $this->leadModel->findById($leadId);
-
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        $uid     = $this->usuarioId();
+        $isAdmin = $this->isAdmin();
+        $leadId  = (int) ($_POST['related_id'] ?? 0);
+        $lead    = $this->leadModel->findById($leadId);
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$isAdmin)) {
             header("Location: /crm/leads?error=nao_encontrado");
             exit();
         }
@@ -532,7 +535,7 @@ class CrmLeadsController extends Controller
         }
 
         $lead = $this->leadModel->findById((int) $anexo->related_id);
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$this->isAdmin())) {
             header('Location: /crm/leads?error=sem_permissao');
             exit();
         }
@@ -566,7 +569,7 @@ class CrmLeadsController extends Controller
         }
 
         $lead = $this->leadModel->findById((int) $anexo->related_id);
-        if (!$lead || (int) $lead->usuario_id !== $uid) {
+        if (!$lead || ((int) $lead->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Sem permissão para excluir este anexo.');
             return;
         }
