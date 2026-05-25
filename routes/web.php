@@ -173,6 +173,11 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::post("/financeiro/fornecedores/delete/{id}", "FornecedoresController@delete");
     });
 
+    // Fornecedores — APIs de consulta (CNPJ, CEP) e histórico
+    Router::get("/fornecedores/buscar-cnpj",       "FornecedoresController@buscarCnpj");
+    Router::get("/fornecedores/buscar-cep",        "FornecedoresController@buscarCep");
+    Router::get("/fornecedores/{id}/historico",    "FornecedoresController@historico");
+
     // Corpo Clinico
     Router::get("/medicos", "MedicosController@index");
     Router::get("/medicos/create", "MedicosController@create");
