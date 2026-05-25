@@ -529,283 +529,262 @@ class CrmPropostasController extends Controller
 
     private function gerarPdf(object $proposta, array $itens, object|false $user): string
     {
-        $numero       = htmlspecialchars($proposta->numero);
-        $titulo       = htmlspecialchars($proposta->titulo);
-        $dataGeracao  = date('d/m/Y H:i');
-        $validade     = !empty($proposta->validade_proposta)
-                        ? date('d/m/Y', strtotime($proposta->validade_proposta))
-                        : '—';
-        $dataCriacao  = date('d/m/Y', strtotime($proposta->created_at));
+        // ── FPDF: biblioteca PHP pura embutida no repositório ─────────────────
+        // Compatível com qualquer hospedagem compartilhada (HostGator, cPanel etc.)
+        // Não requer Composer, binários externos ou instalação de pacotes.
+        require_once BASE_PATH . '/app/Lib/fpdf/fpdf.php';
 
-        // Dados do fornecedor (empresa do usuário)
-        $fornecedorNome  = htmlspecialchars(($user !== false ? $user->name  : null) ?? 'Empresa');
-        $fornecedorEmail = htmlspecialchars(($user !== false ? $user->email : null) ?? '');
+        // Dados básicos
+        $numero      = $proposta->numero;
+        $titulo      = $proposta->titulo;
+        $dataGeracao = date('d/m/Y H:i');
+        $validade    = !empty($proposta->validade_proposta)
+                       ? date('d/m/Y', strtotime($proposta->validade_proposta))
+                       : '-';
+        $dataCriacao = date('d/m/Y', strtotime($proposta->created_at));
 
-        // Dados do tomador (cliente)
-        $clienteNome     = htmlspecialchars($proposta->cliente_nome);
-        $clienteDoc      = htmlspecialchars($proposta->cliente_cnpj_cpf ?? '');
-        $clienteEmail    = htmlspecialchars($proposta->cliente_email    ?? '');
-        $clienteTel      = htmlspecialchars($proposta->cliente_telefone ?? '');
-        $clienteEnd      = htmlspecialchars(
-            trim(($proposta->cliente_endereco ?? '') . ', ' .
-                 ($proposta->cliente_cidade   ?? '') . ' - ' .
-                 ($proposta->cliente_estado   ?? ''), ', -')
+        $fornecedorNome  = ($user !== false ? $user->name  : null) ?? 'Empresa';
+        $fornecedorEmail = ($user !== false ? $user->email : null) ?? '';
+
+        $clienteNome  = $proposta->cliente_nome ?? '';
+        $clienteDoc   = $proposta->cliente_cnpj_cpf  ?? '';
+        $clienteEmail = $proposta->cliente_email     ?? '';
+        $clienteTel   = $proposta->cliente_telefone  ?? '';
+        $clienteEnd   = trim(
+            ($proposta->cliente_endereco ?? '') . ', ' .
+            ($proposta->cliente_cidade   ?? '') . ' - ' .
+            ($proposta->cliente_estado   ?? ''), ', -'
         );
-        $clienteResp     = htmlspecialchars($proposta->cliente_responsavel ?? '');
+        $clienteResp  = $proposta->cliente_responsavel ?? '';
 
-        // Itens
-        $linhasItens = '';
+        $subtotal  = number_format((float) $proposta->subtotal,            2, ',', '.');
+        $descTotal = number_format((float) $proposta->desconto_total,      2, ',', '.');
+        $frete     = number_format((float) ($proposta->frete_valor ?? 0),  2, ',', '.');
+        $total     = number_format((float) $proposta->total,               2, ',', '.');
+        $prazo     = $proposta->prazo_entrega      ?? '-';
+        $pagamento = $proposta->condicao_pagamento ?? '-';
+        $obs       = $proposta->observacoes        ?? '';
+
+        // ── Instância FPDF ────────────────────────────────────────────────────
+        $pdf = new \FPDF('P', 'mm', 'A4');
+        $pdf->SetAutoPageBreak(true, 15);
+        $pdf->AddPage();
+        $pdf->SetMargins(15, 15, 15);
+
+        // Função auxiliar para texto UTF-8 → Latin-1 (FPDF padrão)
+        $enc = fn(string $s): string => iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
+
+        // ── CABEÇALHO ─────────────────────────────────────────────────────────
+        $pdf->SetFillColor(26, 86, 219);   // azul
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFont('Arial', 'B', 14);
+        $pdf->Rect(0, 0, 210, 30, 'F');
+        $pdf->SetXY(15, 8);
+        $pdf->Cell(120, 8, $enc($fornecedorNome), 0, 0, 'L');
+        $pdf->SetFont('Arial', '', 9);
+        $pdf->SetXY(15, 17);
+        $pdf->Cell(120, 6, $enc($fornecedorEmail), 0, 0, 'L');
+        // Badge número
+        $pdf->SetFillColor(255, 255, 255);
+        $pdf->SetTextColor(26, 86, 219);
+        $pdf->SetFont('Arial', 'B', 10);
+        $pdf->Rect(148, 5, 47, 20, 'F');
+        $pdf->SetXY(148, 7);
+        $pdf->Cell(47, 5, 'PROPOSTA', 0, 2, 'C');
+        $pdf->SetFont('Arial', 'B', 12);
+        $pdf->SetX(148);
+        $pdf->Cell(47, 8, $enc($numero), 0, 0, 'C');
+
+        // Título da proposta
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->SetFont('Arial', 'B', 12);
+        $pdf->SetXY(15, 34);
+        $pdf->MultiCell(180, 7, $enc($titulo), 0, 'L');
+        $pdf->Ln(2);
+
+        // ── PARTES ENVOLVIDAS ─────────────────────────────────────────────────
+        $y = $pdf->GetY();
+        $pdf->SetFillColor(240, 247, 255);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetTextColor(26, 86, 219);
+        $pdf->SetXY(15, $y);
+        $pdf->Cell(180, 7, 'PARTES ENVOLVIDAS', 0, 1, 'L', true);
+        $pdf->Ln(1);
+
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetTextColor(100, 100, 100);
+        $pdf->SetX(15); $pdf->Cell(85, 5, 'FORNECEDOR', 0, 0);
+        $pdf->Cell(95, 5, 'TOMADOR / CLIENTE', 0, 1);
+
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->SetX(15); $pdf->Cell(85, 5, $enc($fornecedorNome), 0, 0);
+        $pdf->Cell(95, 5, $enc($clienteNome), 0, 1);
+
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->SetX(15); $pdf->Cell(85, 4, $enc($fornecedorEmail), 0, 0);
+        $pdf->Cell(95, 4, $enc($clienteDoc), 0, 1);
+        if ($clienteEmail) {
+            $pdf->SetX(100); $pdf->Cell(95, 4, $enc($clienteEmail), 0, 1);
+        }
+        if ($clienteTel) {
+            $pdf->SetX(100); $pdf->Cell(95, 4, $enc($clienteTel), 0, 1);
+        }
+        if ($clienteEnd) {
+            $pdf->SetX(100); $pdf->MultiCell(95, 4, $enc($clienteEnd), 0, 'L');
+        }
+        if ($clienteResp) {
+            $pdf->SetX(100); $pdf->Cell(95, 4, 'Resp: ' . $enc($clienteResp), 0, 1);
+        }
+        $pdf->Ln(3);
+
+        // ── ITENS ─────────────────────────────────────────────────────────────
+        $y = $pdf->GetY();
+        $pdf->SetFillColor(240, 247, 255);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetTextColor(26, 86, 219);
+        $pdf->SetXY(15, $y);
+        $pdf->Cell(180, 7, 'ITENS DA PROPOSTA', 0, 1, 'L', true);
+
+        // Cabeçalho da tabela
+        $pdf->SetFillColor(26, 86, 219);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetX(15);
+        $pdf->Cell(8,  6, '#',          1, 0, 'C', true);
+        $pdf->Cell(22, 6, 'Codigo',     1, 0, 'C', true);
+        $pdf->Cell(72, 6, 'Descricao',  1, 0, 'L', true);
+        $pdf->Cell(12, 6, 'Un.',        1, 0, 'C', true);
+        $pdf->Cell(18, 6, 'Qtd.',       1, 0, 'R', true);
+        $pdf->Cell(24, 6, 'Preco Un.',  1, 0, 'R', true);
+        $pdf->Cell(24, 6, 'Total',      1, 1, 'R', true);
+
+        // Linhas dos itens
+        $pdf->SetFont('Arial', '', 8);
         foreach ($itens as $i => $item) {
-            $bg       = ($i % 2 === 0) ? '#ffffff' : '#f8fafc';
-            $qtd      = number_format((float) $item->quantidade, 2, ',', '.');
-            $preco    = number_format((float) $item->preco_unitario, 2, ',', '.');
-            $total    = number_format((float) $item->total_item, 2, ',', '.');
-            $margem   = $item->margem_lucro > 0 ? "<small style='color:#6b7280'> ({$item->margem_lucro}% mg)</small>" : '';
-            $linhasItens .= "
-            <tr style='background:{$bg}'>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280'>" . ($i + 1) . "</td>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px'>" . htmlspecialchars($item->codigo ?? '') . "</td>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px'>" . htmlspecialchars($item->descricao) . "</td>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:center'>" . htmlspecialchars($item->unidade ?? 'un') . "</td>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:right'>{$qtd}</td>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:right'>R$ {$preco}{$margem}</td>
-              <td style='padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;text-align:right;font-weight:600'>R$ {$total}</td>
-            </tr>";
+            $fill = ($i % 2 === 0);
+            $pdf->SetFillColor(248, 250, 252);
+            $pdf->SetTextColor(30, 30, 30);
+            $qtd   = number_format((float) $item->quantidade,     2, ',', '.');
+            $preco = number_format((float) $item->preco_unitario, 2, ',', '.');
+            $tot   = number_format((float) $item->total_item,     2, ',', '.');
+            $pdf->SetX(15);
+            $pdf->Cell(8,  6, ($i + 1),                       1, 0, 'C', $fill);
+            $pdf->Cell(22, 6, $enc($item->codigo ?? ''),       1, 0, 'C', $fill);
+            $pdf->Cell(72, 6, $enc($item->descricao),          1, 0, 'L', $fill);
+            $pdf->Cell(12, 6, $enc($item->unidade ?? 'un'),    1, 0, 'C', $fill);
+            $pdf->Cell(18, 6, $qtd,                            1, 0, 'R', $fill);
+            $pdf->Cell(24, 6, 'R$ ' . $preco,                  1, 0, 'R', $fill);
+            $pdf->Cell(24, 6, 'R$ ' . $tot,                    1, 1, 'R', $fill);
         }
 
         // Totais
-        $subtotal   = number_format((float) $proposta->subtotal,       2, ',', '.');
-        $descTotal  = number_format((float) $proposta->desconto_total,  2, ',', '.');
-        $frete      = number_format((float) ($proposta->frete_valor ?? 0), 2, ',', '.');
-        $total      = number_format((float) $proposta->total,           2, ',', '.');
-
-        $linhaDesconto = '';
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->SetX(15);
+        $pdf->Cell(156, 6, 'Subtotal:', 0, 0, 'R');
+        $pdf->Cell(24,  6, 'R$ ' . $subtotal, 1, 1, 'R');
         if ((float) $proposta->desconto_total > 0) {
-            $linhaDesconto = "<tr><td colspan='6' style='text-align:right;padding:6px 10px;font-size:12px'>Desconto:</td><td style='text-align:right;padding:6px 10px;font-size:12px;color:#dc2626'>- R$ {$descTotal}</td></tr>";
+            $pdf->SetTextColor(220, 38, 38);
+            $pdf->SetX(15);
+            $pdf->Cell(156, 6, 'Desconto:', 0, 0, 'R');
+            $pdf->Cell(24,  6, '- R$ ' . $descTotal, 1, 1, 'R');
+            $pdf->SetTextColor(30, 30, 30);
         }
-        $linhaFrete = '';
         if ((float) ($proposta->frete_valor ?? 0) > 0) {
-            $linhaFrete = "<tr><td colspan='6' style='text-align:right;padding:6px 10px;font-size:12px'>Frete:</td><td style='text-align:right;padding:6px 10px;font-size:12px'>R$ {$frete}</td></tr>";
+            $pdf->SetX(15);
+            $pdf->Cell(156, 6, 'Frete:', 0, 0, 'R');
+            $pdf->Cell(24,  6, 'R$ ' . $frete, 1, 1, 'R');
+        }
+        $pdf->SetFillColor(26, 86, 219);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetX(15);
+        $pdf->Cell(156, 7, 'TOTAL GERAL:', 0, 0, 'R', true);
+        $pdf->Cell(24,  7, 'R$ ' . $total, 1, 1, 'R', true);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->Ln(3);
+
+        // ── CONDIÇÕES COMERCIAIS ──────────────────────────────────────────────
+        $y = $pdf->GetY();
+        $pdf->SetFillColor(240, 247, 255);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetTextColor(26, 86, 219);
+        $pdf->SetXY(15, $y);
+        $pdf->Cell(180, 7, 'CONDICOES COMERCIAIS', 0, 1, 'L', true);
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->SetX(15); $pdf->Cell(40, 5, 'Prazo de Entrega:', 0, 0);
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->Cell(140, 5, $enc($prazo), 0, 1);
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetX(15); $pdf->Cell(40, 5, 'Cond. de Pagamento:', 0, 0);
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->Cell(140, 5, $enc($pagamento), 0, 1);
+        $pdf->Ln(2);
+
+        // ── OBSERVAÇÕES ───────────────────────────────────────────────────────
+        if (!empty(trim($obs))) {
+            $y = $pdf->GetY();
+            $pdf->SetFillColor(240, 247, 255);
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->SetTextColor(26, 86, 219);
+            $pdf->SetXY(15, $y);
+            $pdf->Cell(180, 7, 'OBSERVACOES', 0, 1, 'L', true);
+            $pdf->SetFont('Arial', '', 8);
+            $pdf->SetTextColor(30, 30, 30);
+            $pdf->SetX(15);
+            $pdf->MultiCell(180, 5, $enc($obs), 0, 'L');
+            $pdf->Ln(2);
         }
 
-        // Condições
-        $prazo    = htmlspecialchars($proposta->prazo_entrega      ?? '—');
-        $pagamento = htmlspecialchars($proposta->condicao_pagamento ?? '—');
-        $obs      = nl2br(htmlspecialchars($proposta->observacoes  ?? ''));
+        // ── VALIDADE ──────────────────────────────────────────────────────────
+        $pdf->SetFillColor(254, 243, 199);
+        $pdf->SetTextColor(120, 80, 0);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetX(15);
+        $pdf->Cell(180, 8, $enc('Esta proposta e valida ate: ' . $validade), 1, 1, 'C', true);
+        $pdf->Ln(4);
 
-        $html = <<<HTML
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Proposta {$numero}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #1f2937; background: #fff; }
-  .header { background: linear-gradient(135deg, #1a56db 0%, #0e3a8c 100%); color: #fff; padding: 28px 32px; }
-  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
-  .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-  .header .sub { font-size: 13px; opacity: .85; }
-  .numero-badge { background: rgba(255,255,255,.2); border-radius: 8px; padding: 8px 16px; text-align: center; }
-  .numero-badge .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .8; }
-  .numero-badge .num { font-size: 18px; font-weight: 700; }
-  .section { padding: 20px 32px; }
-  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; font-weight: 700; margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .info-block { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; }
-  .info-block .label { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: #9ca3af; margin-bottom: 4px; }
-  .info-block .value { font-size: 13px; color: #1f2937; font-weight: 600; }
-  .info-block .sub-value { font-size: 12px; color: #6b7280; margin-top: 2px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #1a56db; color: #fff; padding: 10px; font-size: 11px; text-align: left; }
-  th:last-child, th:nth-last-child(-n+3) { text-align: right; }
-  .totals-row { background: #f0f7ff; }
-  .total-final { background: #1a56db; color: #fff; font-size: 15px; font-weight: 700; }
-  .total-final td { padding: 12px 10px; }
-  .conditions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .cond-item { background: #f9fafb; border-left: 3px solid #1a56db; padding: 10px 14px; border-radius: 0 6px 6px 0; }
-  .cond-label { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: #9ca3af; margin-bottom: 4px; }
-  .cond-value { font-size: 13px; color: #1f2937; font-weight: 600; }
-  .validade-box { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
-  .validade-box .icon { font-size: 20px; }
-  .validade-box .text { font-size: 13px; color: #92400e; }
-  .validade-box .text strong { display: block; font-size: 15px; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
-  .sig-block { text-align: center; }
-  .sig-line { border-top: 1.5px solid #374151; margin-bottom: 8px; padding-top: 8px; }
-  .sig-name { font-weight: 700; font-size: 13px; }
-  .sig-role { font-size: 11px; color: #6b7280; }
-  .footer { background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 12px 32px; font-size: 11px; color: #9ca3af; display: flex; justify-content: space-between; }
-  .obs-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; font-size: 12px; color: #374151; line-height: 1.6; }
-  .divider { height: 1px; background: #e5e7eb; margin: 0 32px; }
-</style>
-</head>
-<body>
+        // ── ASSINATURAS ───────────────────────────────────────────────────────
+        $y = $pdf->GetY();
+        $pdf->SetFillColor(240, 247, 255);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetTextColor(26, 86, 219);
+        $pdf->SetXY(15, $y);
+        $pdf->Cell(180, 7, 'ACEITE E ASSINATURAS', 0, 1, 'L', true);
+        $pdf->Ln(12);
+        $pdf->SetDrawColor(100, 100, 100);
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->SetX(15);
+        $pdf->Cell(80, 0, '', 'T', 0, 'C');
+        $pdf->SetX(115);
+        $pdf->Cell(80, 0, '', 'T', 1, 'C');
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetX(15); $pdf->Cell(80, 5, $enc($fornecedorNome), 0, 0, 'C');
+        $pdf->SetX(115); $pdf->Cell(80, 5, $enc($clienteNome), 0, 1, 'C');
+        $pdf->SetFont('Arial', '', 7);
+        $pdf->SetTextColor(100, 100, 100);
+        $pdf->SetX(15); $pdf->Cell(80, 4, 'Fornecedor / Responsavel', 0, 0, 'C');
+        $pdf->SetX(115); $pdf->Cell(80, 4, 'Tomador / Cliente', 0, 1, 'C');
+        $pdf->Ln(4);
 
-<!-- CABEÇALHO -->
-<div class="header">
-  <div class="header-top">
-    <div>
-      <h1>{$fornecedorNome}</h1>
-      <div class="sub">{$fornecedorEmail}</div>
-      <div class="sub" style="margin-top:6px">Data: {$dataCriacao}</div>
-    </div>
-    <div class="numero-badge">
-      <div class="label">Proposta</div>
-      <div class="num">{$numero}</div>
-    </div>
-  </div>
-  <div style="margin-top:16px;font-size:16px;font-weight:600">{$titulo}</div>
-</div>
+        // ── RODAPÉ ────────────────────────────────────────────────────────────
+        $pdf->SetFillColor(249, 250, 251);
+        $pdf->SetFont('Arial', '', 7);
+        $pdf->SetTextColor(150, 150, 150);
+        $pdf->SetX(15);
+        $pdf->Cell(90, 5, $enc('Proposta ' . $numero . ' - Gerada em ' . $dataGeracao), 0, 0, 'L');
+        $pdf->Cell(90, 5, 'Documento gerado pelo ERP InLaudo', 0, 1, 'R');
 
-<!-- PARTES -->
-<div class="section">
-  <div class="section-title">Partes Envolvidas</div>
-  <div class="grid-2">
-    <div class="info-block">
-      <div class="label">Fornecedor</div>
-      <div class="value">{$fornecedorNome}</div>
-      <div class="sub-value">{$fornecedorEmail}</div>
-    </div>
-    <div class="info-block">
-      <div class="label">Tomador / Cliente</div>
-      <div class="value">{$clienteNome}</div>
-      <div class="sub-value">{$clienteDoc}</div>
-      <div class="sub-value">{$clienteEmail}</div>
-      <div class="sub-value">{$clienteTel}</div>
-      <div class="sub-value">{$clienteEnd}</div>
-      {$this->ifNotEmpty($clienteResp, "<div class='sub-value'>Resp: {$clienteResp}</div>")}
-    </div>
-  </div>
-</div>
-
-<div class="divider"></div>
-
-<!-- ITENS -->
-<div class="section">
-  <div class="section-title">Itens da Proposta</div>
-  <table>
-    <thead>
-      <tr>
-        <th style="width:40px">#</th>
-        <th style="width:80px">Código</th>
-        <th>Descrição</th>
-        <th style="width:50px;text-align:center">Un.</th>
-        <th style="width:70px;text-align:right">Qtd.</th>
-        <th style="width:110px;text-align:right">Preço Unit.</th>
-        <th style="width:110px;text-align:right">Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {$linhasItens}
-    </tbody>
-    <tfoot>
-      <tr class="totals-row">
-        <td colspan="6" style="text-align:right;padding:8px 10px;font-size:12px;font-weight:600">Subtotal:</td>
-        <td style="text-align:right;padding:8px 10px;font-size:12px;font-weight:600">R$ {$subtotal}</td>
-      </tr>
-      {$linhaDesconto}
-      {$linhaFrete}
-      <tr class="total-final">
-        <td colspan="6" style="text-align:right">TOTAL GERAL:</td>
-        <td style="text-align:right">R$ {$total}</td>
-      </tr>
-    </tfoot>
-  </table>
-</div>
-
-<div class="divider"></div>
-
-<!-- CONDIÇÕES -->
-<div class="section">
-  <div class="section-title">Condições Comerciais</div>
-  <div class="conditions">
-    <div class="cond-item">
-      <div class="cond-label">Prazo de Entrega</div>
-      <div class="cond-value">{$prazo}</div>
-    </div>
-    <div class="cond-item">
-      <div class="cond-label">Condição de Pagamento</div>
-      <div class="cond-value">{$pagamento}</div>
-    </div>
-  </div>
-</div>
-
-HTML;
-
-        if (!empty($proposta->observacoes)) {
-            $html .= <<<HTML
-<div class="divider"></div>
-<div class="section">
-  <div class="section-title">Observações</div>
-  <div class="obs-box">{$obs}</div>
-</div>
-HTML;
-        }
-
-        $html .= <<<HTML
-<div class="divider"></div>
-
-<!-- VALIDADE -->
-<div class="section">
-  <div class="validade-box">
-    <div class="icon">⏰</div>
-    <div class="text">
-      Esta proposta é válida até <strong>{$validade}</strong>
-      Após esta data, os valores e condições poderão ser revisados.
-    </div>
-  </div>
-</div>
-
-<div class="divider"></div>
-
-<!-- ASSINATURAS -->
-<div class="section">
-  <div class="section-title">Aceite e Assinaturas</div>
-  <div class="signatures">
-    <div class="sig-block">
-      <div style="height:50px"></div>
-      <div class="sig-line"></div>
-      <div class="sig-name">{$fornecedorNome}</div>
-      <div class="sig-role">Fornecedor / Responsável</div>
-    </div>
-    <div class="sig-block">
-      <div style="height:50px"></div>
-      <div class="sig-line"></div>
-      <div class="sig-name">{$clienteNome}</div>
-      <div class="sig-role">Tomador / Cliente</div>
-    </div>
-  </div>
-</div>
-
-<!-- RODAPÉ -->
-<div class="footer">
-  <span>Proposta {$numero} — Gerada em {$dataGeracao}</span>
-  <span>Documento gerado pelo ERP InLaudo</span>
-</div>
-
-</body>
-</html>
-HTML;
-
-        // Gerar PDF via mPDF (puro PHP, sem dependência de binários externos)
+        // ── SALVAR ────────────────────────────────────────────────────────────
         $tmpPdf = sys_get_temp_dir() . '/proposta_' . $proposta->id . '_' . time() . '.pdf';
-
-        $mpdf = new \Mpdf\Mpdf([
-            'mode'          => 'utf-8',
-            'format'        => 'A4',
-            'margin_top'    => 0,
-            'margin_bottom' => 0,
-            'margin_left'   => 0,
-            'margin_right'  => 0,
-            'tempDir'       => sys_get_temp_dir(),
-        ]);
-        $mpdf->SetTitle('Proposta ' . $proposta->numero);
-        $mpdf->WriteHTML($html);
-        $mpdf->Output($tmpPdf, \Mpdf\Output\Destination::FILE);
+        $pdf->Output('F', $tmpPdf);
 
         if (!file_exists($tmpPdf) || filesize($tmpPdf) < 100) {
-            throw new \RuntimeException('mPDF não gerou o PDF.');
+            throw new \RuntimeException('FPDF nao gerou o PDF.');
         }
 
         return $tmpPdf;
