@@ -788,17 +788,24 @@ HTML;
 </html>
 HTML;
 
-        // Gerar PDF via weasyprint
-        $tmpHtml = sys_get_temp_dir() . '/proposta_' . $proposta->id . '_' . time() . '.html';
-        $tmpPdf  = sys_get_temp_dir() . '/proposta_' . $proposta->id . '_' . time() . '.pdf';
-        file_put_contents($tmpHtml, $html);
+        // Gerar PDF via mPDF (puro PHP, sem dependência de binários externos)
+        $tmpPdf = sys_get_temp_dir() . '/proposta_' . $proposta->id . '_' . time() . '.pdf';
 
-        $cmd = 'weasyprint ' . escapeshellarg($tmpHtml) . ' ' . escapeshellarg($tmpPdf) . ' 2>&1';
-        $out = shell_exec($cmd);
-        @unlink($tmpHtml);
+        $mpdf = new \Mpdf\Mpdf([
+            'mode'          => 'utf-8',
+            'format'        => 'A4',
+            'margin_top'    => 0,
+            'margin_bottom' => 0,
+            'margin_left'   => 0,
+            'margin_right'  => 0,
+            'tempDir'       => sys_get_temp_dir(),
+        ]);
+        $mpdf->SetTitle('Proposta ' . $proposta->numero);
+        $mpdf->WriteHTML($html);
+        $mpdf->Output($tmpPdf, \Mpdf\Output\Destination::FILE);
 
         if (!file_exists($tmpPdf) || filesize($tmpPdf) < 100) {
-            throw new \RuntimeException('weasyprint não gerou o PDF. Output: ' . $out);
+            throw new \RuntimeException('mPDF não gerou o PDF.');
         }
 
         return $tmpPdf;
