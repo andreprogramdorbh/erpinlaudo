@@ -13,7 +13,7 @@ $v = fn(string $field, string $default = ''): string
 ?>
 
 <div class="prf-card">
-  <form id="formEmpresa" action="/perfil/empresa/update" method="POST" enctype="multipart/form-data">
+  <form id="formEmpresa" action="/perfil/empresa/save" method="POST" enctype="multipart/form-data">
     <?php echo \App\Core\View::csrfField(); ?>
 
     <!-- ── IDENTIFICAÇÃO ─────────────────────────────────────────── -->

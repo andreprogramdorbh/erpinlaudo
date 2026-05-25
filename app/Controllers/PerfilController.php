@@ -189,9 +189,9 @@ class PerfilController extends Controller
     }
 
     // ---------------------------------------------------------------
-    // POST /perfil/empresa/update — salva dados da empresa
+    // POST /perfil/empresa/save — salva dados da empresa
     // ---------------------------------------------------------------
-    public function empresaUpdate(): void
+    public function empresaSave(): void
     {
         if (!Auth::check()) { header('Location: /login'); exit(); }
 
@@ -296,6 +296,17 @@ class PerfilController extends Controller
             header('Location: /perfil?tab=empresa&error=exception');
         }
         exit();
+    }
+
+    /**
+     * Upload isolado do logo da empresa (alias — o logo é processado dentro de empresaSave)
+     */
+    public function empresaLogoUpload(): void
+    {
+        // O logo é enviado junto com o formulário principal via empresaSave.
+        // Esta rota existe apenas para compatibilidade futura (upload AJAX).
+        // Por ora, redireciona para o save completo.
+        $this->empresaSave();
     }
 
     /**
