@@ -85,6 +85,23 @@ class FornecedoresController extends Controller
             $dados['usuario_id'] = $usuarioId;
             $dados['nome']       = $nome;
 
+            // --- PROTECAO CONTRA DUPLICATAS (camada de aplicacao) ---
+            $documento = preg_replace('/\D/', '', $dados['documento'] ?? '');
+            if ($documento !== '' && $this->model->documentoExists($documento, $usuarioId)) {
+                $this->logger->warning('[Fornecedores] store bloqueado: documento duplicado', [
+                    'usuario_id' => $usuarioId,
+                    'documento'  => $documento,
+                ]);
+                AuditLogger::log('fornecedor_duplicado_bloqueado', [
+                    'usuario_id' => $usuarioId,
+                    'documento'  => $documento,
+                    'nome'       => $nome,
+                ]);
+                header('Location: ' . self::BASE_ROUTE . '/create?error=documento_duplicado');
+                exit();
+            }
+            // --------------------------------------------------------
+
             $id = $this->model->create($dados);
             if ($id) {
                 AuditLogger::log('create_fornecedor', ['id' => $id, 'nome' => $nome]);
@@ -150,6 +167,24 @@ class FornecedoresController extends Controller
 
             $dados         = $this->extrairDadosPost();
             $dados['nome'] = $nome;
+
+            // --- PROTECAO CONTRA DUPLICATAS NO UPDATE (camada de aplicacao) ---
+            $documento = preg_replace('/\D/', '', $dados['documento'] ?? '');
+            if ($documento !== '' && $this->model->documentoExists($documento, $usuarioId, (int)$id)) {
+                $this->logger->warning('[Fornecedores] update bloqueado: documento duplicado', [
+                    'usuario_id'  => $usuarioId,
+                    'fornecedor_id' => (int)$id,
+                    'documento'   => $documento,
+                ]);
+                AuditLogger::log('fornecedor_update_duplicado_bloqueado', [
+                    'usuario_id'    => $usuarioId,
+                    'fornecedor_id' => (int)$id,
+                    'documento'     => $documento,
+                ]);
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=documento_duplicado");
+                exit();
+            }
+            // -------------------------------------------------------------------
 
             if ($this->model->update((int)$id, $dados)) {
                 AuditLogger::log('update_fornecedor', ['id' => (int)$id, 'nome' => $nome]);

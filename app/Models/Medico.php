@@ -385,6 +385,52 @@ class Medico extends Model
     }
 
     // =========================================================
+    // VERIFICACAO DE DUPLICATAS
+    // =========================================================
+
+    /**
+     * Verifica se ja existe um medico com o mesmo CRM+UF para o mesmo usuario_id.
+     * Exclui o proprio registro no caso de update.
+     */
+    public function crmExists(string $crm, string $ufCrm, int $usuarioId, ?int $excludeId = null): bool
+    {
+        $crmLimpo = preg_replace('/\D/', '', $crm);
+        if ($crmLimpo === '' || $ufCrm === '') {
+            return false;
+        }
+        $sql    = "SELECT COUNT(*) AS total FROM {$this->table} WHERE REPLACE(REPLACE(crm, '-', ''), ' ', '') = ? AND uf_crm = ? AND usuario_id = ?";
+        $params = [$crmLimpo, strtoupper($ufCrm), $usuarioId];
+        if ($excludeId !== null) {
+            $sql     .= ' AND id != ?';
+            $params[] = $excludeId;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)($stmt->fetch(PDO::FETCH_OBJ)->total ?? 0) > 0;
+    }
+
+    /**
+     * Verifica se ja existe um medico com o mesmo CPF para o mesmo usuario_id.
+     * Exclui o proprio registro no caso de update.
+     */
+    public function cpfExists(string $cpf, int $usuarioId, ?int $excludeId = null): bool
+    {
+        $cpfLimpo = preg_replace('/\D/', '', $cpf);
+        if ($cpfLimpo === '') {
+            return false;
+        }
+        $sql    = "SELECT COUNT(*) AS total FROM {$this->table} WHERE REPLACE(REPLACE(cpf, '.', ''), '-', '') = ? AND usuario_id = ?";
+        $params = [$cpfLimpo, $usuarioId];
+        if ($excludeId !== null) {
+            $sql     .= ' AND id != ?';
+            $params[] = $excludeId;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)($stmt->fetch(PDO::FETCH_OBJ)->total ?? 0) > 0;
+    }
+
+    // =========================================================
     // CRUD PRINCIPAL
     // =========================================================
 

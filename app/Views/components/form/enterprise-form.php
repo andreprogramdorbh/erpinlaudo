@@ -304,12 +304,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (error) {
         const errorMessages = {
-            'missing_fields': 'Preencha todos os campos obrigatórios.',
-            'invalid_cpf': 'O CPF informado é inválido.',
-            'invalid_cnpj': 'O CNPJ informado é inválido.',
-            'db_failure': 'Erro ao salvar dados no banco de dados.',
-            'unauthorized': 'Você não tem permissão para esta ação.',
-            'fatal': 'Ocorreu um erro interno inesperado.'
+            'missing_fields'       : 'Preencha todos os campos obrigatórios.',
+            'invalid_cpf'          : 'O CPF informado é inválido.',
+            'invalid_cnpj'         : 'O CNPJ informado é inválido.',
+            'db_failure'           : 'Erro ao salvar dados no banco de dados.',
+            'unauthorized'         : 'Você não tem permissão para esta ação.',
+            'fatal'                : 'Ocorreu um erro interno inesperado.',
+            'not_found'            : 'Registro não encontrado.',
+            'invalid_uf'           : 'UF inválida. Informe uma sigla de estado com 2 letras.',
+            'invalid_email'        : 'E-mail inválido.',
+            'invalid_especialidade': 'Especialidade inválida ou não encontrada.',
+            // Erros de duplicata — usados por Clientes, Fornecedores, Colaboradores e Médicos
+            'documento_duplicado'  : 'Este CNPJ/CPF já está cadastrado. Não é possível criar um registro duplicado.',
+            'cpf_cnpj_exists'      : 'Este CPF/CNPJ já está cadastrado para outro registro. Verifique antes de salvar.',
+            'crm_duplicado'        : 'Este CRM já está cadastrado para outro médico nesta UF.',
+            'codigo_duplicado'     : 'Este código já está em uso. Escolha um código diferente.',
+            'codigo_conta_duplicado': 'Este código de conta já existe no plano de contas.'
         };
         Swal.fire({
             icon: 'error',

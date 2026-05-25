@@ -93,6 +93,38 @@ class MedicosController extends Controller
             $usuarioId = Auth::user()->id;
             $dados = $this->validarDadosFormulario($usuarioId);
 
+            // --- PROTECAO CONTRA DUPLICATAS (camada de aplicacao) ---
+            $crm   = preg_replace('/\D/', '', $dados['crm']   ?? '');
+            $ufCrm = strtoupper(trim($dados['uf_crm'] ?? ''));
+            $cpf   = preg_replace('/\D/', '', $dados['cpf']   ?? '');
+            if ($crm !== '' && $ufCrm !== '' && $this->model->crmExists($crm, $ufCrm, $usuarioId)) {
+                $this->logger->warning('[Medicos] store bloqueado: CRM duplicado', [
+                    'usuario_id' => $usuarioId,
+                    'crm'        => $crm,
+                    'uf_crm'     => $ufCrm,
+                ]);
+                AuditLogger::log('medico_duplicado_bloqueado', [
+                    'usuario_id' => $usuarioId,
+                    'crm'        => $crm,
+                    'uf_crm'     => $ufCrm,
+                ]);
+                header('Location: ' . self::BASE_ROUTE . '/create?error=crm_duplicado');
+                exit();
+            }
+            if ($cpf !== '' && $this->model->cpfExists($cpf, $usuarioId)) {
+                $this->logger->warning('[Medicos] store bloqueado: CPF duplicado', [
+                    'usuario_id' => $usuarioId,
+                    'cpf'        => $cpf,
+                ]);
+                AuditLogger::log('medico_cpf_duplicado_bloqueado', [
+                    'usuario_id' => $usuarioId,
+                    'cpf'        => $cpf,
+                ]);
+                header('Location: ' . self::BASE_ROUTE . '/create?error=cpf_cnpj_exists');
+                exit();
+            }
+            // --------------------------------------------------------
+
             $id = $this->model->create($dados);
             if ($id) {
                 // Salvar CRMs adicionais (o principal já foi inserido pelo model->create)
@@ -171,6 +203,41 @@ class MedicosController extends Controller
             }
 
             $dados = $this->validarDadosFormulario($usuarioId, $medico);
+
+            // --- PROTECAO CONTRA DUPLICATAS NO UPDATE (camada de aplicacao) ---
+            $crm   = preg_replace('/\D/', '', $dados['crm']   ?? '');
+            $ufCrm = strtoupper(trim($dados['uf_crm'] ?? ''));
+            $cpf   = preg_replace('/\D/', '', $dados['cpf']   ?? '');
+            if ($crm !== '' && $ufCrm !== '' && $this->model->crmExists($crm, $ufCrm, $usuarioId, (int)$id)) {
+                $this->logger->warning('[Medicos] update bloqueado: CRM duplicado', [
+                    'usuario_id' => $usuarioId,
+                    'medico_id'  => (int)$id,
+                    'crm'        => $crm,
+                    'uf_crm'     => $ufCrm,
+                ]);
+                AuditLogger::log('medico_update_crm_duplicado_bloqueado', [
+                    'usuario_id' => $usuarioId,
+                    'medico_id'  => (int)$id,
+                    'crm'        => $crm,
+                ]);
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=crm_duplicado");
+                exit();
+            }
+            if ($cpf !== '' && $this->model->cpfExists($cpf, $usuarioId, (int)$id)) {
+                $this->logger->warning('[Medicos] update bloqueado: CPF duplicado', [
+                    'usuario_id' => $usuarioId,
+                    'medico_id'  => (int)$id,
+                    'cpf'        => $cpf,
+                ]);
+                AuditLogger::log('medico_update_cpf_duplicado_bloqueado', [
+                    'usuario_id' => $usuarioId,
+                    'medico_id'  => (int)$id,
+                    'cpf'        => $cpf,
+                ]);
+                header('Location: ' . self::BASE_ROUTE . "/edit/{$id}?error=cpf_cnpj_exists");
+                exit();
+            }
+            // -------------------------------------------------------------------
 
             if ($this->model->update((int) $id, $dados)) {
                 // Salvar lista completa de CRMs (inclui o principal e os adicionais)

@@ -196,6 +196,52 @@ class Fornecedor extends Model
     }
 
     // ---------------------------------------------------------------
+    // VERIFICACAO DE DUPLICATAS
+    // ---------------------------------------------------------------
+
+    /**
+     * Verifica se ja existe um fornecedor com o mesmo documento (CNPJ/CPF)
+     * para o mesmo usuario_id. Exclui o proprio registro no caso de update.
+     */
+    public function documentoExists(string $documento, int $usuarioId, ?int $excludeId = null): bool
+    {
+        $doc = preg_replace('/\D/', '', $documento);
+        if ($doc === '') {
+            return false;
+        }
+        $sql    = "SELECT COUNT(*) AS total FROM {$this->table} WHERE documento = ? AND usuario_id = ?";
+        $params = [$doc, $usuarioId];
+        if ($excludeId !== null) {
+            $sql     .= ' AND id != ?';
+            $params[] = $excludeId;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)($stmt->fetch(PDO::FETCH_OBJ)->total ?? 0) > 0;
+    }
+
+    /**
+     * Verifica se ja existe um fornecedor com o mesmo e-mail
+     * para o mesmo usuario_id. Exclui o proprio registro no caso de update.
+     */
+    public function emailExists(string $email, int $usuarioId, ?int $excludeId = null): bool
+    {
+        $email = strtolower(trim($email));
+        if ($email === '') {
+            return false;
+        }
+        $sql    = "SELECT COUNT(*) AS total FROM {$this->table} WHERE email = ? AND usuario_id = ?";
+        $params = [$email, $usuarioId];
+        if ($excludeId !== null) {
+            $sql     .= ' AND id != ?';
+            $params[] = $excludeId;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)($stmt->fetch(PDO::FETCH_OBJ)->total ?? 0) > 0;
+    }
+
+    // ---------------------------------------------------------------
     // ESCRITA
     // ---------------------------------------------------------------
 

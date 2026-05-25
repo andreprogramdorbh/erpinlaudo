@@ -151,6 +151,26 @@ class ClientesController extends Controller
                 exit();
             }
 
+            // --- PROTECAO CONTRA DUPLICATAS (camada de aplicacao) ---
+            if ($this->clienteModel->cpfCnpjExists($cpfCnpj)) {
+                $this->logger->warning('[Clientes] store bloqueado: cpf_cnpj duplicado', [
+                    'usuario_id' => $usuarioId,
+                    'cpf_cnpj'   => $cpfCnpj,
+                ]);
+                AuditLogger::log('cliente_duplicado_bloqueado', [
+                    'usuario_id' => $usuarioId,
+                    'cpf_cnpj'   => $cpfCnpj,
+                ]);
+                if ($isAjax) {
+                    http_response_code(409);
+                    echo json_encode(['success' => false, 'error' => 'Este CPF/CNPJ já está cadastrado. Não é possível criar um registro duplicado.']);
+                    exit();
+                }
+                header('Location: /clientes/create?error=cpf_cnpj_exists');
+                exit();
+            }
+            // --------------------------------------------------------
+
             $dados = [
                 'tipo' => $tipo,
                 'cpf_cnpj' => $cpfCnpj,
@@ -293,6 +313,28 @@ class ClientesController extends Controller
                 header("Location: /clientes/edit/{$id}?error=missing_fields");
                 exit();
             }
+
+            // --- PROTECAO CONTRA DUPLICATAS NO UPDATE (camada de aplicacao) ---
+            if ($this->clienteModel->cpfCnpjExists($cpfCnpj, (int)$id)) {
+                $this->logger->warning('[Clientes] update bloqueado: cpf_cnpj duplicado', [
+                    'usuario_id' => Auth::user()->id,
+                    'cliente_id' => (int)$id,
+                    'cpf_cnpj'   => $cpfCnpj,
+                ]);
+                AuditLogger::log('cliente_update_duplicado_bloqueado', [
+                    'usuario_id' => Auth::user()->id,
+                    'cliente_id' => (int)$id,
+                    'cpf_cnpj'   => $cpfCnpj,
+                ]);
+                if ($isAjax) {
+                    http_response_code(409);
+                    echo json_encode(['success' => false, 'error' => 'Este CPF/CNPJ já está cadastrado para outro cliente.']);
+                    exit();
+                }
+                header("Location: /clientes/edit/{$id}?error=cpf_cnpj_exists");
+                exit();
+            }
+            // -------------------------------------------------------------------
 
             $dados = [
                 'tipo' => $tipo,
