@@ -12,7 +12,6 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/pt.js"></script>
 
 <!-- Enterprise Form Scripts -->
-<link rel="stylesheet" href="/assets/css/form-layout.css">
 <script src="/assets/js/sidebar.js"></script>
 <script src="/assets/js/form-tabs.js"></script>
 

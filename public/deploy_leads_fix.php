@@ -18,13 +18,27 @@ $githubRaw = "https://raw.githubusercontent.com/{$githubRepo}/{$branch}";
 
 // Arquivos a fazer download
 $files = [
+    // Controller
+    'app/Controllers/CrmLeadsController.php',
+
+    // Views – leads
     'app/Views/crm/leads/form.php',
     'app/Views/crm/leads/tabs/dados.php',
     'app/Views/crm/leads/tabs/interacoes.php',
     'app/Views/crm/leads/tabs/anexos.php',
     'app/Views/crm/leads/tabs/transferencia.php',
+
+    // Componente enterprise-form
     'app/Views/components/form/enterprise-form.php',
-    'app/Controllers/CrmLeadsController.php',
+
+    // Layout global (contém a chamada ao form-layout.css no <head>)
+    'app/Views/layout/erp_header.php',
+    'app/Views/layout/erp_footer.php',
+
+    // Assets CSS/JS – críticos para o layout funcionar
+    'public/assets/css/form-layout.css',
+    'public/assets/js/form-tabs.js',
+    'public/assets/js/sidebar.js',
 ];
 
 foreach ($files as $file) {
