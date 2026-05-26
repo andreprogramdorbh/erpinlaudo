@@ -17,8 +17,11 @@ if (function_exists('opcache_reset')) {
 }
 
 // 2. Deploy via GitHub (se solicitado)
-if (isset($_GET['deploy']) && $_GET['deploy'] === 'leads') {
+$deployParam = $_GET['deploy'] ?? '';
+if ($deployParam) {
     $githubRaw = 'https://raw.githubusercontent.com/ASOARESBH/erpinlaudo/main';
+
+    // Arquivos do módulo de Leads
     $deployFiles = [
         'app/Views/crm/leads/form.php',
         'app/Views/crm/leads/tabs/dados.php',
@@ -28,6 +31,19 @@ if (isset($_GET['deploy']) && $_GET['deploy'] === 'leads') {
         'app/Views/components/form/enterprise-form.php',
         'app/Controllers/CrmLeadsController.php',
     ];
+
+    // Se deploy=all, inclui também os arquivos de layout e core
+    if ($deployParam === 'all' || $deployParam === 'layout') {
+        $deployFiles = array_merge($deployFiles, [
+            'app/Views/layout/erp_header.php',
+            'app/Views/layout/erp_footer.php',
+            'app/Core/View.php',
+            'public/assets/css/form-layout.css',
+            'public/assets/js/form-tabs.js',
+            'public/assets/js/sidebar.js',
+        ]);
+    }
+
     foreach ($deployFiles as $file) {
         $url = "{$githubRaw}/{$file}";
         $localPath = "{$baseDir}/{$file}";
@@ -37,7 +53,7 @@ if (isset($_GET['deploy']) && $_GET['deploy'] === 'leads') {
         }
         $content = @file_get_contents($url);
         if ($content === false) {
-            $results['deploy'][$file] = 'ERRO: download falhou';
+            $results['deploy'][$file] = 'ERRO: download falhou de ' . $url;
         } else {
             $bytes = file_put_contents($localPath, $content);
             $results['deploy'][$file] = $bytes !== false ? "OK: {$bytes} bytes" : 'ERRO: salvar falhou';
@@ -45,18 +61,23 @@ if (isset($_GET['deploy']) && $_GET['deploy'] === 'leads') {
     }
     if (function_exists('opcache_reset')) {
         opcache_reset();
+        $results['opcache_after_deploy'] = 'Limpo';
     }
 }
 
-// 3. Verificar arquivos do módulo de Leads
-$leadsFiles = [
+// 3. Verificar arquivos críticos
+$criticalFiles = [
     'app/Views/crm/leads/form.php',
     'app/Views/crm/leads/tabs/dados.php',
     'app/Views/crm/leads/tabs/interacoes.php',
     'app/Views/crm/leads/tabs/anexos.php',
     'app/Views/crm/leads/tabs/transferencia.php',
+    'app/Views/components/form/enterprise-form.php',
+    'app/Views/layout/erp_header.php',
+    'app/Views/layout/erp_footer.php',
+    'app/Core/View.php',
 ];
-foreach ($leadsFiles as $file) {
+foreach ($criticalFiles as $file) {
     $path = "{$baseDir}/{$file}";
     if (file_exists($path)) {
         $content = file_get_contents($path);
@@ -66,6 +87,8 @@ foreach ($leadsFiles as $file) {
             'mtime' => date('Y-m-d H:i:s', filemtime($path)),
             'has_enterprise_form' => strpos($content, 'enterprise-form') !== false,
             'has_old_crm_tabs' => strpos($content, 'crm-tabs') !== false,
+            'has_doctype' => strpos($content, '<!DOCTYPE') !== false,
+            'has_erp_view_rendering' => strpos($content, 'ERP_VIEW_RENDERING') !== false,
         ];
     } else {
         $results['files'][$file] = ['exists' => false];
