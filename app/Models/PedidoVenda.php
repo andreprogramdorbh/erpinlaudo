@@ -318,4 +318,32 @@ class PedidoVenda extends Model
             return false;
         }
     }
+    /**
+     * Retorna pedidos de venda de um cliente específico (para o portal).
+     */
+    public function findByClienteIdAndTenantId(int $clienteId, int $tenantId, array $filtros = []): array
+    {
+        $where  = ['p.usuario_id = :uid', 'p.cliente_id = :cid'];
+        $params = [':uid' => $tenantId, ':cid' => $clienteId];
+        if (!empty($filtros['status'])) {
+            $where[]           = 'p.status = :status';
+            $params[':status'] = $filtros['status'];
+        }
+        $sql = "SELECT p.*, COUNT(i.id) AS total_itens
+                FROM {$this->table} p
+                LEFT JOIN pedidos_venda_itens i ON i.pedido_id = p.id
+                WHERE " . implode(' AND ', $where) . "
+                GROUP BY p.id
+                ORDER BY p.created_at DESC";
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_OBJ);
+        } catch (\Throwable $e) {
+            error_log('[PedidoVenda] findByClienteIdAndTenantId: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+
 }

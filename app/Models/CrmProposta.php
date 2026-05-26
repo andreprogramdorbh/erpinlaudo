@@ -389,4 +389,75 @@ class CrmProposta
         $stmt->execute([$usuarioId]);
         return (array) $stmt->fetchObject();
     }
+    // ─── Aceite / Assinatura ──────────────────────────────────────────────────
+
+    public function registrarEventoAceite(int $propostaId, string $evento, array $dados = []): void
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "INSERT INTO crm_proposta_aceite
+                    (proposta_id, evento, nome_assinante, ip, user_agent,
+                     assinatura_tipo, assinatura_imagem_path, motivo_recusa)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([
+                $propostaId,
+                $evento,
+                $dados['nome_assinante']         ?? null,
+                $dados['ip']                     ?? null,
+                $dados['user_agent']             ?? null,
+                $dados['assinatura_tipo']        ?? null,
+                $dados['assinatura_imagem_path'] ?? null,
+                $dados['motivo_recusa']          ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            // Tabela pode não existir ainda — não bloquear o fluxo
+            error_log('[CrmProposta] registrarEventoAceite: ' . $e->getMessage());
+        }
+    }
+
+    public function getEventosAceite(int $propostaId): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT * FROM crm_proposta_aceite WHERE proposta_id = ? ORDER BY created_at ASC"
+            );
+            $stmt->execute([$propostaId]);
+            return $stmt->fetchAll(\PDO::FETCH_OBJ);
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    // ─── Propostas por cliente (para o portal) ───────────────────────────────
+
+    public function findByClienteIdAndTenantId(int $clienteId, int $tenantId, array $filtros = []): array
+    {
+        $where  = ['p.usuario_id = :uid'];
+        $params = [':uid' => $tenantId];
+
+        // Filtrar pelo cliente_id (campo na tabela crm_propostas pode ser cliente_id ou cliente_nome)
+        // Tentamos pelo campo cliente_id se existir, senão pelo nome
+        $where[]          = '(p.cliente_id = :cid OR p.cliente_nome = (SELECT COALESCE(razao_social, nome_fantasia, nome) FROM clientes WHERE id = :cid2 AND usuario_id = :uid2 LIMIT 1))';
+        $params[':cid']   = $clienteId;
+        $params[':cid2']  = $clienteId;
+        $params[':uid2']  = $tenantId;
+
+        if (!empty($filtros['status'])) {
+            $where[]            = 'p.status = :status';
+            $params[':status']  = $filtros['status'];
+        }
+
+        $sql = "SELECT p.* FROM {$this->table} p WHERE " . implode(' AND ', $where) . " ORDER BY p.created_at DESC";
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_OBJ);
+        } catch (\Throwable $e) {
+            error_log('[CrmProposta] findByClienteIdAndTenantId: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+
 }

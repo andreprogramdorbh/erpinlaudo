@@ -68,7 +68,19 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     Router::get("/portal/faturamento/nota-fiscal/pdf/{id}", "PortalFaturamentoController@downloadPdf");
     Router::get("/portal/faturamento/nota-fiscal/xml/{id}", "PortalFaturamentoController@downloadXml");
     Router::get("/portal/faturamento/nota-fiscal/anexo/{id}", "PortalFaturamentoController@downloadAnexo");
+
+    // Negociações
+    Router::get("/portal/negociacoes/propostas",                       "PortalClienteController@propostas");
+    Router::get("/portal/negociacoes/propostas/{id}/aceitar",          "PortalClienteController@aceitarProposta");
+    Router::post("/portal/negociacoes/propostas/{id}/aceitar",         "PortalClienteController@registrarAceiteProposta");
+    Router::get("/portal/negociacoes/pedidos-venda",                   "PortalClienteController@pedidosVenda");
 });
+
+// ============================================================
+// Proposta — Aceite Público (sem autenticação)
+// ============================================================
+Router::get("/proposta/aceite/{token}",  "CrmPropostasController@aceitePublico");
+Router::post("/proposta/aceite/{token}", "CrmPropostasController@registrarAceite");
 
 // Rotas protegidas (requerem autenticação)
 Router::group(["middleware" => ["Auth"]], function () {

@@ -9,6 +9,8 @@ use App\Core\Audit\AuditLogger;
 use App\Models\PortalCliente;
 use App\Models\ContaReceber;
 use App\Models\NotaFiscal;
+use App\Models\CrmProposta;
+use App\Models\PedidoVenda;
 
 /**
  * Controller principal do Portal do Cliente.
@@ -19,14 +21,18 @@ class PortalClienteController extends Controller
     private PortalCliente $portalModel;
     private ContaReceber $contaReceberModel;
     private NotaFiscal $notaFiscalModel;
+    private CrmProposta $propostaModel;
+    private PedidoVenda $pedidoVendaModel;
     private Logger $logger;
 
     public function __construct()
     {
         $this->portalModel       = new PortalCliente();
         $this->contaReceberModel = new ContaReceber();
-        $this->notaFiscalModel   = new NotaFiscal();
-        $this->logger            = new Logger();
+        $this->notaFiscalModel    = new NotaFiscal();
+        $this->propostaModel      = new CrmProposta();
+        $this->pedidoVendaModel   = new PedidoVenda();
+        $this->logger             = new Logger();
     }
 
     /**
@@ -209,5 +215,151 @@ class PortalClienteController extends Controller
             'vencidas'       => $dashData['vencidas'],
         ]);
     }
+
+    // ---------------------------------------------------------------
+    // GET /portal/negociacoes/propostas
+    // ---------------------------------------------------------------
+    public function propostas(): void
+    {
+        $portal    = $this->getPortalCliente();
+        $tenantId  = (int) $portal->tenant_id;
+        $clienteId = (int) $portal->cliente_id;
+        $status    = $_GET['status'] ?? '';
+        $filtros   = $status ? ['status' => $status] : [];
+        $propostas = $this->propostaModel->findByClienteIdAndTenantId($clienteId, $tenantId, $filtros);
+        $this->logger->info('[Portal] Propostas acessadas', ['portal_id' => $portal->id, 'cliente_id' => $clienteId]);
+        View::render('portal/negociacoes/propostas', [
+            'title'    => 'Minhas Propostas',
+            '_layout'  => 'portal',
+            'portal'   => $portal,
+            'propostas' => $propostas,
+            'statusFiltro' => $status,
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // GET /portal/negociacoes/propostas/{id}/aceitar
+    // Página de aceite via portal (cliente já logado)
+    // ---------------------------------------------------------------
+    public function aceitarProposta(int $id): void
+    {
+        $portal    = $this->getPortalCliente();
+        $tenantId  = (int) $portal->tenant_id;
+        $clienteId = (int) $portal->cliente_id;
+        $proposta  = $this->propostaModel->findById($id);
+        if (!$proposta || (int) $proposta->usuario_id !== $tenantId) {
+            header('Location: /portal/negociacoes/propostas?error=not_found');
+            exit();
+        }
+        // Verificar se a proposta pertence ao cliente
+        $itens = $this->propostaModel->getItens($id);
+        View::render('portal/negociacoes/proposta_aceite', [
+            'title'    => 'Aceitar Proposta ' . $proposta->numero,
+            '_layout'  => 'portal',
+            'portal'   => $portal,
+            'proposta' => $proposta,
+            'itens'    => $itens,
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // POST /portal/negociacoes/propostas/{id}/aceitar
+    // ---------------------------------------------------------------
+    public function registrarAceiteProposta(int $id): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        $portal    = $this->getPortalCliente();
+        $tenantId  = (int) $portal->tenant_id;
+        $proposta  = $this->propostaModel->findById($id);
+        if (!$proposta || (int) $proposta->usuario_id !== $tenantId) {
+            echo json_encode(['success' => false, 'error' => 'Proposta não encontrada.']);
+            exit();
+        }
+        if (in_array($proposta->status, ['aceita', 'recusada'], true)) {
+            echo json_encode(['success' => false, 'error' => 'Esta proposta já foi ' . $proposta->status . '.']);
+            exit();
+        }
+        $acao       = $_POST['acao'] ?? 'aceitar';
+        $nomeAssina = trim($_POST['nome_assinante'] ?? ($portal->razao_social ?? $portal->nome_fantasia ?? ''));
+        $tipo       = $_POST['assinatura_tipo'] ?? 'portal';
+        $rubrImg    = $_POST['assinatura_imagem'] ?? '';
+        $motivo     = trim($_POST['motivo_recusa'] ?? '');
+        $ip         = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua         = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+        if ($acao === 'recusar') {
+            $this->propostaModel->update($id, [
+                'status'          => 'recusada',
+                'recusado_em'     => date('Y-m-d H:i:s'),
+                'recusado_motivo' => $motivo,
+            ]);
+            $this->propostaModel->registrarEventoAceite($id, 'recusado', [
+                'nome_assinante' => $nomeAssina,
+                'ip'             => $ip,
+                'user_agent'     => $ua,
+                'motivo_recusa'  => $motivo,
+            ]);
+            $this->propostaModel->updateStatus($id, 'recusada', (int) $proposta->usuario_id, 'Proposta recusada pelo cliente via portal.');
+            echo json_encode(['success' => true, 'acao' => 'recusada']);
+            exit();
+        }
+
+        // Salvar rubrica se enviada
+        $imgPath = null;
+        if (!empty($rubrImg) && $tipo === 'rubrica') {
+            $imgData = preg_replace('#^data:image/\w+;base64,#i', '', $rubrImg);
+            $imgData = base64_decode($imgData);
+            if ($imgData !== false) {
+                $dir = BASE_PATH . '/storage/uploads/crm/assinaturas/' . $proposta->usuario_id;
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $fname    = 'assinatura_prop_' . $id . '_portal_' . time() . '.png';
+                file_put_contents($dir . '/' . $fname, $imgData);
+                $imgPath = 'storage/uploads/crm/assinaturas/' . $proposta->usuario_id . '/' . $fname;
+            }
+        }
+
+        $this->propostaModel->update($id, [
+            'status'                 => 'aceita',
+            'aceito_em'              => date('Y-m-d H:i:s'),
+            'aceito_por_nome'        => $nomeAssina,
+            'aceito_por_ip'          => $ip,
+            'assinatura_tipo'        => 'portal',
+            'assinatura_imagem_path' => $imgPath,
+        ]);
+        $this->propostaModel->registrarEventoAceite($id, 'aceito', [
+            'nome_assinante'         => $nomeAssina,
+            'ip'                     => $ip,
+            'user_agent'             => $ua,
+            'assinatura_tipo'        => 'portal',
+            'assinatura_imagem_path' => $imgPath,
+        ]);
+        $this->propostaModel->updateStatus($id, 'aceita', (int) $proposta->usuario_id, 'Proposta aceita pelo cliente via portal.');
+        $this->logger->info("[Portal] Proposta #{$proposta->numero} aceita via portal por {$nomeAssina}");
+        echo json_encode(['success' => true, 'acao' => 'aceita']);
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // GET /portal/negociacoes/pedidos-venda
+    // ---------------------------------------------------------------
+    public function pedidosVenda(): void
+    {
+        $portal    = $this->getPortalCliente();
+        $tenantId  = (int) $portal->tenant_id;
+        $clienteId = (int) $portal->cliente_id;
+        $status    = $_GET['status'] ?? '';
+        $filtros   = $status ? ['status' => $status] : [];
+        $pedidos   = $this->pedidoVendaModel->findByClienteIdAndTenantId($clienteId, $tenantId, $filtros);
+        $this->logger->info('[Portal] Pedidos de Venda acessados', ['portal_id' => $portal->id, 'cliente_id' => $clienteId]);
+        View::render('portal/negociacoes/pedidos_venda', [
+            'title'        => 'Meus Pedidos de Venda',
+            '_layout'      => 'portal',
+            'portal'       => $portal,
+            'pedidos'      => $pedidos,
+            'statusFiltro' => $status,
+        ]);
+    }
+
 
 }

@@ -9,22 +9,24 @@ use App\Models\CrmProposta;
 use App\Models\CrmOportunidade;
 use App\Models\Cliente;
 use App\Models\User;
+use App\Models\Produto;
 use App\Services\MailService;
 
 class CrmPropostasController extends Controller
 {
-    private CrmProposta    $propostaModel;
-    private CrmOportunidade $opModel;
-    private Cliente        $clienteModel;
-    private User           $userModel;
-    private Logger         $logger;
-
+    private CrmProposta     $propostaModel;
+    private CrmOportunidade  $opModel;
+    private Cliente          $clienteModel;
+    private User             $userModel;
+    private Produto          $produtoModel;
+    private Logger           $logger;
     public function __construct()
     {
         $this->propostaModel = new CrmProposta();
         $this->opModel       = new CrmOportunidade();
         $this->clienteModel  = new Cliente();
         $this->userModel     = new User();
+        $this->produtoModel  = new Produto();
         $this->logger        = new Logger();
     }
 
@@ -333,7 +335,18 @@ class CrmPropostasController extends Controller
 
             $mail      = new MailService();
             $subject   = "Proposta Comercial {$proposta->numero} — {$proposta->titulo}";
-            $body      = $this->montarEmailProposta($proposta, $user);
+            // Gerar ou reutilizar token de aceite
+            $token = $proposta->token_acesso ?? null;
+            if (empty($token)) {
+                $token = bin2hex(random_bytes(32)); // 64 chars hex
+                $this->propostaModel->update($id, ['token_acesso' => $token]);
+                // Recarregar para garantir token salvo
+                $proposta = $this->propostaModel->findById($id);
+            }
+            $baseUrl    = defined('BASE_URL') ? rtrim(BASE_URL, '/') : ('https://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br'));
+            $linkAceite = $baseUrl . '/proposta/aceite/' . $token;
+
+            $body      = $this->montarEmailProposta($proposta, $user, $linkAceite);
 
             $mail->sendWithAttachment(
                 $proposta->cliente_email,
@@ -358,7 +371,7 @@ class CrmPropostasController extends Controller
                 'pdf_path' => 'storage/uploads/crm/propostas/' . $uid . '/proposta_' . $id . '.pdf',
             ]);
 
-            $this->logger->info("[CrmProposta] Proposta #{$proposta->numero} enviada para {$proposta->cliente_email}");
+            $this->logger->info("[CrmProposta] Proposta #{$proposta->numero} enviada para {$proposta->cliente_email} | link aceite: {$linkAceite}");
 
             ob_start(); ob_end_clean();
             header('Content-Type: application/json');
@@ -485,19 +498,56 @@ class CrmPropostasController extends Controller
     // =========================================================================
     public function buscarProduto(): void
     {
-        $q = trim($_GET['q'] ?? '');
-
-        // Placeholder — quando o módulo de estoque for criado,
-        // este método buscará na tabela de produtos
-        $produtos = [];
-
+        $uid = $this->usuarioId();
+        $q   = trim($_GET['q'] ?? '');
         ob_start(); ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => true,
-            'data'    => $produtos,
-            'aviso'   => 'Módulo de estoque ainda não disponível. Cadastre os itens manualmente.',
-        ]);
+        header('Content-Type: application/json; charset=utf-8');
+        if (strlen($q) < 1) {
+            echo json_encode(['success' => true, 'data' => []]);
+            exit();
+        }
+        try {
+            $like = '%' . $q . '%';
+            $stmt = $this->produtoModel->getPdo()->prepare(
+                "SELECT id, codigo, nome, unidade_medida AS unidade,
+                        preco_venda AS preco_unitario, preco_custo, markup_percentual AS margem_lucro,
+                        estoque_atual, marca, modelo
+                 FROM produtos
+                 WHERE usuario_id = ?
+                   AND status = 'ativo'
+                   AND (nome LIKE ? OR codigo LIKE ?
+                        OR (nome_tecnico IS NOT NULL AND nome_tecnico LIKE ?)
+                        OR (marca IS NOT NULL AND marca LIKE ?)
+                        OR (modelo IS NOT NULL AND modelo LIKE ?))
+                 ORDER BY nome ASC
+                 LIMIT 30"
+            );
+            $stmt->execute([$uid, $like, $like, $like, $like, $like]);
+            $produtos = $stmt->fetchAll(\PDO::FETCH_OBJ);
+            echo json_encode(['success' => true, 'data' => $produtos]);
+        } catch (\Throwable $e) {
+            // Fallback sem nome_tecnico (coluna pode nao existir ainda)
+            try {
+                $like = '%' . $q . '%';
+                $stmt = $this->produtoModel->getPdo()->prepare(
+                    "SELECT id, codigo, nome, unidade_medida AS unidade,
+                            preco_venda AS preco_unitario, preco_custo, markup_percentual AS margem_lucro,
+                            estoque_atual
+                     FROM produtos
+                     WHERE usuario_id = ?
+                       AND status = 'ativo'
+                       AND (nome LIKE ? OR codigo LIKE ?)
+                     ORDER BY nome ASC
+                     LIMIT 30"
+                );
+                $stmt->execute([$uid, $like, $like]);
+                $produtos = $stmt->fetchAll(\PDO::FETCH_OBJ);
+                echo json_encode(['success' => true, 'data' => $produtos]);
+            } catch (\Throwable $e2) {
+                $this->logger->error('[CrmProposta] buscarProduto: ' . $e2->getMessage());
+                echo json_encode(['success' => false, 'data' => [], 'error' => 'Erro ao buscar produtos.']);
+            }
+        }
         exit();
     }
 
@@ -853,7 +903,7 @@ class CrmPropostasController extends Controller
         return $tmpPdf;
     }
 
-    private function montarEmailProposta(object $proposta, object|false $user): string
+    private function montarEmailProposta(object $proposta, object|false $user, string $linkAceite = ''): string
     {
         $numero   = htmlspecialchars($proposta->numero);
         $titulo   = htmlspecialchars($proposta->titulo);
@@ -887,6 +937,7 @@ class CrmPropostasController extends Controller
     <p style="color:#374151">
       Para aceitar esta proposta ou tirar dúvidas, entre em contato conosco.
     </p>
+    {$linkBotao}
     <p style="color:#374151;margin-top:20px">Atenciosamente,<br><strong>{$remetente}</strong></p>
   </div>
   <div style="background:#f9fafb;padding:12px 32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;font-size:11px;color:#9ca3af;text-align:center">
@@ -908,4 +959,127 @@ HTML;
         echo json_encode(['success' => false, 'error' => $msg]);
         exit();
     }
+    // =========================================================================
+    // GET /proposta/aceite/{token}  — página pública de aceite/assinatura
+    // =========================================================================
+    public function aceitePublico(string $token): void
+    {
+        $proposta = $this->propostaModel->findByToken($token);
+        if (!$proposta) {
+            http_response_code(404);
+            View::render('crm/propostas/aceite_invalido', ['title' => 'Link inválido', '_layout' => 'public']);
+            return;
+        }
+        // Registrar visualização (apenas uma vez por sessão)
+        $sessKey = 'prop_view_' . $proposta->id;
+        if (empty($_SESSION[$sessKey])) {
+            $_SESSION[$sessKey] = 1;
+            $this->propostaModel->registrarEventoAceite((int) $proposta->id, 'visualizado', [
+                'ip'         => $_SERVER['REMOTE_ADDR'] ?? '',
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            ]);
+        }
+        $itens = $this->propostaModel->getItens((int) $proposta->id);
+        View::render('crm/propostas/aceite_publico', [
+            'title'    => 'Proposta ' . $proposta->numero,
+            '_layout'  => 'public',
+            'proposta' => $proposta,
+            'itens'    => $itens,
+            'token'    => $token,
+        ]);
+    }
+
+    // =========================================================================
+    // POST /proposta/aceite/{token}  — salvar assinatura e aceite
+    // =========================================================================
+    public function registrarAceite(string $token): void
+    {
+        ob_start(); ob_end_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        $proposta = $this->propostaModel->findByToken($token);
+        if (!$proposta) {
+            echo json_encode(['success' => false, 'error' => 'Proposta não encontrada.']);
+            exit();
+        }
+        if (in_array($proposta->status, ['aceita', 'recusada'], true)) {
+            echo json_encode(['success' => false, 'error' => 'Esta proposta já foi ' . $proposta->status . '.']);
+            exit();
+        }
+        $acao       = $_POST['acao'] ?? 'aceitar'; // aceitar | recusar
+        $nomeAssina = trim($_POST['nome_assinante'] ?? '');
+        $tipo       = $_POST['assinatura_tipo'] ?? 'nome_digitado'; // rubrica | nome_digitado
+        $rubrImg    = $_POST['assinatura_imagem'] ?? ''; // base64 PNG
+        $motivo     = trim($_POST['motivo_recusa'] ?? '');
+        $ip         = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua         = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+        if ($acao === 'recusar') {
+            $this->propostaModel->update((int) $proposta->id, [
+                'status'          => 'recusada',
+                'recusado_em'     => date('Y-m-d H:i:s'),
+                'recusado_motivo' => $motivo,
+            ]);
+            $this->propostaModel->registrarEventoAceite((int) $proposta->id, 'recusado', [
+                'nome_assinante' => $nomeAssina,
+                'ip'             => $ip,
+                'user_agent'     => $ua,
+                'motivo_recusa'  => $motivo,
+            ]);
+            $this->propostaModel->updateStatus((int) $proposta->id, 'recusada', (int) $proposta->usuario_id, 'Proposta recusada pelo cliente via link público.');
+            echo json_encode(['success' => true, 'acao' => 'recusada']);
+            exit();
+        }
+
+        // Salvar imagem da rubrica se enviada
+        $imgPath = null;
+        if (!empty($rubrImg) && $tipo === 'rubrica') {
+            $imgData = preg_replace('#^data:image/\w+;base64,#i', '', $rubrImg);
+            $imgData = base64_decode($imgData);
+            if ($imgData !== false) {
+                $dir = BASE_PATH . '/storage/uploads/crm/assinaturas/' . $proposta->usuario_id;
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                $fname   = 'assinatura_prop_' . $proposta->id . '_' . time() . '.png';
+                $fullPath = $dir . '/' . $fname;
+                file_put_contents($fullPath, $imgData);
+                $imgPath = 'storage/uploads/crm/assinaturas/' . $proposta->usuario_id . '/' . $fname;
+            }
+        }
+
+        // Atualizar proposta
+        $this->propostaModel->update((int) $proposta->id, [
+            'status'                 => 'aceita',
+            'aceito_em'              => date('Y-m-d H:i:s'),
+            'aceito_por_nome'        => $nomeAssina,
+            'aceito_por_ip'          => $ip,
+            'assinatura_tipo'        => $tipo,
+            'assinatura_imagem_path' => $imgPath,
+        ]);
+        $this->propostaModel->registrarEventoAceite((int) $proposta->id, 'aceito', [
+            'nome_assinante'         => $nomeAssina,
+            'ip'                     => $ip,
+            'user_agent'             => $ua,
+            'assinatura_tipo'        => $tipo,
+            'assinatura_imagem_path' => $imgPath,
+        ]);
+        $this->propostaModel->updateStatus((int) $proposta->id, 'aceita', (int) $proposta->usuario_id, 'Proposta aceita e assinada pelo cliente via link público.');
+
+        // Disparar alerta de e-mail para o responsável (best-effort)
+        try {
+            $user = $this->userModel->findById((int) $proposta->usuario_id);
+            if ($user && !empty($user->email)) {
+                $mail    = new MailService();
+                $dataAce = date('d/m/Y H:i');
+                $body    = "<p>A proposta <strong>{$proposta->numero}</strong> foi aceita e assinada por <strong>" . htmlspecialchars($nomeAssina ?: $proposta->cliente_nome) . "</strong> em {$dataAce}.</p><p>Acesse o ERP para gerar o Pedido de Venda.</p>";
+                $mail->send($user->email, "Proposta {$proposta->numero} aceita por {$proposta->cliente_nome}", $body, $user->name ?? null);
+            }
+        } catch (\Throwable $eAlert) {
+            $this->logger->warning('[CrmProposta] Alerta aceite não enviado: ' . $eAlert->getMessage());
+        }
+
+        $this->logger->info("[CrmProposta] Proposta #{$proposta->numero} aceita por {$nomeAssina} ({$ip})");
+        echo json_encode(['success' => true, 'acao' => 'aceita', 'nome' => $nomeAssina]);
+        exit();
+    }
+
+
 }

@@ -93,6 +93,23 @@ $currentUri  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
                 <span>Apurações</span>
             </a>
             <div class="portal-nav-group">
+                <div class="portal-nav-group-label" onclick="toggleNavGroup(this)" style="cursor:pointer">
+                    <i class="fa fa-handshake"></i>
+                    <span>Negociações</span>
+                    <i class="fa fa-chevron-down portal-nav-arrow ms-auto"></i>
+                </div>
+                <div class="portal-nav-submenu <?php echo str_starts_with($currentUri, '/portal/negociacoes') ? 'open' : ''; ?>">
+                    <a href="/portal/negociacoes/propostas" class="portal-nav-subitem <?php echo str_starts_with($currentUri, '/portal/negociacoes/propostas') ? 'active' : ''; ?>">
+                        <i class="fa fa-file-contract"></i>
+                        <span>Propostas</span>
+                    </a>
+                    <a href="/portal/negociacoes/pedidos-venda" class="portal-nav-subitem <?php echo str_starts_with($currentUri, '/portal/negociacoes/pedidos-venda') ? 'active' : ''; ?>">
+                        <i class="fa fa-shopping-cart"></i>
+                        <span>Pedidos de Venda</span>
+                    </a>
+                </div>
+            </div>
+            <div class="portal-nav-group">
                 <div class="portal-nav-group-label">
                     <i class="fa fa-receipt"></i>
                     <span>Faturamento</span>
