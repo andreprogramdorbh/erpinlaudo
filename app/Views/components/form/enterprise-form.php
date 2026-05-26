@@ -130,7 +130,7 @@ if ($config['is_edit']) {
                             
                             <span class="tab-number"><?php echo $index + 1; ?></span>
                             <i class="<?php echo $tab['icon'] ?? 'fas fa-file'; ?> tab-icon"></i>
-                            <span class="tab-text"><?php echo htmlspecialchars($tab['title']); ?></span>
+                            <span class="tab-text"><?php echo $tab['title']; ?></span>
                             
                             <?php if ($isLocked): ?>
                                 <i class="fas fa-lock lock-icon"></i>
