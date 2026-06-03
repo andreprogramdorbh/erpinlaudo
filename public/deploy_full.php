@@ -21,8 +21,9 @@ $allFiles = [
     'app/Views/crm/leads/tabs/anexos.php',
     'app/Views/crm/leads/tabs/transferencia.php',
     'app/Controllers/CrmLeadsController.php',
+    'app/Controllers/CrmPropostasController.php',
+    'app/Services/MailService.php',
     'public/opcache_clear.php',
-    'public/test_header.php',
 ];
 
 foreach ($allFiles as $file) {
