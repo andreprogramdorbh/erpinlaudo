@@ -431,6 +431,28 @@ class CrmProposta
 
     // ─── Propostas por cliente (para o portal) ───────────────────────────────
 
+    // ─── Vincular Pedido de Venda gerado ao aceitar ─────────────────────────────
+
+    public function vincularPedidoVenda(int $propostaId, int $pedidoVendaId): bool
+    {
+        try {
+            // Garantir que a coluna existe (ALTER TABLE seguro)
+            try {
+                $this->pdo->exec("ALTER TABLE {$this->table} ADD COLUMN pedido_venda_id INT NULL AFTER oportunidade_id");
+            } catch (\Throwable $ex) { /* coluna já existe */ }
+
+            $stmt = $this->pdo->prepare(
+                "UPDATE {$this->table} SET pedido_venda_id = ? WHERE id = ?"
+            );
+            return $stmt->execute([$pedidoVendaId, $propostaId]);
+        } catch (\Throwable $e) {
+            error_log('[CrmProposta] vincularPedidoVenda: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    // ─── Propostas por cliente (para o portal) ───────────────────────────────────
+
     public function findByClienteIdAndTenantId(int $clienteId, int $tenantId, array $filtros = []): array
     {
         $where  = ['p.usuario_id = :uid'];

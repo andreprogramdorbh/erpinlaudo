@@ -299,11 +299,27 @@ $editavel = in_array($proposta->status, ['gerada', 'enviada', 'visualizada']);
           <i class="fas fa-edit me-1"></i>Editar Proposta
         </a>
         <?php endif; ?>
+        <?php if ($proposta->status === 'aceita' && !empty($proposta->pedido_venda_id)): ?>
+        <hr class="my-2">
+        <div class="alert alert-success py-2 px-3 mb-0" style="font-size:.82rem">
+          <i class="fas fa-check-circle me-1"></i>
+          <strong>Pedido de Venda gerado!</strong>
+          <a href="/estoque/vendas/<?php echo (int)$proposta->pedido_venda_id; ?>" class="btn btn-success btn-sm w-100 mt-2">
+            <i class="fas fa-shopping-cart me-1"></i>Ver Pedido de Venda
+          </a>
+        </div>
+        <?php elseif ($proposta->status === 'aceita' && empty($proposta->pedido_venda_id)): ?>
+        <hr class="my-2">
+        <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:.82rem">
+          <i class="fas fa-exclamation-triangle me-1"></i>
+          Proposta aceita. Pedido de venda sendo gerado...
+        </div>
+        <?php endif; ?>
       </div>
 
-      <!-- Histórico -->
+      <!-- Histórico de Evolução -->
       <div class="info-card">
-        <div class="info-card-title"><i class="fas fa-history me-1"></i>Histórico</div>
+        <div class="info-card-title"><i class="fas fa-history me-1"></i>Histórico de Evolução</div>
         <?php if (empty($historico)): ?>
         <p class="text-muted small text-center py-2">Nenhum registro no histórico.</p>
         <?php else: ?>
@@ -439,19 +455,34 @@ async function enviarProposta() {
 // Submit status via AJAX
 document.querySelector('#formStatus').addEventListener('submit', async function(e) {
   e.preventDefault();
+  const submitBtn = this.querySelector('[type=submit]');
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aguarde...';
   const fd = new FormData(this);
   try {
     const r = await fetch(this.action, { method: 'POST', body: fd });
     const j = await r.json();
     if (j.success) {
       bootstrap.Modal.getInstance(document.querySelector('#modalStatus'))?.hide();
-      showToast('Status atualizado!', 'success');
-      setTimeout(() => location.reload(), 1200);
+      if (j.pedido_venda_id) {
+        // Proposta aceita: mostrar toast especial com link para o pedido
+        showToast('Proposta aceita! Pedido de Venda criado automaticamente.', 'success');
+        setTimeout(() => {
+          location.reload();
+        }, 1800);
+      } else {
+        showToast('Status atualizado com sucesso!', 'success');
+        setTimeout(() => location.reload(), 1200);
+      }
     } else {
       showToast(j.error || 'Erro ao atualizar status.', 'danger');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Confirmar';
     }
   } catch(e) {
     showToast('Erro de comunicação.', 'danger');
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Confirmar';
   }
 });
 

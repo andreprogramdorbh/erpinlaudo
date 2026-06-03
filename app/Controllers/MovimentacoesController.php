@@ -9,6 +9,9 @@ use App\Models\PedidoCompra;
 use App\Models\PedidoVenda;
 use App\Models\Produto;
 use App\Models\User;
+use App\Models\Cliente;
+use App\Models\ContaReceber;
+use App\Models\NotaFiscal;
 
 class MovimentacoesController extends Controller
 {
@@ -17,16 +20,22 @@ class MovimentacoesController extends Controller
     private PedidoVenda         $pvModel;
     private Produto             $produtoModel;
     private User                $userModel;
+    private Cliente             $clienteModel;
+    private ContaReceber        $contaReceberModel;
+    private NotaFiscal          $notaFiscalModel;
     private Logger              $logger;
 
     public function __construct()
     {
-        $this->movModel     = new MovimentacaoEstoque();
-        $this->pcModel      = new PedidoCompra();
-        $this->pvModel      = new PedidoVenda();
-        $this->produtoModel = new Produto();
-        $this->userModel    = new User();
-        $this->logger       = new Logger();
+        $this->movModel          = new MovimentacaoEstoque();
+        $this->pcModel           = new PedidoCompra();
+        $this->pvModel           = new PedidoVenda();
+        $this->produtoModel      = new Produto();
+        $this->userModel         = new User();
+        $this->clienteModel      = new Cliente();
+        $this->contaReceberModel = new ContaReceber();
+        $this->notaFiscalModel   = new NotaFiscal();
+        $this->logger            = new Logger();
     }
 
     private function uid(): int
@@ -932,6 +941,185 @@ class MovimentacoesController extends Controller
         }
         $ok = $this->pcModel->update($id, ['status' => 'cancelado', 'usuario_id' => $uid], $pedido->itens ?? []);
         header('Location: /estoque/compras/' . $id . ($ok ? '?success=cancelado' : '?error=save_failed'));
+        exit;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FATURAMENTO DO PEDIDO DE VENDA
+    // GET  /estoque/vendas/{id}/faturar  — exibe formulário de faturamento
+    // POST /estoque/vendas/{id}/faturar  — executa o faturamento completo
+    // POST /estoque/vendas/{id}/abrir    — reabre o pedido para edições
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public function vendaFaturarForm(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pvModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            header('Location: /estoque/vendas?error=not_found');
+            exit;
+        }
+        if ($pedido->status === 'faturado') {
+            header('Location: /estoque/vendas/' . $id . '?error=ja_faturado');
+            exit;
+        }
+        $itens     = $this->pvModel->getItens($id);
+        $historico = $this->pvModel->getHistorico($id);
+
+        // Buscar cliente existente por CPF/CNPJ para evitar duplicidade
+        $clienteExistente = null;
+        if (!empty($pedido->cliente_cpf_cnpj)) {
+            $cpfCnpjLimpo = preg_replace('/\D/', '', $pedido->cliente_cpf_cnpj);
+            if ($cpfCnpjLimpo) {
+                $clienteExistente = $this->clienteModel->findByCpfCnpjAndUsuarioId($cpfCnpjLimpo, $uid);
+            }
+        }
+
+        View::render('estoque/movimentacoes/venda_faturar', [
+            '_layout'          => 'erp',
+            'title'            => 'Faturar Pedido ' . $pedido->numero,
+            'breadcrumb'       => [
+                ['label' => 'Estoque', 'url' => '/estoque/vendas'],
+                ['label' => 'Pedidos de Venda', 'url' => '/estoque/vendas'],
+                ['label' => 'Faturar ' . $pedido->numero],
+            ],
+            'pedido'           => $pedido,
+            'itens'            => $itens,
+            'historico'        => $historico,
+            'clienteExistente' => $clienteExistente,
+        ]);
+    }
+
+    public function vendaFaturar(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pvModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            $this->json(['success' => false, 'error' => 'Pedido não encontrado.'], 404);
+        }
+        if ($pedido->status === 'faturado') {
+            $this->json(['success' => false, 'error' => 'Pedido já foi faturado.'], 400);
+        }
+
+        $data = $_POST;
+
+        try {
+            // 1. Garantir que o cliente existe (criar se não houver)
+            $clienteId = !empty($data['cliente_id']) ? (int)$data['cliente_id'] : null;
+            if (!$clienteId) {
+                $cpfCnpjLimpo = preg_replace('/\D/', '', $pedido->cliente_cpf_cnpj ?? '');
+                if ($cpfCnpjLimpo) {
+                    $clienteExist = $this->clienteModel->findByCpfCnpjAndUsuarioId($cpfCnpjLimpo, $uid);
+                    if ($clienteExist) {
+                        $clienteId = (int)$clienteExist->id;
+                    } else {
+                        // Criar cliente automaticamente (prevenir duplicidade)
+                        $tipo = strlen($cpfCnpjLimpo) === 14 ? 'juridica' : 'fisica';
+                        $clienteId = (int)$this->clienteModel->create([
+                            'usuario_id'    => $uid,
+                            'tipo'          => $tipo,
+                            'cpf_cnpj'      => $cpfCnpjLimpo,
+                            'razao_social'  => $pedido->cliente_nome ?? '',
+                            'nome_fantasia' => $pedido->cliente_nome ?? '',
+                            'email'         => $pedido->cliente_email ?? null,
+                            'telefone'      => $pedido->cliente_telefone ?? null,
+                            'endereco'      => $pedido->cliente_endereco ?? null,
+                            'status'        => 'ativo',
+                        ]);
+                        $this->logger->info('[vendaFaturar] Cliente criado automaticamente', [
+                            'pedido_id' => $id, 'cliente_id' => $clienteId,
+                        ]);
+                    }
+                }
+            }
+
+            // 2. Criar Conta a Receber
+            $dataVencimento = !empty($data['data_vencimento'])
+                ? $data['data_vencimento']
+                : date('Y-m-d', strtotime('+30 days'));
+
+            $contaReceberId = (int)$this->contaReceberModel->create([
+                'usuario_id'      => $uid,
+                'cliente_id'      => $clienteId ?: null,
+                'descricao'       => 'Pedido de Venda ' . $pedido->numero . ' — ' . $pedido->cliente_nome,
+                'valor'           => $pedido->valor_total,
+                'data_vencimento' => $dataVencimento,
+                'status'          => 'aberta',
+                'meio_pagamento'  => $data['meio_pagamento'] ?? null,
+                'observacoes'     => $data['obs_financeiro'] ?? null,
+                'numero_parcela'  => 1,
+                'total_parcelas'  => 1,
+                'grupo_parcelas'  => 'PV-' . $pedido->numero,
+                'recorrente'      => 0,
+            ]);
+
+            if (!$contaReceberId) {
+                throw new \RuntimeException('Falha ao criar Conta a Receber.');
+            }
+
+            // 3. Criar registro de Nota Fiscal (rascunho para emissão posterior)
+            $notaFiscalId = null;
+            if (!empty($data['emitir_nf'])) {
+                $notaFiscalId = (int)$this->notaFiscalModel->create([
+                    'usuario_id'        => $uid,
+                    'cliente_id'        => $clienteId ?: 0,
+                    'numero_nf'         => '',
+                    'serie'             => $data['serie_nf'] ?? '1',
+                    'valor_total'       => $pedido->valor_total,
+                    'data_emissao'      => date('Y-m-d'),
+                    'status'            => 'rascunho',
+                    'origem_emissao'    => 'pedido_venda',
+                    'conta_receber_id'  => $contaReceberId,
+                    'servico_descricao' => $data['servico_descricao'] ?? ('Pedido de Venda ' . $pedido->numero),
+                    'servico_codigo'    => $data['servico_codigo'] ?? null,
+                    'observacoes_nf'    => $data['obs_nf'] ?? null,
+                ]);
+            }
+
+            // 4. Atualizar o Pedido de Venda para status 'faturado'
+            $this->pvModel->updateFaturamento($id, $contaReceberId, $notaFiscalId, $uid);
+
+            $this->logger->info('[vendaFaturar] Pedido faturado com sucesso', [
+                'pedido_id'        => $id,
+                'conta_receber_id' => $contaReceberId,
+                'nota_fiscal_id'   => $notaFiscalId,
+                'cliente_id'       => $clienteId,
+            ]);
+
+            $resp = [
+                'success'          => true,
+                'conta_receber_id' => $contaReceberId,
+                'nota_fiscal_id'   => $notaFiscalId,
+                'cliente_id'       => $clienteId,
+                'redirect'         => '/estoque/vendas/' . $id . '?success=faturado',
+            ];
+            if ($notaFiscalId) {
+                $resp['nf_url'] = '/faturamento/notas-fiscais/' . $notaFiscalId;
+            }
+            $this->json($resp);
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[vendaFaturar] Erro: ' . $e->getMessage(), ['pedido_id' => $id]);
+            $this->json(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function vendaAbrir(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pvModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            header('Location: /estoque/vendas?error=not_found');
+            exit;
+        }
+        // Só permite reabrir se estiver em 'confirmado' ou 'rascunho'
+        $statusPermitidos = ['confirmado', 'rascunho'];
+        if (!in_array($pedido->status, $statusPermitidos, true)) {
+            header('Location: /estoque/vendas/' . $id . '?error=status_invalido');
+            exit;
+        }
+        $ok = $this->pvModel->updateStatus($id, 'aberto', $uid, 'Pedido reaberto para edição.');
+        header('Location: /estoque/vendas/' . $id . ($ok ? '?success=aberto' : '?error=save_failed'));
         exit;
     }
 }

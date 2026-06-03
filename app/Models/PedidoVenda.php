@@ -318,6 +318,93 @@ class PedidoVenda extends Model
             return false;
         }
     }
+    // ─── Histórico de status ─────────────────────────────────────────────────
+    public function registrarHistorico(int $pedidoId, string $statusDe, string $statusPara, int $usuarioId, string $obs = ''): void
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "INSERT INTO est_pedidos_venda_historico
+                    (pedido_id, usuario_id, status_de, status_para, observacao)
+                 VALUES (?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([$pedidoId, $usuarioId, $statusDe ?: null, $statusPara, $obs ?: null]);
+        } catch (\Throwable $e) {
+            $this->log('error', '[registrarHistorico] ' . $e->getMessage(), ['pedido_id' => $pedidoId]);
+        }
+    }
+
+    public function getHistorico(int $pedidoId): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "SELECT h.*, u.name AS usuario_nome
+                 FROM est_pedidos_venda_historico h
+                 LEFT JOIN users u ON u.id = h.usuario_id
+                 WHERE h.pedido_id = ?
+                 ORDER BY h.created_at DESC"
+            );
+            $stmt->execute([$pedidoId]);
+            return $stmt->fetchAll(PDO::FETCH_OBJ);
+        } catch (\Throwable $e) {
+            $this->log('error', '[getHistorico] ' . $e->getMessage(), ['pedido_id' => $pedidoId]);
+            return [];
+        }
+    }
+
+    public function updateStatus(int $id, string $status, int $usuarioId, string $obs = ''): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT status FROM {$this->table} WHERE id = ?");
+            $stmt->execute([$id]);
+            $atual = (string)$stmt->fetchColumn();
+
+            $upd = $this->pdo->prepare("UPDATE {$this->table} SET status = ? WHERE id = ?");
+            $ok  = $upd->execute([$status, $id]);
+
+            if ($ok) {
+                $this->registrarHistorico($id, $atual, $status, $usuarioId, $obs);
+                $this->log('info', '[updateStatus] Status atualizado', [
+                    'id' => $id, 'de' => $atual, 'para' => $status,
+                ]);
+            }
+            return $ok;
+        } catch (\Throwable $e) {
+            $this->log('error', '[updateStatus] ' . $e->getMessage(), ['id' => $id]);
+            return false;
+        }
+    }
+
+    public function updateFaturamento(int $id, int $contaReceberId, ?int $notaFiscalId, int $usuarioId): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                "UPDATE {$this->table}
+                 SET status = 'faturado',
+                     conta_receber_id = ?,
+                     nota_fiscal_id   = ?,
+                     data_faturamento = ?,
+                     faturado_em      = NOW(),
+                     faturado_por     = ?
+                 WHERE id = ?"
+            );
+            $ok = $stmt->execute([
+                $contaReceberId,
+                $notaFiscalId ?: null,
+                date('Y-m-d'),
+                $usuarioId,
+                $id,
+            ]);
+            if ($ok) {
+                $this->registrarHistorico($id, 'confirmado', 'faturado', $usuarioId,
+                    'Pedido faturado — Conta a Receber e NF gerados automaticamente.');
+            }
+            return $ok;
+        } catch (\Throwable $e) {
+            $this->log('error', '[updateFaturamento] ' . $e->getMessage(), ['id' => $id]);
+            return false;
+        }
+    }
+
     /**
      * Retorna pedidos de venda de um cliente específico (para o portal).
      */

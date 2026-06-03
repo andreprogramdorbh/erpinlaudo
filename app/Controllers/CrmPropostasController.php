@@ -10,6 +10,7 @@ use App\Models\CrmOportunidade;
 use App\Models\Cliente;
 use App\Models\User;
 use App\Models\Produto;
+use App\Models\PedidoVenda;
 use App\Services\MailService;
 
 class CrmPropostasController extends Controller
@@ -19,15 +20,17 @@ class CrmPropostasController extends Controller
     private Cliente          $clienteModel;
     private User             $userModel;
     private Produto          $produtoModel;
+    private PedidoVenda      $pedidoVendaModel;
     private Logger           $logger;
     public function __construct()
     {
-        $this->propostaModel = new CrmProposta();
-        $this->opModel       = new CrmOportunidade();
-        $this->clienteModel  = new Cliente();
-        $this->userModel     = new User();
-        $this->produtoModel  = new Produto();
-        $this->logger        = new Logger();
+        $this->propostaModel    = new CrmProposta();
+        $this->opModel          = new CrmOportunidade();
+        $this->clienteModel     = new Cliente();
+        $this->userModel        = new User();
+        $this->produtoModel     = new Produto();
+        $this->pedidoVendaModel = new PedidoVenda();
+        $this->logger           = new Logger();
     }
 
     private function usuarioId(): int
@@ -441,10 +444,119 @@ class CrmPropostasController extends Controller
 
         $this->propostaModel->updateStatus($id, $status, $uid, $obs);
 
+        // ─── AO ACEITAR: criar automaticamente o Pedido de Venda ──────────────────────────
+        $pedidoVendaId = null;
+        if ($status === 'aceita' && empty($proposta->pedido_venda_id)) {
+            try {
+                $pedidoVendaId = $this->_criarPedidoVendaDaProposta($proposta, $uid);
+            } catch (\Throwable $e) {
+                $this->logger->error('[CrmProposta] Erro ao criar PV ao aceitar: ' . $e->getMessage());
+            }
+        }
+
         ob_start(); ob_end_clean();
         header('Content-Type: application/json');
-        echo json_encode(['success' => true]);
+        $resp = ['success' => true];
+        if ($pedidoVendaId) {
+            $resp['pedido_venda_id']  = $pedidoVendaId;
+            $resp['pedido_venda_url'] = '/estoque/vendas/' . $pedidoVendaId;
+            $resp['message']          = 'Proposta aceita! Pedido de Venda criado automaticamente.';
+        }
+        echo json_encode($resp);
         exit();
+    }
+
+    // =========================================================================
+    // Helper: criar Pedido de Venda a partir de uma Proposta aceita
+    // =========================================================================
+    private function _criarPedidoVendaDaProposta(object $proposta, int $uid): int|false
+    {
+        // Mapear frete_tipo: proposta usa 'sem_frete'/'a_calcular', PV usa 'gratis'/'cif'
+        $freteMap = [
+            'cif'        => 'cif',
+            'fob'        => 'fob',
+            'sem_frete'  => 'gratis',
+            'a_calcular' => 'cif',
+        ];
+        $tipoFrete = $freteMap[$proposta->frete_tipo ?? 'a_calcular'] ?? 'cif';
+
+        // Calcular prazo de entrega como data
+        $dataPrevisao = null;
+        if (!empty($proposta->prazo_entrega)) {
+            if (preg_match('/(\d+)/', $proposta->prazo_entrega, $m)) {
+                $dataPrevisao = date('Y-m-d', strtotime('+' . $m[1] . ' weekdays'));
+            }
+        }
+
+        // Montar dados do pedido
+        $dadosPedido = [
+            'usuario_id'           => $uid,
+            'numero'               => $this->pedidoVendaModel->gerarNumero($uid),
+            'proposta_id'          => (int) $proposta->id,
+            'oportunidade_id'      => !empty($proposta->oportunidade_id) ? (int)$proposta->oportunidade_id : null,
+            'cliente_id'           => !empty($proposta->cliente_id) ? (int)$proposta->cliente_id : null,
+            'cliente_nome'         => $proposta->cliente_nome ?? '',
+            'cliente_cpf_cnpj'     => $proposta->cliente_cnpj_cpf ?? null,
+            'cliente_email'        => $proposta->cliente_email ?? null,
+            'cliente_telefone'     => $proposta->cliente_telefone ?? null,
+            'cliente_endereco'     => trim(($proposta->cliente_endereco ?? '') . ' ' .
+                                         ($proposta->cliente_cidade ?? '') . ' ' .
+                                         ($proposta->cliente_estado ?? '')),
+            'status'               => 'confirmado',
+            'data_pedido'          => date('Y-m-d'),
+            'data_previsao_entrega'=> $dataPrevisao,
+            'valor_produtos'       => (float)($proposta->subtotal ?? 0),
+            'valor_frete'          => (float)($proposta->frete_valor ?? 0),
+            'valor_desconto'       => (float)($proposta->desconto_total ?? 0),
+            'valor_total'          => (float)($proposta->total ?? 0),
+            'valor_custo_total'    => 0,
+            'margem_total'         => 0,
+            'condicao_pagamento'   => $proposta->condicao_pagamento ?? null,
+            'forma_pagamento'      => null,
+            'tipo_frete'           => $tipoFrete,
+            'transportadora'       => null,
+            'endereco_entrega'     => $proposta->local_entrega ?? null,
+            'observacoes'          => $proposta->observacoes ?? null,
+            'observacoes_internas' => 'Gerado automaticamente a partir da Proposta ' . $proposta->numero,
+        ];
+
+        // Mapear itens da proposta para itens do pedido de venda
+        $itensProposta = $this->propostaModel->getItens((int)$proposta->id);
+        $itens = [];
+        foreach ($itensProposta as $item) {
+            $itens[] = [
+                'produto_id'     => !empty($item->produto_id) ? (int)$item->produto_id : null,
+                'codigo_produto' => $item->codigo ?? null,
+                'descricao'      => $item->descricao ?? '',
+                'unidade'        => $item->unidade ?? 'UN',
+                'quantidade'     => (float)($item->quantidade ?? 1),
+                'preco_unitario' => (float)($item->preco_unitario ?? 0),
+                'preco_custo'    => (float)($item->preco_custo ?? 0),
+                'desconto_perc'  => (float)($item->desconto_item ?? 0),
+                'lote'           => null,
+                'observacoes'    => null,
+            ];
+        }
+
+        $pedidoId = $this->pedidoVendaModel->create($dadosPedido, $itens);
+
+        if ($pedidoId) {
+            // Registrar histórico no pedido de venda
+            $this->pedidoVendaModel->registrarHistorico(
+                $pedidoId, '', 'confirmado', $uid,
+                'Pedido criado automaticamente a partir da Proposta ' . $proposta->numero
+            );
+
+            // Vincular pedido de venda à proposta
+            $this->propostaModel->vincularPedidoVenda((int)$proposta->id, $pedidoId);
+
+            $this->logger->info('[CrmProposta] PV criado ao aceitar proposta', [
+                'proposta_id' => $proposta->id,
+                'pedido_id'   => $pedidoId,
+            ]);
+        }
+
+        return $pedidoId;
     }
 
     // =========================================================================
