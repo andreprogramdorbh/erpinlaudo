@@ -29,22 +29,37 @@ class MailService
 
     private function loadFromEnvironment(): array
     {
+        // Usa $_ENV prioritariamente (Dotenv::createImmutable não popula getenv())
+        $host      = $_ENV['MAIL_HOST']       ?? getenv('MAIL_HOST')       ?: 'smtp.gmail.com';
+        $port      = (int)($_ENV['MAIL_PORT'] ?? getenv('MAIL_PORT')       ?: 587);
+        $username  = $_ENV['MAIL_USERNAME']   ?? getenv('MAIL_USERNAME')   ?: '';
+        $password  = $_ENV['MAIL_PASSWORD']   ?? getenv('MAIL_PASSWORD')   ?: '';
+        $protocol  = $_ENV['MAIL_ENCRYPTION'] ?? getenv('MAIL_ENCRYPTION') ?: 'tls';
+        $fromEmail = $_ENV['MAIL_FROM_EMAIL'] ?? getenv('MAIL_FROM_EMAIL') ?: '';
+        $fromName  = $_ENV['MAIL_FROM_NAME']  ?? getenv('MAIL_FROM_NAME')  ?: 'ERP InLaudo';
+
+        // Se MAIL_FROM_EMAIL não estiver definido, usa o username como remetente
+        if (empty($fromEmail)) {
+            $fromEmail = $username;
+        }
+
         return [
-            'host'       => getenv('MAIL_HOST')       ?: ($_ENV['MAIL_HOST']       ?? 'smtp.gmail.com'),
-            'port'       => (int)(getenv('MAIL_PORT') ?: ($_ENV['MAIL_PORT']       ?? 587)),
-            'username'   => getenv('MAIL_USERNAME')   ?: ($_ENV['MAIL_USERNAME']   ?? ''),
-            'password'   => getenv('MAIL_PASSWORD')   ?: ($_ENV['MAIL_PASSWORD']   ?? ''),
-            'protocol'   => getenv('MAIL_ENCRYPTION') ?: ($_ENV['MAIL_ENCRYPTION'] ?? 'tls'),
-            'from_email' => getenv('MAIL_FROM_EMAIL') ?: ($_ENV['MAIL_FROM_EMAIL'] ?? ''),
-            'from_name'  => getenv('MAIL_FROM_NAME')  ?: ($_ENV['MAIL_FROM_NAME']  ?? 'ERP InLaudo'),
+            'host'       => $host,
+            'port'       => $port,
+            'username'   => $username,
+            'password'   => $password,
+            'protocol'   => $protocol,
+            'from_email' => $fromEmail,
+            'from_name'  => $fromName,
         ];
     }
 
     public static function isConfigured(): bool
     {
-        $host     = getenv('MAIL_HOST')     ?: ($_ENV['MAIL_HOST']     ?? '');
-        $username = getenv('MAIL_USERNAME') ?: ($_ENV['MAIL_USERNAME'] ?? '');
-        $password = getenv('MAIL_PASSWORD') ?: ($_ENV['MAIL_PASSWORD'] ?? '');
+        // Usa $_ENV prioritariamente (Dotenv::createImmutable não popula getenv())
+        $host     = $_ENV['MAIL_HOST']     ?? getenv('MAIL_HOST')     ?: '';
+        $username = $_ENV['MAIL_USERNAME'] ?? getenv('MAIL_USERNAME') ?: '';
+        $password = $_ENV['MAIL_PASSWORD'] ?? getenv('MAIL_PASSWORD') ?: '';
         return !empty($host) && !empty($username) && !empty($password);
     }
 

@@ -913,6 +913,11 @@ class CrmPropostasController extends Controller
                     : '—';
         $remetente = htmlspecialchars(($user !== false ? $user->name : null) ?? 'Equipe Comercial');
 
+        // Gera o botão de aceite apenas se houver link disponível
+        $linkBotao = !empty($linkAceite)
+            ? '<div style="text-align:center;margin:24px 0"><a href="' . htmlspecialchars($linkAceite) . '" style="background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">&#10003; Aceitar Proposta</a></div>'
+            : '';
+
         return <<<HTML
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
   <div style="background:linear-gradient(135deg,#1a56db,#0e3a8c);color:#fff;padding:28px 32px;border-radius:8px 8px 0 0">
