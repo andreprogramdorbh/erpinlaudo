@@ -24,7 +24,13 @@ class PedidoVenda extends Model
     private function toFloat(mixed $v): float
     {
         if ($v === null || $v === '') return 0.0;
-        return (float) str_replace(['.', ','], ['', '.'], (string)$v);
+        $s = trim((string) $v);
+        // Formato brasileiro: "1.234,56" ou "1.234.567,89" (vírgula como separador decimal)
+        if (preg_match('/^-?[\d.]+,[\d]{1,2}$/', $s)) {
+            return (float) str_replace(['.', ','], ['', '.'], $s);
+        }
+        // Formato numérico padrão do banco: "1234.56" ou "1234" (ponto como decimal ou inteiro)
+        return (float) $s;
     }
 
     // ─── Gerar número sequencial ─────────────────────────────────────────────
