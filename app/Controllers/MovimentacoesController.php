@@ -846,4 +846,92 @@ class MovimentacoesController extends Controller
             ]);
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDOS DE VENDA — Aliases para rotas (vendasIndex, vendasCreate, etc.)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function vendasIndex(): void
+    {
+        $this->vendas();
+    }
+    public function vendasCreate(): void
+    {
+        $this->vendaCreate();
+    }
+    public function vendasStore(): void
+    {
+        $this->vendaStore();
+    }
+    public function vendasShow(int $id): void
+    {
+        $this->vendaShow($id);
+    }
+    public function vendasExpedir(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pvModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            header('Location: /estoque/vendas?error=not_found');
+            exit;
+        }
+        if ($pedido->status === 'entregue') {
+            header('Location: /estoque/vendas/' . $id . '?error=ja_expedido');
+            exit;
+        }
+        $itens = array_map(fn($i) => (array)$i, $pedido->itens ?? []);
+        $ok    = $this->pvModel->update($id, ['status' => 'entregue', 'usuario_id' => $uid], $pedido->itens ?? []);
+        if ($ok) {
+            $this->_registrarSaidaVenda($id, $uid, $itens, (array)$pedido);
+        }
+        header('Location: /estoque/vendas/' . $id . ($ok ? '?success=expedido' : '?error=save_failed'));
+        exit;
+    }
+    public function vendasCancelar(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pvModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            header('Location: /estoque/vendas?error=not_found');
+            exit;
+        }
+        $ok = $this->pvModel->update($id, ['status' => 'cancelado', 'usuario_id' => $uid], $pedido->itens ?? []);
+        header('Location: /estoque/vendas/' . $id . ($ok ? '?success=cancelado' : '?error=save_failed'));
+        exit;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDOS DE COMPRA — Aliases adicionais (compraReceber, compraCancelar)
+    // ═══════════════════════════════════════════════════════════════════════
+    public function compraReceber(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pcModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            header('Location: /estoque/compras?error=not_found');
+            exit;
+        }
+        if ($pedido->status === 'recebido') {
+            header('Location: /estoque/compras/' . $id . '?error=ja_recebido');
+            exit;
+        }
+        $itens = array_map(fn($i) => (array)$i, $pedido->itens ?? []);
+        $ok    = $this->pcModel->update($id, ['status' => 'recebido', 'usuario_id' => $uid], $pedido->itens ?? []);
+        if ($ok) {
+            $this->_registrarEntradaCompra($id, $uid, $itens, (array)$pedido);
+        }
+        header('Location: /estoque/compras/' . $id . ($ok ? '?success=recebido' : '?error=save_failed'));
+        exit;
+    }
+    public function compraCancelar(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pcModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            header('Location: /estoque/compras?error=not_found');
+            exit;
+        }
+        $ok = $this->pcModel->update($id, ['status' => 'cancelado', 'usuario_id' => $uid], $pedido->itens ?? []);
+        header('Location: /estoque/compras/' . $id . ($ok ? '?success=cancelado' : '?error=save_failed'));
+        exit;
+    }
 }
