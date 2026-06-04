@@ -1056,5 +1056,18 @@ document.addEventListener('DOMContentLoaded', () => {
     calcularDepreciacao();
     toggleDeprec();
     toggleEstoque();
+
+    // ─── Normaliza campos monetários para formato numérico antes do submit ────
+    // Converte "1.650,00" (pt-BR) → "1650.0000" (float puro) para o PHP processar corretamente.
+    document.getElementById('formProduto').addEventListener('submit', function(e) {
+        this.querySelectorAll('.money-mask').forEach(function(input) {
+            const raw = (input.value || '').trim();
+            if (raw === '') return;
+            // Remove pontos de milhar e troca vírgula decimal por ponto
+            const numeric = raw.replace(/\./g, '').replace(',', '.');
+            const parsed  = parseFloat(numeric);
+            input.value   = isNaN(parsed) ? '0.0000' : parsed.toFixed(4);
+        });
+    });
 });
 </script>
