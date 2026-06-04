@@ -22,14 +22,19 @@ class Produto extends Model
         error_log($line);
     }
 
-    // ─── Converte valor BR (1.234,56) para float ─────────────────────────────
+    // ─── Converte valor BR (1.234,56) ou numérico (1234.56) para float ─────────
     private function toFloat(mixed $v): float
     {
         if ($v === null || $v === '') return 0.0;
-        $s = (string)$v;
-        // Remove pontos de milhar e substitui vírgula decimal por ponto
-        $s = str_replace(['.', ','], ['', '.'], $s);
-        return (float)$s;
+        $s = trim((string) $v);
+        // Formato brasileiro: contém vírgula como separador decimal (ex: "1.650,00")
+        if (preg_match('/^-?[\d.]+,[\d]{1,2}$/', $s)) {
+            return (float) str_replace(['.', ','], ['', '.'], $s);
+        }
+        // Formato numérico do banco ou JS (ex: "1650.00" ou "1650")
+        // Remove apenas vírgulas caso existam como separador de milhar (ex: "1,650.00")
+        $s = str_replace(',', '', $s);
+        return (float) $s;
     }
 
     // ─── Geração de código incremental por tenant ────────────────────────────
@@ -239,7 +244,8 @@ class Produto extends Model
             markup_percentual=:markup_percentual, preco_venda=:preco_venda,
             preco_minimo_venda=:preco_minimo_venda, preco_sugerido=:preco_sugerido,
             margem_lucro_liquida=:margem_lucro_liquida, impostos_percentual=:impostos_percentual, moeda=:moeda,
-            controla_estoque=:controla_estoque, estoque_minimo=:estoque_minimo, estoque_maximo=:estoque_maximo,
+            controla_estoque=:controla_estoque, estoque_atual=:estoque_atual,
+            estoque_minimo=:estoque_minimo, estoque_maximo=:estoque_maximo,
             ponto_reposicao=:ponto_reposicao, lead_time_dias=:lead_time_dias, localizacao_estoque=:localizacao_estoque,
             controla_validade=:controla_validade, alerta_validade_dias=:alerta_validade_dias, lote_obrigatorio=:lote_obrigatorio,
             controla_depreciacao=:controla_depreciacao, vida_util_meses=:vida_util_meses, valor_residual=:valor_residual,
@@ -404,10 +410,14 @@ class Produto extends Model
         return $p;
     }
 
-    // ─── Bind para UPDATE (sem :codigo, sem :estoque_atual) ──────────────────
+    // ─── Bind para UPDATE (inclui :estoque_atual para ajuste manual) ───────────
     private function _bindUpdateParams(array $d): array
     {
-        return $this->_bindCommonParams($d);
+        $p = $this->_bindCommonParams($d);
+        // Permite ajuste manual de estoque_atual na edição
+        // O campo é readonly na view, mas pode ser desbloqueado via JS se necessário
+        $p[':estoque_atual'] = $this->toFloat($d['estoque_atual'] ?? 0);
+        return $p;
     }
 
     // ─── Parâmetros comuns a INSERT e UPDATE ─────────────────────────────────

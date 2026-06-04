@@ -379,8 +379,8 @@ $categOptions = [
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label">Estoque Atual</label>
-                            <input type="text" name="estoque_atual" class="form-control" value="<?= $fmtNum($produto->estoque_atual ?? 0) ?>" <?= $isEdit ? 'readonly' : '' ?>>
-                            <?php if ($isEdit): ?><small class="text-muted">Use movimentações para ajustar</small><?php endif; ?>
+                            <input type="text" name="estoque_atual" class="form-control" value="<?= $fmtNum($produto->estoque_atual ?? 0) ?>">
+                            <?php if ($isEdit): ?><small class="text-muted">Ajuste manual permitido. Para rastreabilidade, prefira usar movimentações.</small><?php endif; ?>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Estoque Mínimo</label>
