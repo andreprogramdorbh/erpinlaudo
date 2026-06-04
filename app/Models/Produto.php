@@ -401,12 +401,13 @@ class Produto extends Model
         }
     }
 
-    // ─── Bind para INSERT (inclui :codigo) ───────────────────────────────────
+    // ─── Bind para INSERT (inclui :codigo e :imagem_principal) ─────────────────
     private function _bindInsertParams(array $d): array
     {
         $p = $this->_bindCommonParams($d);
-        $p[':codigo']        = $d['codigo'] ?? '';
-        $p[':estoque_atual'] = $this->toFloat($d['estoque_atual'] ?? 0);
+        $p[':codigo']            = $d['codigo'] ?? '';
+        $p[':estoque_atual']     = $this->toFloat($d['estoque_atual'] ?? 0);
+        $p[':imagem_principal']  = isset($d['imagem_principal']) && $d['imagem_principal'] !== '' ? $d['imagem_principal'] : null;
         return $p;
     }
 
@@ -491,7 +492,6 @@ class Produto extends Model
             ':diferenciais'             => $n('diferenciais'),
             ':concorrentes'             => $n('concorrentes'),
             ':ciclo_venda_dias'         => $n('ciclo_venda_dias') ? (int)$d['ciclo_venda_dias'] : null,
-            ':imagem_principal'         => $n('imagem_principal'),
             ':video_url'                => $n('video_url'),
             ':catalogo_pdf_url'         => $n('catalogo_pdf_url'),
             ':status'                   => $d['status'] ?? 'ativo',
