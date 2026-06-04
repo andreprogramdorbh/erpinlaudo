@@ -51,6 +51,13 @@ class Permission implements PermissionProviderInterface
             'manage_leads',
             'manage_oportunidades',
 
+            // Manutenção
+            'view_manutencao',
+            'create_os',
+            'edit_os',
+            'delete_os',
+            'faturar_os',
+
             'view_profile',
             'edit_profile',
 
@@ -110,6 +117,13 @@ class Permission implements PermissionProviderInterface
             'manage_leads',
             'manage_oportunidades',
 
+            // Manutenção
+            'view_manutencao',
+            'create_os',
+            'edit_os',
+            'delete_os',
+            'faturar_os',
+
             'view_profile',
             'edit_profile',
 
@@ -166,6 +180,11 @@ class Permission implements PermissionProviderInterface
             'manage_leads',
             'manage_oportunidades',
 
+            // Manutenção
+            'view_manutencao',
+            'create_os',
+            'edit_os',
+
             'view_profile',
             'edit_profile',
 
@@ -188,6 +207,9 @@ class Permission implements PermissionProviderInterface
 
             // CRM — leitura pode visualizar o funil
             'view_crm',
+
+            // Manutenção — leitura pode visualizar ordens
+            'view_manutencao',
 
             'view_colaboradores',
 

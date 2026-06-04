@@ -661,6 +661,18 @@ if ($_ec) {
             </ul>
           </li>
 
+          <div class="nav-label">Manutenção</div>
+          <li class="nav-item has-submenu <?php echo strpos($_SERVER['REQUEST_URI'], '/manutencao') !== false ? 'open active' : ''; ?>">
+            <a href="/manutencao/ordens" class="nav-link" data-bs-toggle="tooltip" data-bs-placement="right" title="Manutenção">
+              <i class="fas fa-tools"></i>
+              <span class="link-text">MANUTENÇÃO</span>
+            </a>
+            <ul class="submenu">
+              <li><a href="/manutencao/ordens"
+                  class="nav-link <?php echo strpos($_SERVER['REQUEST_URI'], '/manutencao/ordens') !== false ? 'active' : ''; ?>"><i class="fas fa-clipboard-list me-1"></i> ORDENS DE SERVIÇO</a></li>
+            </ul>
+          </li>
+
           <div class="nav-label">Configurações</div>
           <li
             class="nav-item has-submenu <?php echo (strpos($_SERVER['REQUEST_URI'], '/configuracoes') !== false) ? 'open active' : ''; ?>">

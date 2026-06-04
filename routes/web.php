@@ -544,6 +544,24 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::post("/faturamento/apuracao/recalcular/{id}", "ApuracaoController@recalcular");
     Router::post("/faturamento/apuracao/revincular-medico/{id}", "ApuracaoController@revincularMedico");
 
+    // ── Módulo de Manutenção ─────────────────────────────────────────────────
+    Router::get("/manutencao/ordens",                          "ManutencaoController@index");
+    Router::get("/manutencao/ordens/create",                   "ManutencaoController@create");
+    Router::post("/manutencao/ordens/store",                   "ManutencaoController@store");
+    Router::get("/manutencao/ordens/{id}",                     "ManutencaoController@show");
+    Router::get("/manutencao/ordens/{id}/edit",                "ManutencaoController@edit");
+    Router::post("/manutencao/ordens/{id}/update",             "ManutencaoController@update");
+    Router::post("/manutencao/ordens/{id}/status",             "ManutencaoController@alterarStatus");
+    Router::post("/manutencao/ordens/{id}/cancelar",           "ManutencaoController@cancelar");
+    Router::post("/manutencao/ordens/{id}/enviar",             "ManutencaoController@enviarEmail");
+    Router::get("/manutencao/ordens/{id}/imprimir",            "ManutencaoController@imprimir");
+    Router::post("/manutencao/ordens/{id}/troca/add",          "ManutencaoController@trocaAdd");
+    Router::post("/manutencao/ordens/{id}/troca/{tid}/delete", "ManutencaoController@trocaDelete");
+    // API: buscar equipamentos do cliente (AJAX)
+    Router::get("/manutencao/api/equipamentos/{cliente_id}",   "ManutencaoController@apiEquipamentos");
+    // API: buscar produtos para autocomplete (AJAX)
+    Router::get("/manutencao/api/produtos",                    "ManutencaoController@apiProdutos");
+
     // Configurações (inclui gestão de usuários)
     Router::group(["middleware" => ["Permission:manage_settings"]], function () {
         Router::get("/configuracoes", "ConfiguracoesController@index");
