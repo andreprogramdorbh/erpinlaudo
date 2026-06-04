@@ -428,6 +428,8 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/estoque/vendas/create",                          "MovimentacoesController@vendasCreate");
         Router::post("/estoque/vendas",                                "MovimentacoesController@vendasStore");
         Router::get("/estoque/vendas/{id}",                            "MovimentacoesController@vendasShow");
+        Router::get("/estoque/vendas/{id}/edit",                        "MovimentacoesController@vendaEdit");
+        Router::post("/estoque/vendas/{id}/update",                     "MovimentacoesController@vendaUpdate");
         Router::post("/estoque/vendas/{id}/expedir",                   "MovimentacoesController@vendasExpedir");
         Router::post("/estoque/vendas/{id}/cancelar",                  "MovimentacoesController@vendasCancelar");
         Router::get("/estoque/vendas/{id}/faturar",                    "MovimentacoesController@vendaFaturarForm");
