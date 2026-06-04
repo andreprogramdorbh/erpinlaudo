@@ -682,32 +682,25 @@ class ManutencaoController extends Controller
         }
 
         $statusLabel = [
-            'aberta'         => 'Aberta',
-            'em_andamento'   => 'Em Andamento',
-            'aguardando_peca'=> 'Aguardando Peça',
-            'concluida'      => 'Concluída',
-            'faturada'       => 'Faturada',
-            'cancelada'      => 'Cancelada',
+            'aberta'          => 'Aberta',
+            'em_andamento'    => 'Em Andamento',
+            'aguardando_peca' => 'Aguardando Peça',
+            'concluida'       => 'Concluída',
+            'faturada'        => 'Faturada',
+            'cancelada'       => 'Cancelada',
         ];
 
-        return <<<HTML
-<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;background:#f9fafb;padding:24px">
-  <div style="background:#1a56db;color:#fff;padding:20px 28px;border-radius:8px 8px 0 0">
-    <h2 style="margin:0;font-size:18px">Ordem de Serviço — {$os->numero}</h2>
-    <p style="margin:4px 0 0;font-size:13px;opacity:.85">{$empresaNome}</p>
-  </div>
-  <div style="background:#fff;padding:24px 28px;border:1px solid #e5e7eb;border-top:none">
-    <table style="width:100%;font-size:13px;margin-bottom:20px">
-      <tr><td style="color:#6b7280;width:40%">Número:</td><td><strong>{$os->numero}</strong></td></tr>
-      <tr><td style="color:#6b7280">Tipo:</td><td><strong>" . ucfirst($os->tipo) . "</strong></td></tr>
-      <tr><td style="color:#6b7280">Status:</td><td><strong>" . ($statusLabel[$os->status] ?? $os->status) . "</strong></td></tr>
-      <tr><td style="color:#6b7280">Data de Abertura:</td><td>" . date('d/m/Y', strtotime($os->data_abertura)) . "</td></tr>
-      <tr><td style="color:#6b7280">Equipamento:</td><td>" . htmlspecialchars($os->produto_nome ?? '-') . "</td></tr>
-      <tr><td style="color:#6b7280">Número de Série:</td><td>" . htmlspecialchars($os->numero_serie ?? '-') . "</td></tr>
-      <tr><td style="color:#6b7280">Motivo:</td><td>" . htmlspecialchars($os->motivo_chamado) . "</td></tr>
-    </table>
-    " . (!empty($trocasHtml) ? "
-    <h3 style='font-size:14px;color:#1e293b;margin:0 0 12px'>Itens Trocados / Serviços Realizados</h3>
+        // Pré-calcular variáveis para uso no heredoc (sem concatenação)
+        $osNumero      = htmlspecialchars($os->numero ?? '');
+        $osTipo        = ucfirst($os->tipo ?? '');
+        $osStatus      = $statusLabel[$os->status] ?? ($os->status ?? '');
+        $osData        = !empty($os->data_abertura) ? date('d/m/Y', strtotime($os->data_abertura)) : '-';
+        $osProduto     = htmlspecialchars($os->produto_nome ?? '-');
+        $osSerie       = htmlspecialchars($os->numero_serie ?? '-');
+        $osMotivo      = htmlspecialchars($os->motivo_chamado ?? '');
+        $trocasSecao   = '';
+        if (!empty($trocasHtml)) {
+            $trocasSecao = "<h3 style='font-size:14px;color:#1e293b;margin:0 0 12px'>Itens Trocados / Serviços Realizados</h3>
     <table style='width:100%;font-size:12px;border-collapse:collapse'>
       <thead><tr style='background:#f1f5f9'>
         <th style='padding:6px 8px;text-align:left'>Descrição</th>
@@ -716,7 +709,26 @@ class ManutencaoController extends Controller
         <th style='padding:6px 8px;text-align:center'>Próx. Troca</th>
       </tr></thead>
       <tbody>{$trocasHtml}</tbody>
-    </table>" : '') . "
+    </table>";
+        }
+
+        return <<<HTML
+<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;background:#f9fafb;padding:24px">
+  <div style="background:#1a56db;color:#fff;padding:20px 28px;border-radius:8px 8px 0 0">
+    <h2 style="margin:0;font-size:18px">Ordem de Serviço &mdash; {$osNumero}</h2>
+    <p style="margin:4px 0 0;font-size:13px;opacity:.85">{$empresaNome}</p>
+  </div>
+  <div style="background:#fff;padding:24px 28px;border:1px solid #e5e7eb;border-top:none">
+    <table style="width:100%;font-size:13px;margin-bottom:20px">
+      <tr><td style="color:#6b7280;width:40%">Número:</td><td><strong>{$osNumero}</strong></td></tr>
+      <tr><td style="color:#6b7280">Tipo:</td><td><strong>{$osTipo}</strong></td></tr>
+      <tr><td style="color:#6b7280">Status:</td><td><strong>{$osStatus}</strong></td></tr>
+      <tr><td style="color:#6b7280">Data de Abertura:</td><td>{$osData}</td></tr>
+      <tr><td style="color:#6b7280">Equipamento:</td><td>{$osProduto}</td></tr>
+      <tr><td style="color:#6b7280">Número de Série:</td><td>{$osSerie}</td></tr>
+      <tr><td style="color:#6b7280">Motivo:</td><td>{$osMotivo}</td></tr>
+    </table>
+    {$trocasSecao}
     <div style="margin-top:20px;text-align:center">
       <a href="{$linkOS}" style="background:#1a56db;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:13px">
         Visualizar Ordem de Serviço Completa
