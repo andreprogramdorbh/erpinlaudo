@@ -39,27 +39,27 @@ $filtros = $filtros ?? [];
   <div class="os-kpi-bar">
     <div class="os-kpi">
       <div class="os-kpi-label">Total de O.S</div>
-      <div class="os-kpi-val"><?= (int)($kpis['total'] ?? 0) ?></div>
+      <div class="os-kpi-val"><?= (int)($kpis->total ?? 0) ?></div>
     </div>
     <div class="os-kpi">
       <div class="os-kpi-label"><span class="badge bg-primary-subtle text-primary">Abertas</span></div>
-      <div class="os-kpi-val"><?= (int)($kpis['abertas'] ?? 0) ?></div>
+      <div class="os-kpi-val"><?= (int)($kpis->abertas ?? 0) ?></div>
     </div>
     <div class="os-kpi">
       <div class="os-kpi-label"><span class="badge bg-info-subtle text-info">Em Andamento</span></div>
-      <div class="os-kpi-val"><?= (int)($kpis['em_andamento'] ?? 0) ?></div>
+      <div class="os-kpi-val"><?= (int)($kpis->em_andamento ?? 0) ?></div>
     </div>
     <div class="os-kpi">
       <div class="os-kpi-label"><span class="badge bg-warning-subtle text-warning">Aguard. Peça</span></div>
-      <div class="os-kpi-val"><?= (int)($kpis['aguardando_peca'] ?? 0) ?></div>
+      <div class="os-kpi-val"><?= (int)($kpis->aguardando_peca ?? 0) ?></div>
     </div>
     <div class="os-kpi">
       <div class="os-kpi-label"><span class="badge bg-success-subtle text-success">Concluídas</span></div>
-      <div class="os-kpi-val"><?= (int)($kpis['concluidas'] ?? 0) ?></div>
+      <div class="os-kpi-val"><?= (int)($kpis->concluidas ?? 0) ?></div>
     </div>
     <div class="os-kpi">
       <div class="os-kpi-label">Valor Total (mês)</div>
-      <div class="os-kpi-val" style="color:#1a56db">R$ <?= number_format((float)($kpis['valor_mes'] ?? 0), 2, ',', '.') ?></div>
+      <div class="os-kpi-val" style="color:#1a56db">R$ <?= number_format((float)($kpis->valor_mes ?? 0), 2, ',', '.') ?></div>
     </div>
   </div>
 
