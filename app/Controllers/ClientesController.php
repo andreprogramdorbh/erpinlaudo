@@ -9,6 +9,11 @@ use App\Core\Auth;
 use App\Models\Cliente;
 use App\Models\ClienteContato;
 use App\Models\ClienteAnexo;
+use App\Models\EquipamentoCliente;
+use App\Models\CrmProposta;
+use App\Models\PedidoVenda;
+use App\Models\OrdemServico;
+use App\Models\Produto;
 use App\Core\Audit\AuditLogger;
 use App\Services\CnpjService;
 
@@ -17,14 +22,24 @@ class ClientesController extends Controller
     private Cliente $clienteModel;
     private ClienteContato $contatoModel;
     private ClienteAnexo $anexoModel;
+    private EquipamentoCliente $equipModel;
+    private CrmProposta $propostaModel;
+    private PedidoVenda $pedidoModel;
+    private OrdemServico $osModel;
+    private Produto $produtoModel;
     private Logger $logger;
 
     public function __construct()
     {
-        $this->clienteModel = new Cliente();
-        $this->contatoModel = new ClienteContato();
-        $this->anexoModel = new ClienteAnexo();
-        $this->logger = new Logger();
+        $this->clienteModel  = new Cliente();
+        $this->contatoModel  = new ClienteContato();
+        $this->anexoModel    = new ClienteAnexo();
+        $this->equipModel    = new EquipamentoCliente();
+        $this->propostaModel = new CrmProposta();
+        $this->pedidoModel   = new PedidoVenda();
+        $this->osModel       = new OrdemServico();
+        $this->produtoModel  = new Produto();
+        $this->logger        = new Logger();
     }
 
     /**
@@ -260,17 +275,32 @@ class ClientesController extends Controller
             exit();
         }
 
+        $uid      = Auth::user()->id;
         $contatos = $this->contatoModel->findByClienteId($id);
-        $anexos = $this->anexoModel->findByClienteId($id, Auth::user()->id);
+        $anexos   = $this->anexoModel->findByClienteId($id, $uid);
+
+        // Dados para aba Equipamentos
+        $equipamentos    = $this->equipModel->findByCliente($uid, (int)$id);
+        $produtosEstoque = $this->produtoModel->findByUsuarioId($uid, ['status' => 'ativo']);
+
+        // Dados para aba Histórico
+        $historicoPropostas = $this->propostaModel->findByClienteIdAndTenantId((int)$id, $uid);
+        $historicoPedidos   = $this->pedidoModel->findByClienteIdAndTenantId((int)$id, $uid);
+        $historicoOrdens    = $this->osModel->findByUsuarioId($uid, ['cliente_id' => (int)$id]);
 
         View::render('clientes/form-enterprise', [
-            'title' => 'Editar Cliente',
-            'isEdit' => true,
-            'cliente' => $cliente,
-            'contatos' => $contatos,
-            'anexos' => $anexos,
-            'tab' => $_GET['tab'] ?? 'geral',
-            '_layout' => 'erp'
+            'title'              => 'Editar Cliente',
+            'isEdit'             => true,
+            'cliente'            => $cliente,
+            'contatos'           => $contatos,
+            'anexos'             => $anexos,
+            'equipamentos'       => $equipamentos,
+            'produtosEstoque'    => $produtosEstoque,
+            'historicoPropostas' => $historicoPropostas,
+            'historicoPedidos'   => $historicoPedidos,
+            'historicoOrdens'    => $historicoOrdens,
+            'tab'                => $_GET['tab'] ?? 'geral',
+            '_layout'            => 'erp'
         ]);
     }
 
@@ -910,6 +940,137 @@ class ClientesController extends Controller
 
             echo json_encode(['success' => true]);
         } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // =========================================================================
+    // EQUIPAMENTOS DO CLIENTE
+    // =========================================================================
+
+    /**
+     * AJAX GET /clientes/equipamentos/get?id=X
+     * Retorna dados de um equipamento para edição no modal.
+     */
+    public function getEquipamento(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $uid = Auth::user()->id;
+            $id  = (int)($_GET['id'] ?? 0);
+            if (!$id) throw new \Exception('ID inválido.');
+            $eq = $this->equipModel->findById($id);
+            if (!$eq || (int)$eq->usuario_id !== $uid) throw new \Exception('Equipamento não encontrado.');
+            echo json_encode(['success' => true, 'equipamento' => $eq]);
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * AJAX POST /clientes/equipamentos/save
+     * Cria ou atualiza um equipamento do cliente.
+     */
+    public function saveEquipamento(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $uid  = Auth::user()->id;
+            $body = json_decode(file_get_contents('php://input'), true) ?? [];
+
+            $clienteId = (int)($body['cliente_id'] ?? 0);
+            if (!$clienteId) throw new \Exception('Cliente inválido.');
+
+            $cliente = $this->clienteModel->findById($clienteId);
+            if (!$cliente || (int)$cliente->usuario_id !== $uid) throw new \Exception('Acesso negado.');
+
+            $data = [
+                'usuario_id'         => $uid,
+                'cliente_id'         => $clienteId,
+                'cliente_nome'       => $cliente->razao_social ?? $cliente->nome ?? '',
+                'produto_id'         => !empty($body['produto_id'])    ? (int)$body['produto_id']    : null,
+                'produto_nome'       => trim($body['produto_nome']      ?? ''),
+                'produto_codigo'     => trim($body['produto_codigo']    ?? '') ?: null,
+                'numero_serie'       => trim($body['numero_serie']      ?? ''),
+                'marca'              => trim($body['marca']             ?? '') ?: null,
+                'modelo'             => trim($body['modelo']            ?? '') ?: null,
+                'data_instalacao'    => !empty($body['data_instalacao']) ? $body['data_instalacao'] : null,
+                'vida_util_meses'    => !empty($body['vida_util_meses']) ? (int)$body['vida_util_meses'] : null,
+                'depreciacao_mensal' => isset($body['depreciacao_mensal']) ? (float)$body['depreciacao_mensal'] : null,
+                'observacoes'        => trim($body['observacoes']       ?? '') ?: null,
+            ];
+
+            if (empty($data['produto_nome'])) throw new \Exception('Nome do equipamento é obrigatório.');
+            if (empty($data['numero_serie'])) throw new \Exception('Número de série é obrigatório.');
+
+            $equipId = !empty($body['id']) ? (int)$body['id'] : null;
+
+            if ($equipId) {
+                $eq = $this->equipModel->findById($equipId);
+                if (!$eq || (int)$eq->usuario_id !== $uid) throw new \Exception('Equipamento não encontrado.');
+                $this->equipModel->update($equipId, $data);
+                $this->logger->info("[ClientesController] Equipamento {$equipId} atualizado");
+            } else {
+                // Verificar duplicidade por número de série no mesmo cliente
+                $existentes = $this->equipModel->findByCliente($uid, $clienteId);
+                foreach ($existentes as $ex) {
+                    if (strtolower(trim($ex->numero_serie)) === strtolower($data['numero_serie'])) {
+                        throw new \Exception('Já existe um equipamento com este número de série para este cliente.');
+                    }
+                }
+                $equipId = $this->equipModel->create($data);
+                if (!$equipId) throw new \Exception('Erro ao criar equipamento.');
+                $this->logger->info("[ClientesController] Equipamento {$equipId} criado para cliente {$clienteId}");
+            }
+
+            echo json_encode(['success' => true, 'id' => $equipId]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[ClientesController::saveEquipamento] ' . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * AJAX POST /clientes/equipamentos/remove
+     * Remove (desativa) um equipamento do cliente.
+     */
+    public function removeEquipamento(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $uid  = Auth::user()->id;
+            $body = json_decode(file_get_contents('php://input'), true) ?? [];
+            $id   = (int)($body['id'] ?? 0);
+            if (!$id) throw new \Exception('ID inválido.');
+            $eq = $this->equipModel->findById($id);
+            if (!$eq || (int)$eq->usuario_id !== $uid) throw new \Exception('Equipamento não encontrado.');
+            $this->equipModel->update($id, ['ativo' => 0]);
+            $this->logger->info("[ClientesController] Equipamento {$id} removido");
+            echo json_encode(['success' => true]);
+        } catch (\Throwable $e) {
+            $this->logger->error('[ClientesController::removeEquipamento] ' . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * AJAX GET /clientes/{id}/equipamentos
+     * Retorna equipamentos do cliente para uso em O.S e Propostas.
+     */
+    public function listarEquipamentos(int $id): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $uid     = Auth::user()->id;
+            $cliente = $this->clienteModel->findById($id);
+            if (!$cliente || (int)$cliente->usuario_id !== $uid) throw new \Exception('Acesso negado.');
+            $equips  = $this->equipModel->findByCliente($uid, $id);
+            echo json_encode(['success' => true, 'equipamentos' => $equips]);
+        } catch (\Throwable $e) {
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
         exit();

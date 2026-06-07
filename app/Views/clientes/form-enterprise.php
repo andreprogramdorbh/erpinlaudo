@@ -6,10 +6,11 @@
 
 use App\Core\UI;
 
-$cliente = $cliente ?? null;
-$isEdit = !empty($cliente);
-$activeTab = $_GET['tab'] ?? 'geral';
-$contatos = $contatos ?? [];
+$cliente      = $cliente      ?? null;
+$isEdit       = !empty($cliente);
+$activeTab    = $_GET['tab']  ?? 'geral';
+$contatos     = $contatos     ?? [];
+$equipamentos = $equipamentos ?? [];
 
 // Configuração do formulário enterprise
 $formConfig = [
@@ -54,6 +55,22 @@ $formConfig = [
             'locked' => !$isEdit,
             'locked_message' => 'Salve os dados gerais primeiro para habilitar os anexos.',
             'view' => $isEdit ? 'clientes.tabs.anexos-enterprise' : null
+        ],
+        [
+            'id' => 'equipamentos',
+            'title' => 'Equipamentos',
+            'icon' => 'fas fa-tools',
+            'locked' => !$isEdit,
+            'locked_message' => 'Salve os dados gerais primeiro para habilitar os equipamentos.',
+            'view' => $isEdit ? 'clientes.tabs.equipamentos' : null
+        ],
+        [
+            'id' => 'historico',
+            'title' => 'Histórico',
+            'icon' => 'fas fa-history',
+            'locked' => !$isEdit,
+            'locked_message' => 'Salve os dados gerais primeiro para habilitar o histórico.',
+            'view' => $isEdit ? 'clientes.tabs.historico' : null
         ]
     ],
 

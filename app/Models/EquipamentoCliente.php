@@ -79,7 +79,7 @@ class EquipamentoCliente
             $sets   = [];
             $params = [':id' => $id];
             $campos = ['cliente_id','cliente_nome','produto_id','produto_nome','produto_codigo',
-                       'modelo','marca','vida_util_meses','depreciacao_mensal','observacoes'];
+                       'modelo','marca','data_instalacao','vida_util_meses','depreciacao_mensal','observacoes','ativo'];
             foreach ($campos as $c) {
                 if (array_key_exists($c, $d)) {
                     $sets[]         = "`{$c}` = :{$c}";

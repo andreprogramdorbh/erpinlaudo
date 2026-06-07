@@ -64,7 +64,7 @@ class OrdemServico
                     (usuario_id, numero, tipo, status, cliente_id, cliente_nome,
                      cliente_cpf_cnpj, cliente_email, cliente_telefone, cliente_endereco,
                      cliente_cidade, cliente_estado, equipamento_id, produto_id,
-                     produto_nome, produto_codigo, numero_serie, motivo_chamado,
+                     produto_nome, produto_codigo, numero_serie, marca, modelo, vida_util_meses, motivo_chamado,
                      descricao_servico, data_abertura, data_previsao, tecnico_responsavel,
                      prioridade, valor_servico, valor_pecas, valor_total,
                      proposta_id, observacoes, token_impressao)
@@ -72,7 +72,7 @@ class OrdemServico
                     (:usuario_id, :numero, :tipo, :status, :cliente_id, :cliente_nome,
                      :cliente_cpf_cnpj, :cliente_email, :cliente_telefone, :cliente_endereco,
                      :cliente_cidade, :cliente_estado, :equipamento_id, :produto_id,
-                     :produto_nome, :produto_codigo, :numero_serie, :motivo_chamado,
+                     :produto_nome, :produto_codigo, :numero_serie, :marca, :modelo, :vida_util_meses, :motivo_chamado,
                      :descricao_servico, :data_abertura, :data_previsao, :tecnico_responsavel,
                      :prioridade, :valor_servico, :valor_pecas, :valor_total,
                      :proposta_id, :observacoes, :token_impressao)";
@@ -95,6 +95,9 @@ class OrdemServico
                 ':produto_nome'       => $d['produto_nome']        ?? null,
                 ':produto_codigo'     => $d['produto_codigo']      ?? null,
                 ':numero_serie'       => $d['numero_serie']        ?? null,
+                ':marca'              => $d['marca']               ?? null,
+                ':modelo'             => $d['modelo']              ?? null,
+                ':vida_util_meses'    => isset($d['vida_util_meses']) && $d['vida_util_meses'] !== null ? (int)$d['vida_util_meses'] : null,
                 ':motivo_chamado'     => $d['motivo_chamado']      ?? '',
                 ':descricao_servico'  => $d['descricao_servico']   ?? null,
                 ':data_abertura'      => $d['data_abertura']       ?? date('Y-m-d'),
@@ -129,7 +132,7 @@ class OrdemServico
                 'tipo','status','cliente_id','cliente_nome','cliente_cpf_cnpj',
                 'cliente_email','cliente_telefone','cliente_endereco','cliente_cidade',
                 'cliente_estado','equipamento_id','produto_id','produto_nome',
-                'produto_codigo','numero_serie','motivo_chamado','descricao_servico',
+                'produto_codigo','numero_serie','marca','modelo','vida_util_meses','motivo_chamado','descricao_servico',
                 'evolucao','data_previsao','data_conclusao','tecnico_responsavel',
                 'prioridade','valor_servico','valor_pecas','valor_total',
                 'proposta_id','pedido_venda_id','conta_receber_id','observacoes',
@@ -191,6 +194,10 @@ class OrdemServico
         if (!empty($filtros['data_ate'])) {
             $where[]            = 'o.data_abertura <= :data_ate';
             $params[':data_ate'] = $filtros['data_ate'];
+        }
+        if (!empty($filtros['cliente_id'])) {
+            $where[]             = 'o.cliente_id = :cliente_id';
+            $params[':cliente_id'] = (int)$filtros['cliente_id'];
         }
 
         $sql = "SELECT o.*

@@ -94,6 +94,17 @@ $csrfToken = \App\Core\View::csrfToken();
         <div class="os-form-card">
           <h5><i class="fas fa-cog"></i> Equipamento / Produto</h5>
           <div class="row g-3">
+            <!-- Equipamento do cliente (carregado via AJAX ao selecionar cliente) -->
+            <div class="col-12" id="blocoEquipCliente" style="display:none">
+              <label class="form-label fw-semibold text-primary">
+                <i class="fas fa-tools me-1"></i>Equipamento Cadastrado do Cliente
+              </label>
+              <select id="selectEquipCliente" class="form-select form-select-sm border-primary">
+                <option value="">— Selecionar equipamento do cliente —</option>
+              </select>
+              <small class="text-muted">Ao selecionar, os campos abaixo serão preenchidos automaticamente.</small>
+            </div>
+            <div class="col-12"><hr class="my-1" id="hrEquipSep" style="display:none"></div>
             <div class="col-md-6">
               <label class="form-label">Produto / Serviço (do Estoque)</label>
               <select id="selectProduto" name="produto_id" class="form-select form-select-sm">
@@ -106,6 +117,8 @@ $csrfToken = \App\Core\View::csrfToken();
                   data-preco="<?= number_format((float)($p->preco_venda ?? 0), 4, '.', '') ?>"
                   data-vida="<?= (int)($p->vida_util_meses ?? 0) ?>"
                   data-deprec="<?= number_format((float)($p->depreciacao_mensal ?? 0), 4, '.', '') ?>"
+                  data-marca="<?= htmlspecialchars($p->marca ?? '') ?>"
+                  data-modelo="<?= htmlspecialchars($p->modelo ?? '') ?>"
                   <?= $isEdit && (int)($os->produto_id ?? 0) === (int)$p->id ? 'selected' : '' ?>>
                   <?= htmlspecialchars($p->codigo ? "[{$p->codigo}] " : '') . htmlspecialchars($p->nome) ?>
                 </option>
@@ -266,9 +279,17 @@ $csrfToken = \App\Core\View::csrfToken();
 </div>
 
 <script>
-// Preencher dados do cliente ao selecionar
+// Preencher dados do cliente ao selecionar + carregar equipamentos do cliente
 document.getElementById('selectCliente').addEventListener('change', function() {
   const opt = this.options[this.selectedIndex];
+  // Limpar bloco de equipamentos
+  const blocoEquip = document.getElementById('blocoEquipCliente');
+  const hrSep      = document.getElementById('hrEquipSep');
+  const selEquip   = document.getElementById('selectEquipCliente');
+  selEquip.innerHTML = '<option value="">— Selecionar equipamento do cliente —</option>';
+  blocoEquip.style.display = 'none';
+  hrSep.style.display      = 'none';
+
   if (!opt.value) return;
   document.getElementById('clienteNome').value    = opt.dataset.nome    || '';
   document.getElementById('clienteCpfCnpj').value = opt.dataset.cpfcnpj || '';
@@ -277,14 +298,71 @@ document.getElementById('selectCliente').addEventListener('change', function() {
   document.getElementById('clienteEnd').value     = opt.dataset.end     || '';
   document.getElementById('clienteCidade').value  = opt.dataset.cidade  || '';
   document.getElementById('clienteEstado').value  = opt.dataset.estado  || '';
+
+  // Buscar equipamentos cadastrados do cliente
+  fetch('/clientes/' + opt.value + '/equipamentos')
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success || !d.equipamentos || d.equipamentos.length === 0) return;
+      d.equipamentos.forEach(function(eq) {
+        const o = document.createElement('option');
+        o.value              = eq.id;
+        o.dataset.nome       = eq.produto_nome   || '';
+        o.dataset.codigo     = eq.produto_codigo || '';
+        o.dataset.serie      = eq.numero_serie   || '';
+        o.dataset.marca      = eq.marca          || '';
+        o.dataset.modelo     = eq.modelo         || '';
+        o.dataset.vida       = eq.vida_util_meses || 0;
+        o.dataset.produtoId  = eq.produto_id     || '';
+        o.textContent = (eq.produto_nome || 'Equipamento') +
+          (eq.numero_serie ? ' — S/N: ' + eq.numero_serie : '') +
+          (eq.marca ? ' (' + eq.marca + ')' : '');
+        selEquip.appendChild(o);
+      });
+      blocoEquip.style.display = 'block';
+      hrSep.style.display      = 'block';
+    })
+    .catch(() => { /* silencioso se não houver equipamentos */ });
 });
 
-// Preencher dados do produto ao selecionar
+// Preencher campos ao selecionar equipamento do cliente
+document.getElementById('selectEquipCliente').addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  if (!opt.value) return;
+  document.getElementById('produtoNome').value   = opt.dataset.nome   || '';
+  document.getElementById('produtoCodigo').value = opt.dataset.codigo || '';
+  document.getElementById('numeroSerie').value   = opt.dataset.serie  || '';
+  const marcaEl  = document.querySelector('input[name="marca"]');
+  const modeloEl = document.querySelector('input[name="modelo"]');
+  if (marcaEl)  marcaEl.value  = opt.dataset.marca  || '';
+  if (modeloEl) modeloEl.value = opt.dataset.modelo || '';
+  if (opt.dataset.vida && parseInt(opt.dataset.vida) > 0) {
+    document.getElementById('vidaUtilMeses').value = opt.dataset.vida;
+  }
+  // Se o equipamento tem produto_id, selecionar no select de produto
+  if (opt.dataset.produtoId) {
+    const selProd = document.getElementById('selectProduto');
+    for (let i = 0; i < selProd.options.length; i++) {
+      if (selProd.options[i].value == opt.dataset.produtoId) {
+        selProd.selectedIndex = i;
+        break;
+      }
+    }
+  }
+});
+
+// Preencher dados do produto ao selecionar (marca, modelo e vida útil do cadastro)
 document.getElementById('selectProduto').addEventListener('change', function() {
   const opt = this.options[this.selectedIndex];
   if (!opt.value) return;
   document.getElementById('produtoNome').value   = opt.dataset.nome   || '';
   document.getElementById('produtoCodigo').value = opt.dataset.codigo || '';
+  // Marca e Modelo
+  const marcaEl  = document.querySelector('input[name="marca"]');
+  const modeloEl = document.querySelector('input[name="modelo"]');
+  if (marcaEl)  marcaEl.value  = opt.dataset.marca  || '';
+  if (modeloEl) modeloEl.value = opt.dataset.modelo || '';
+  // Vida útil
   if (opt.dataset.vida && parseInt(opt.dataset.vida) > 0) {
     document.getElementById('vidaUtilMeses').value = opt.dataset.vida;
   }
