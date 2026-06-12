@@ -424,7 +424,7 @@ class PedidoVenda extends Model
         }
         $sql = "SELECT p.*, COUNT(i.id) AS total_itens
                 FROM {$this->table} p
-                LEFT JOIN pedidos_venda_itens i ON i.pedido_id = p.id
+                LEFT JOIN est_pedidos_venda_itens i ON i.pedido_id = p.id
                 WHERE " . implode(' AND ', $where) . "
                 GROUP BY p.id
                 ORDER BY p.created_at DESC";

@@ -108,8 +108,8 @@ $isCancelada = $os->status === 'cancelada';
             <div class="info-row"><span class="info-label">Número de Série:</span><span class="info-val fw-bold"><?= htmlspecialchars($os->numero_serie ?? '-') ?></span></div>
           </div>
           <div class="col-md-6">
-            <div class="info-row"><span class="info-label">Marca / Modelo:</span><span class="info-val"><?= htmlspecialchars(($os->marca ?? '') . ($os->modelo ? ' / ' . $os->modelo : '')) ?: '-' ?></span></div>
-            <div class="info-row"><span class="info-label">Vida Útil:</span><span class="info-val"><?= $os->vida_util_meses ? $os->vida_util_meses . ' meses' : '-' ?></span></div>
+            <div class="info-row"><span class="info-label">Marca / Modelo:</span><span class="info-val"><?= htmlspecialchars(($os->marca ?? '') . (!empty($os->modelo ?? '') ? ' / ' . ($os->modelo ?? '') : '')) ?: '-' ?></span></div>
+            <div class="info-row"><span class="info-label">Vida Útil:</span><span class="info-val"><?= !empty($os->vida_util_meses ?? null) ? ($os->vida_util_meses) . ' meses' : '-' ?></span></div>
           </div>
         </div>
       </div>

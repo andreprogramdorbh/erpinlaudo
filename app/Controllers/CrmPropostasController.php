@@ -186,7 +186,7 @@ class CrmPropostasController extends Controller
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
             header('Location: /crm/propostas');
             exit();
         }
@@ -215,7 +215,7 @@ class CrmPropostasController extends Controller
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
             header('Location: /crm/propostas');
             exit();
         }
@@ -244,7 +244,7 @@ class CrmPropostasController extends Controller
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Proposta não encontrada ou sem permissão.');
         }
 
@@ -302,16 +302,26 @@ class CrmPropostasController extends Controller
     {
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
+        $isAjax   = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
+                    (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
-            $this->jsonError('Proposta não encontrada ou sem permissão.');
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
+            if ($isAjax) {
+                $this->jsonError('Proposta não encontrada ou sem permissão.');
+            }
+            header('Location: /crm/propostas?erro=sem_permissao');
+            exit();
         }
 
         $this->propostaModel->delete($id);
 
-        ob_start(); ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode(['success' => true, 'redirect' => '/crm/propostas']);
+        if ($isAjax) {
+            ob_start(); ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'redirect' => '/crm/propostas']);
+            exit();
+        }
+        header('Location: /crm/propostas?sucesso=excluido');
         exit();
     }
 
@@ -323,7 +333,7 @@ class CrmPropostasController extends Controller
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Proposta não encontrada ou sem permissão.');
         }
 
@@ -395,7 +405,7 @@ class CrmPropostasController extends Controller
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
             http_response_code(403);
             echo 'Sem permissão.';
             exit();
@@ -430,7 +440,7 @@ class CrmPropostasController extends Controller
         $uid      = $this->usuarioId();
         $proposta = $this->propostaModel->findById($id);
 
-        if (!$proposta || (int) $proposta->usuario_id !== $uid && !$this->isAdmin()) {
+        if (!$proposta || ((int) $proposta->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Proposta não encontrada ou sem permissão.');
         }
 

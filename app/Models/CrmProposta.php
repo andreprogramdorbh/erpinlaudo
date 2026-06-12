@@ -470,7 +470,7 @@ class CrmProposta
             $params[':status']  = $filtros['status'];
         }
 
-        $sql = "SELECT p.* FROM {$this->table} p WHERE " . implode(' AND ', $where) . " ORDER BY p.created_at DESC";
+        $sql = "SELECT p.*, p.total AS valor_total FROM {$this->table} p WHERE " . implode(' AND ', $where) . " ORDER BY p.created_at DESC";
         try {
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
