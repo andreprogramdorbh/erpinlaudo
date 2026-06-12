@@ -305,7 +305,7 @@ class OrdemServico
                 ':observacoes'       => $d['observacoes']         ?? null,
             ]);
             // Recalcular valor_pecas da OS
-            $this->_recalcularValores($osId);
+            $this->recalcularValores($osId);
             return (int) $this->pdo->lastInsertId();
         } catch (\Throwable $e) {
             $this->logger->error('[OrdemServico::addTroca] ' . $e->getMessage());
@@ -313,14 +313,17 @@ class OrdemServico
         }
     }
 
-    public function deleteTroca(int $trocaId): bool
+    public function deleteTroca(int $trocaId, int $osId): bool
     {
         try {
-            $t = $this->pdo->prepare("SELECT os_id FROM manut_os_trocas WHERE id = :id");
-            $t->execute([':id' => $trocaId]);
-            $row = $t->fetch(\PDO::FETCH_OBJ);
-            $this->pdo->prepare("DELETE FROM manut_os_trocas WHERE id = :id")->execute([':id' => $trocaId]);
-            if ($row) $this->_recalcularValores((int)$row->os_id);
+            $stmt = $this->pdo->prepare(
+                "DELETE FROM manut_os_trocas WHERE id = :id AND os_id = :os_id"
+            );
+            $stmt->execute([':id' => $trocaId, ':os_id' => $osId]);
+            if ($stmt->rowCount() === 0) {
+                return false;
+            }
+            $this->recalcularValores($osId);
             return true;
         } catch (\Throwable $e) {
             $this->logger->error('[OrdemServico::deleteTroca] ' . $e->getMessage());
@@ -328,7 +331,7 @@ class OrdemServico
         }
     }
 
-    private function _recalcularValores(int $osId): void
+    public function recalcularValores(int $osId): void
     {
         $stmt = $this->pdo->prepare(
             "SELECT COALESCE(SUM(preco_total), 0) AS total_pecas FROM manut_os_trocas WHERE os_id = :id"

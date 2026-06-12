@@ -559,7 +559,7 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::post("/manutencao/ordens/{id}/update",             "ManutencaoController@update");
     Router::post("/manutencao/ordens/{id}/status",             "ManutencaoController@alterarStatus");
     Router::post("/manutencao/ordens/{id}/cancelar",           "ManutencaoController@cancelar");
-    Router::post("/manutencao/ordens/{id}/enviar",             "ManutencaoController@enviarEmail");
+    Router::post("/manutencao/ordens/{id}/enviar",             "ManutencaoController@enviar");
     Router::get("/manutencao/ordens/{id}/imprimir",            "ManutencaoController@imprimir");
     Router::post("/manutencao/ordens/{id}/troca/add",          "ManutencaoController@addTroca");
     Router::post("/manutencao/ordens/{id}/troca/{tid}/delete", "ManutencaoController@deleteTroca");

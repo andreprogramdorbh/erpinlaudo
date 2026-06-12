@@ -232,6 +232,10 @@ class ManutencaoController extends Controller
             echo '404 - Ordem de Serviço não encontrada.';
             return;
         }
+        $this->osModel->recalcularValores($id);
+        $this->_sincronizarPropostaDaOS($id, (int)$os->usuario_id);
+        $os = $this->osModel->findById($id);
+
         $historico = $this->osModel->getHistorico($id);
         $trocas    = $this->osModel->getTrocas($id);
         $produtos  = $this->produtoModel->findByUsuarioId($uid, ['ativo' => 1]);
@@ -310,8 +314,11 @@ class ManutencaoController extends Controller
                 'cliente_email'       => $data['cliente_email']       ?? $os->cliente_email,
                 'cliente_telefone'    => $data['cliente_telefone']    ?? $os->cliente_telefone,
                 'cliente_endereco'    => $data['cliente_endereco']    ?? $os->cliente_endereco,
+                'cliente_cidade'      => $data['cliente_cidade']      ?? $os->cliente_cidade,
+                'cliente_estado'      => $data['cliente_estado']      ?? $os->cliente_estado,
                 'produto_id'          => !empty($data['produto_id']) ? (int)$data['produto_id'] : $os->produto_id,
                 'produto_nome'        => $data['produto_nome']        ?? $os->produto_nome,
+                'produto_codigo'      => $data['produto_codigo']      ?? $os->produto_codigo,
                 'numero_serie'        => $data['numero_serie']        ?? $os->numero_serie,
                 'marca'               => $data['marca']               ?? $os->marca,
                 'modelo'              => $data['modelo']              ?? $os->modelo,
@@ -325,6 +332,8 @@ class ManutencaoController extends Controller
                 'valor_servico'       => $this->toFloat($data['valor_servico'] ?? (string)$os->valor_servico),
                 'observacoes'         => $data['observacoes']         ?? $os->observacoes,
             ]);
+            $this->osModel->recalcularValores($id);
+            $this->_sincronizarPropostaDaOS($id, (int)$os->usuario_id);
 
             $user = $this->userModel->findById($uid);
             $this->osModel->registrarHistorico(
@@ -420,6 +429,8 @@ class ManutencaoController extends Controller
             $this->jsonError('Falha ao adicionar item de troca.');
         }
 
+        $this->_sincronizarPropostaDaOS($id, (int)$os->usuario_id);
+
         // Recarregar OS para pegar totais atualizados
         $osAtualizada = $this->osModel->findById($id);
         $this->jsonSuccess([
@@ -439,7 +450,13 @@ class ManutencaoController extends Controller
         if (!$os || ((int)$os->usuario_id !== $uid && !$this->isAdmin())) {
             $this->jsonError('Sem permissão.');
         }
-        $this->osModel->deleteTroca($trocaId);
+        if ($os->status === 'faturada') {
+            $this->jsonError('Nao e possivel remover itens de uma O.S faturada.');
+        }
+        if (!$this->osModel->deleteTroca($trocaId, $id)) {
+            $this->jsonError('Item nao encontrado nesta Ordem de Servico.');
+        }
+        $this->_sincronizarPropostaDaOS($id, (int)$os->usuario_id);
         $osAtualizada = $this->osModel->findById($id);
         $this->jsonSuccess([
             'valor_pecas' => number_format((float)$osAtualizada->valor_pecas, 2, ',', '.'),
@@ -644,9 +661,61 @@ class ManutencaoController extends Controller
 
             if (!$propostaId) return false;
 
-            // Adicionar item de serviço se houver valor
+            $this->_sincronizarPropostaDaOS($osId, $uid, (int)$propostaId);
+            $this->propostaModel->updateStatus((int)$propostaId, 'gerada', $uid, "Proposta gerada automaticamente pela O.S {$os->numero}.");
+
+            $this->logger->info('[Manutencao] Proposta CRM criada', ['os_id' => $osId, 'proposta_id' => $propostaId]);
+            return (int)$propostaId;
+
+        } catch (\Throwable $e) {
+            $this->logger->error('[Manutencao::_criarPropostaDaOS] ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // Sincronizar dados e valores da O.S com a proposta CRM vinculada
+    // =========================================================================
+    private function _sincronizarPropostaDaOS(int $osId, int $uid, ?int $propostaId = null): bool
+    {
+        try {
+            $os = $this->osModel->findById($osId);
+            if (!$os || (int)$os->usuario_id !== $uid) {
+                return false;
+            }
+
+            $propostaId = $propostaId ?: (int)($os->proposta_id ?? 0);
+            if ($propostaId <= 0) {
+                return false;
+            }
+
+            $proposta = $this->propostaModel->findById($propostaId);
+            if (!$proposta || (int)$proposta->usuario_id !== $uid) {
+                return false;
+            }
+            if (in_array($proposta->status, ['aceita', 'recusada', 'expirada'], true)) {
+                return false;
+            }
+
+            $titulo = "O.S {$os->numero} — " . ($os->produto_nome ?? 'Manutenção') . ' — ' . $os->cliente_nome;
+            $this->propostaModel->update($propostaId, [
+                'cliente_id'          => $os->cliente_id,
+                'cliente_nome'        => $os->cliente_nome,
+                'cliente_cnpj_cpf'    => $os->cliente_cpf_cnpj,
+                'cliente_email'       => $os->cliente_email,
+                'cliente_telefone'    => $os->cliente_telefone,
+                'cliente_endereco'    => $os->cliente_endereco,
+                'cliente_cidade'      => $os->cliente_cidade,
+                'cliente_estado'      => $os->cliente_estado,
+                'titulo'              => $titulo,
+                'descricao'           => "Proposta gerada automaticamente a partir da Ordem de Serviço {$os->numero}.\n\nMotivo: {$os->motivo_chamado}",
+                'observacoes'         => "Ref. O.S {$os->numero} — Tipo: " . strtoupper($os->tipo),
+                'notas_internas'      => "OS ID: {$osId}",
+            ]);
+
+            $itens = [];
             if ((float)$os->valor_servico > 0) {
-                $this->propostaModel->salvarItens((int)$propostaId, [[
+                $itens[] = [
                     'produto_id'     => $os->produto_id,
                     'codigo'         => $os->produto_codigo ?? '',
                     'descricao'      => 'Serviço de Manutenção ' . ucfirst($os->tipo) . ' — ' . ($os->produto_nome ?? ''),
@@ -656,17 +725,31 @@ class ManutencaoController extends Controller
                     'margem_lucro'   => 0,
                     'preco_unitario' => (float)$os->valor_servico,
                     'desconto_item'  => 0,
-                ]]);
+                ];
             }
 
-            $this->propostaModel->recalcularTotais((int)$propostaId);
-            $this->propostaModel->updateStatus((int)$propostaId, 'gerada', $uid, "Proposta gerada automaticamente pela O.S {$os->numero}.");
+            foreach ($this->osModel->getTrocas($osId) as $troca) {
+                $itens[] = [
+                    'produto_id'     => $troca->produto_id,
+                    'codigo'         => $troca->produto_codigo ?? '',
+                    'descricao'      => $troca->descricao,
+                    'unidade'        => $troca->unidade ?? 'UN',
+                    'quantidade'     => (float)$troca->quantidade,
+                    'preco_custo'    => 0,
+                    'margem_lucro'   => 0,
+                    'preco_unitario' => (float)$troca->preco_unitario,
+                    'desconto_item'  => 0,
+                ];
+            }
 
-            $this->logger->info('[Manutencao] Proposta CRM criada', ['os_id' => $osId, 'proposta_id' => $propostaId]);
-            return (int)$propostaId;
-
+            $this->propostaModel->salvarItens($propostaId, $itens);
+            $this->propostaModel->recalcularTotais($propostaId);
+            return true;
         } catch (\Throwable $e) {
-            $this->logger->error('[Manutencao::_criarPropostaDaOS] ' . $e->getMessage());
+            $this->logger->error('[Manutencao::_sincronizarPropostaDaOS] ' . $e->getMessage(), [
+                'os_id'       => $osId,
+                'proposta_id' => $propostaId,
+            ]);
             return false;
         }
     }
