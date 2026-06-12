@@ -119,6 +119,37 @@ class MovimentacaoEstoque extends Model
         }
     }
 
+    public function quantidadeSaidaPedidoVenda(
+        int $usuarioId,
+        int $pedidoVendaId,
+        int $produtoId,
+        ?string $lote = null
+    ): float {
+        $sql = "SELECT COALESCE(SUM(quantidade), 0)
+                FROM {$this->table}
+                WHERE usuario_id = :usuario_id
+                  AND pedido_venda_id = :pedido_venda_id
+                  AND produto_id = :produto_id
+                  AND tipo = 'saida'
+                  AND origem = 'pedido_venda'";
+        $params = [
+            ':usuario_id'      => $usuarioId,
+            ':pedido_venda_id' => $pedidoVendaId,
+            ':produto_id'      => $produtoId,
+        ];
+
+        if ($lote === null || $lote === '') {
+            $sql .= " AND (lote IS NULL OR lote = '')";
+        } else {
+            $sql .= " AND lote = :lote";
+            $params[':lote'] = $lote;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return (float)$stmt->fetchColumn();
+    }
+
     // ─── Listagem com filtros ────────────────────────────────────────────────
     public function findByUsuarioId(int $usuarioId, array $filtros = []): array
     {

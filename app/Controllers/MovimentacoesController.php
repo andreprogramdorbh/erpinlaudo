@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Cliente;
 use App\Models\ContaReceber;
 use App\Models\NotaFiscal;
+use App\Models\OrdemServico;
 
 class MovimentacoesController extends Controller
 {
@@ -23,6 +24,7 @@ class MovimentacoesController extends Controller
     private Cliente             $clienteModel;
     private ContaReceber        $contaReceberModel;
     private NotaFiscal          $notaFiscalModel;
+    private OrdemServico        $ordemServicoModel;
     private Logger              $logger;
 
     public function __construct()
@@ -35,6 +37,7 @@ class MovimentacoesController extends Controller
         $this->clienteModel      = new Cliente();
         $this->contaReceberModel = new ContaReceber();
         $this->notaFiscalModel   = new NotaFiscal();
+        $this->ordemServicoModel = new OrdemServico();
         $this->logger            = new Logger();
     }
 
@@ -565,16 +568,22 @@ class MovimentacoesController extends Controller
             exit;
         }
 
+        $finalizarExpedicao = ($data['status'] ?? '') === 'entregue';
         $numero   = $this->pvModel->gerarNumero($uid);
         $pedidoId = $this->pvModel->create(array_merge($data, [
             'usuario_id' => $uid,
             'numero'     => $numero,
+            'status'     => $finalizarExpedicao ? 'confirmado' : ($data['status'] ?? 'rascunho'),
         ]), $itens);
 
         if ($pedidoId) {
-            // Se status = entregue, registra saída no estoque
-            if (($data['status'] ?? '') === 'entregue') {
-                $this->_registrarSaidaVenda($pedidoId, $uid, $itens, $data);
+            // Se status = entregue, conclui estoque e financeiro
+            if ($finalizarExpedicao) {
+                $pedido = $this->pvModel->findById($pedidoId);
+                if (!$pedido || !$this->_concluirExpedicaoPedido($pedido, $uid)) {
+                    header('Location: /estoque/vendas/' . $pedidoId . '?error=expedition_failed');
+                    exit;
+                }
             }
             header('Location: /estoque/vendas/' . $pedidoId . '?success=criado');
         } else {
@@ -630,10 +639,19 @@ class MovimentacoesController extends Controller
         $data  = $_POST;
         $itens = $this->_parseItens('item_produto_id', 'item_descricao', 'item_quantidade', 'item_preco_unitario', 'item_unidade', 'item_desconto_perc', 'item_lote', 'item_data_validade', 'item_preco_custo');
 
-        $ok = $this->pvModel->update($id, array_merge($data, ['usuario_id' => $uid]), $itens);
+        $finalizarExpedicao = ($data['status'] ?? '') === 'entregue';
+        $dadosPedido = array_merge($data, [
+            'usuario_id' => $uid,
+            'status'     => $finalizarExpedicao ? 'confirmado' : ($data['status'] ?? $pedido->status),
+        ]);
+        $ok = $this->pvModel->update($id, $dadosPedido, $itens);
 
-        if ($ok && ($data['status'] ?? '') === 'entregue' && $pedido->status !== 'entregue') {
-            $this->_registrarSaidaVenda($id, $uid, $itens, $data);
+        if ($ok && $finalizarExpedicao) {
+            $pedidoAtualizado = $this->pvModel->findById($id);
+            if (!$pedidoAtualizado || !$this->_concluirExpedicaoPedido($pedidoAtualizado, (int)$pedido->usuario_id)) {
+                header('Location: /estoque/vendas/' . $id . '?error=expedition_failed');
+                exit;
+            }
         }
 
         header('Location: /estoque/vendas/' . $id . ($ok ? '?success=atualizado' : '?error=save_failed'));
@@ -836,23 +854,158 @@ class MovimentacoesController extends Controller
         }
     }
 
-    private function _registrarSaidaVenda(int $pedidoId, int $uid, array $itens, array $data): void
+    private function _registrarSaidaVenda(int $pedidoId, int $uid, array $itens, array $data): bool
     {
+        $agrupados = [];
         foreach ($itens as $item) {
-            if (empty($item['produto_id']) || empty($item['quantidade'])) continue;
-            $this->movModel->registrar([
+            if (empty($item['produto_id']) || empty($item['quantidade'])) {
+                continue;
+            }
+            $produtoId = (int)$item['produto_id'];
+            $lote = trim((string)($item['lote'] ?? ''));
+            $chave = $produtoId . '|' . $lote;
+            if (!isset($agrupados[$chave])) {
+                $agrupados[$chave] = $item;
+                $agrupados[$chave]['quantidade'] = 0.0;
+            }
+            $agrupados[$chave]['quantidade'] += (float)$item['quantidade'];
+        }
+
+        foreach ($agrupados as $item) {
+            $produtoId = (int)$item['produto_id'];
+            $lote = trim((string)($item['lote'] ?? ''));
+            $quantidadePedido = (float)$item['quantidade'];
+            $quantidadeMovimentada = $this->movModel->quantidadeSaidaPedidoVenda(
+                $uid,
+                $pedidoId,
+                $produtoId,
+                $lote !== '' ? $lote : null
+            );
+            $quantidadePendente = round($quantidadePedido - $quantidadeMovimentada, 4);
+            if ($quantidadePendente <= 0) {
+                continue;
+            }
+
+            $movId = $this->movModel->registrar([
                 'usuario_id'      => $uid,
-                'produto_id'      => (int)$item['produto_id'],
+                'produto_id'      => $produtoId,
                 'tipo'            => 'saida',
                 'origem'          => 'pedido_venda',
                 'pedido_venda_id' => $pedidoId,
-                'quantidade'      => (float)$item['quantidade'],
+                'quantidade'      => $quantidadePendente,
                 'unidade'         => $item['unidade'] ?? 'UN',
                 'preco_unitario'  => (float)($item['preco_unitario'] ?? 0),
                 'custo_unitario'  => (float)($item['preco_custo'] ?? 0),
-                'lote'            => $item['lote'] ?? null,
+                'lote'            => $lote !== '' ? $lote : null,
                 'motivo'          => 'Saída pedido de venda',
             ]);
+            if (!$movId) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private function _garantirContaReceberPedido(object $pedido, int $uid): int|false
+    {
+        try {
+            if (!empty($pedido->conta_receber_id)) {
+                $conta = $this->contaReceberModel->findById((int)$pedido->conta_receber_id);
+                if ($conta && (int)$conta->usuario_id === $uid) {
+                    return (int)$conta->id;
+                }
+            }
+
+            $externalReference = 'pedido_venda:' . $uid . ':' . (int)$pedido->id;
+            $conta = $this->contaReceberModel->findByExternalReferenceAndUsuarioId(
+                $uid,
+                $externalReference
+            );
+            if ($conta) {
+                return (int)$conta->id;
+            }
+
+            $contaId = $this->contaReceberModel->create([
+                'usuario_id'        => $uid,
+                'cliente_id'        => !empty($pedido->cliente_id) ? (int)$pedido->cliente_id : null,
+                'descricao'         => 'Pedido de Venda ' . $pedido->numero . ' - ' . $pedido->cliente_nome,
+                'valor'             => (float)$pedido->valor_total,
+                'data_vencimento'   => date('Y-m-d', strtotime('+30 days')),
+                'status'            => 'aberta',
+                'meio_pagamento'    => $pedido->forma_pagamento ?? null,
+                'observacoes'       => 'Gerada automaticamente na expedicao do pedido ' . $pedido->numero . '.',
+                'external_reference'=> $externalReference,
+                'numero_parcela'    => 1,
+                'total_parcelas'    => 1,
+                'grupo_parcelas'    => 'PV-' . $pedido->numero,
+                'recorrente'        => 0,
+            ]);
+
+            return $contaId ? (int)$contaId : false;
+        } catch (\Throwable $e) {
+            $this->logger->error('[vendasExpedir] Falha ao gerar Conta a Receber: ' . $e->getMessage(), [
+                'pedido_id' => (int)$pedido->id,
+            ]);
+            return false;
+        }
+    }
+
+    private function _concluirExpedicaoPedido(object $pedido, int $uid): bool
+    {
+        $pedidoId = (int)$pedido->id;
+        $pdo = $this->pvModel->getPdo();
+        $lockName = 'expedir_pedido_' . $uid . '_' . $pedidoId;
+        $lockStmt = $pdo->prepare('SELECT GET_LOCK(?, 10)');
+        $lockStmt->execute([$lockName]);
+        if ((int)$lockStmt->fetchColumn() !== 1) {
+            return false;
+        }
+
+        try {
+            $pedido = $this->pvModel->findById($pedidoId);
+            if (!$pedido || (int)$pedido->usuario_id !== $uid
+                || in_array($pedido->status, ['faturado', 'cancelado'], true)) {
+                return false;
+            }
+
+            $itens = array_map(fn($item) => (array)$item, $pedido->itens ?? []);
+            if (!$this->_registrarSaidaVenda($pedidoId, $uid, $itens, (array)$pedido)) {
+                return false;
+            }
+
+            $contaReceberId = $this->_garantirContaReceberPedido($pedido, $uid);
+            if (!$contaReceberId) {
+                return false;
+            }
+
+            if ($pedido->status === 'entregue'
+                && (int)($pedido->conta_receber_id ?? 0) === $contaReceberId) {
+                $this->ordemServicoModel->fecharPorPedidoVenda(
+                    $uid,
+                    $pedidoId,
+                    !empty($pedido->proposta_id) ? (int)$pedido->proposta_id : null,
+                    $contaReceberId
+                );
+                return true;
+            }
+
+            $finalizado = $this->pvModel->finalizarExpedicao(
+                $pedidoId,
+                $contaReceberId,
+                $uid
+            );
+            if ($finalizado) {
+                $this->ordemServicoModel->fecharPorPedidoVenda(
+                    $uid,
+                    $pedidoId,
+                    !empty($pedido->proposta_id) ? (int)$pedido->proposta_id : null,
+                    $contaReceberId
+                );
+            }
+            return $finalizado;
+        } finally {
+            $releaseStmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+            $releaseStmt->execute([$lockName]);
         }
     }
 
@@ -883,16 +1036,17 @@ class MovimentacoesController extends Controller
             header('Location: /estoque/vendas?error=not_found');
             exit;
         }
-        if ($pedido->status === 'entregue') {
-            header('Location: /estoque/vendas/' . $id . '?error=ja_expedido');
+        if (in_array($pedido->status, ['faturado', 'cancelado'], true)) {
+            header('Location: /estoque/vendas/' . $id . '?error=status_invalido');
             exit;
         }
-        $itens = array_map(fn($i) => (array)$i, $pedido->itens ?? []);
-        $ok    = $this->pvModel->update($id, ['status' => 'entregue', 'usuario_id' => $uid], $pedido->itens ?? []);
-        if ($ok) {
-            $this->_registrarSaidaVenda($id, $uid, $itens, (array)$pedido);
+
+        if (!$this->_concluirExpedicaoPedido($pedido, (int)$pedido->usuario_id)) {
+            header('Location: /estoque/vendas/' . $id . '?error=expedition_failed');
+            exit;
         }
-        header('Location: /estoque/vendas/' . $id . ($ok ? '?success=expedido' : '?error=save_failed'));
+
+        header('Location: /estoque/vendas/' . $id . '?success=expedido');
         exit;
     }
     public function vendasCancelar(int $id): void
@@ -903,7 +1057,7 @@ class MovimentacoesController extends Controller
             header('Location: /estoque/vendas?error=not_found');
             exit;
         }
-        $ok = $this->pvModel->update($id, ['status' => 'cancelado', 'usuario_id' => $uid], $pedido->itens ?? []);
+        $ok = $this->pvModel->updateStatus($id, 'cancelado', (int)$pedido->usuario_id, 'Pedido cancelado.');
         header('Location: /estoque/vendas/' . $id . ($ok ? '?success=cancelado' : '?error=save_failed'));
         exit;
     }
@@ -1033,29 +1187,23 @@ class MovimentacoesController extends Controller
                 }
             }
 
-            // 2. Criar Conta a Receber
+            // 2. Criar ou reutilizar a Conta a Receber gerada na expedicao
             $dataVencimento = !empty($data['data_vencimento'])
                 ? $data['data_vencimento']
                 : date('Y-m-d', strtotime('+30 days'));
 
-            $contaReceberId = (int)$this->contaReceberModel->create([
-                'usuario_id'      => $uid,
-                'cliente_id'      => $clienteId ?: null,
-                'descricao'       => 'Pedido de Venda ' . $pedido->numero . ' — ' . $pedido->cliente_nome,
-                'valor'           => $pedido->valor_total,
-                'data_vencimento' => $dataVencimento,
-                'status'          => 'aberta',
-                'meio_pagamento'  => $data['meio_pagamento'] ?? null,
-                'observacoes'     => $data['obs_financeiro'] ?? null,
-                'numero_parcela'  => 1,
-                'total_parcelas'  => 1,
-                'grupo_parcelas'  => 'PV-' . $pedido->numero,
-                'recorrente'      => 0,
-            ]);
+            $contaReceberId = $this->_garantirContaReceberPedido($pedido, (int)$pedido->usuario_id);
 
             if (!$contaReceberId) {
                 throw new \RuntimeException('Falha ao criar Conta a Receber.');
             }
+            $this->contaReceberModel->update($contaReceberId, [
+                'cliente_id'      => $clienteId ?: null,
+                'valor'           => $pedido->valor_total,
+                'data_vencimento' => $dataVencimento,
+                'meio_pagamento'  => $data['meio_pagamento'] ?? ($pedido->forma_pagamento ?? null),
+                'observacoes'     => $data['obs_financeiro'] ?? null,
+            ]);
 
             // 3. Criar registro de Nota Fiscal (rascunho para emissão posterior)
             $notaFiscalId = null;

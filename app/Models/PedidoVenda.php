@@ -380,6 +380,43 @@ class PedidoVenda extends Model
         }
     }
 
+    public function finalizarExpedicao(int $id, int $contaReceberId, int $usuarioId): bool
+    {
+        try {
+            $atualStmt = $this->pdo->prepare(
+                "SELECT status FROM {$this->table} WHERE id = ? AND usuario_id = ?"
+            );
+            $atualStmt->execute([$id, $usuarioId]);
+            $statusAtual = (string)$atualStmt->fetchColumn();
+
+            $stmt = $this->pdo->prepare(
+                "UPDATE {$this->table}
+                 SET status = 'entregue',
+                     data_entrega = COALESCE(data_entrega, CURDATE()),
+                     conta_receber_id = ?
+                 WHERE id = ?
+                   AND usuario_id = ?
+                   AND status IN ('rascunho','confirmado','em_separacao','parcialmente_entregue','entregue')"
+            );
+            $ok = $stmt->execute([$contaReceberId, $id, $usuarioId]);
+            if (!$ok || $stmt->rowCount() === 0) {
+                return false;
+            }
+
+            $this->registrarHistorico(
+                $id,
+                $statusAtual,
+                'entregue',
+                $usuarioId,
+                'Pedido expedido, estoque baixado e Conta a Receber gerada automaticamente.'
+            );
+            return true;
+        } catch (\Throwable $e) {
+            $this->log('error', '[finalizarExpedicao] ' . $e->getMessage(), ['id' => $id]);
+            return false;
+        }
+    }
+
     public function updateFaturamento(int $id, int $contaReceberId, ?int $notaFiscalId, int $usuarioId): bool
     {
         try {

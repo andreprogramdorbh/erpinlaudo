@@ -382,6 +382,43 @@ class OrdemServico
         ]);
     }
 
+    public function fecharPorPedidoVenda(
+        int $usuarioId,
+        int $pedidoVendaId,
+        ?int $propostaId,
+        int $contaReceberId
+    ): void {
+        try {
+            $whereOrigem = 'pedido_venda_id = :pedido_busca';
+            $params = [
+                ':pedido_venda_id'  => $pedidoVendaId,
+                ':conta_receber_id' => $contaReceberId,
+                ':usuario_id'       => $usuarioId,
+                ':pedido_busca'     => $pedidoVendaId,
+            ];
+            if ($propostaId) {
+                $whereOrigem .= ' OR proposta_id = :proposta_id';
+                $params[':proposta_id'] = $propostaId;
+            }
+
+            $this->pdo->prepare(
+                "UPDATE {$this->table}
+                 SET status = 'faturada',
+                     pedido_venda_id = :pedido_venda_id,
+                     conta_receber_id = :conta_receber_id,
+                     data_conclusao = COALESCE(data_conclusao, CURDATE())
+                 WHERE usuario_id = :usuario_id
+                   AND status <> 'cancelada'
+                   AND ({$whereOrigem})"
+            )->execute($params);
+        } catch (\Throwable $e) {
+            $this->logger->error('[OrdemServico::fecharPorPedidoVenda] ' . $e->getMessage(), [
+                'pedido_venda_id' => $pedidoVendaId,
+                'proposta_id'     => $propostaId,
+            ]);
+        }
+    }
+
     // =========================================================================
     // Buscar por token de impressão (acesso público)
     // =========================================================================

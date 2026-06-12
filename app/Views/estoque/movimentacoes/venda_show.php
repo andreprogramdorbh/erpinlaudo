@@ -14,6 +14,7 @@ $statusConfig = [
 $st  = $pedido->status ?? 'rascunho';
 $cfg = $statusConfig[$st] ?? $statusConfig['rascunho'];
 $success = $_GET['success'] ?? '';
+$error = $_GET['error'] ?? '';
 
 $formas = ['dinheiro' => 'Dinheiro', 'pix' => 'PIX', 'cartao_credito' => 'Cartão de Crédito',
            'cartao_debito' => 'Cartão de Débito', 'boleto' => 'Boleto', 'transferencia' => 'Transferência'];
@@ -29,12 +30,28 @@ $formas = ['dinheiro' => 'Dinheiro', 'pix' => 'PIX', 'cartao_credito' => 'Cartã
 
 <?php if ($success === 'expedido'): ?>
 <div class="alert alert-success alert-dismissible fade show">
-    <i class="fas fa-check-circle me-2"></i> Pedido expedido e estoque baixado com sucesso!
+    <i class="fas fa-check-circle me-2"></i> Pedido expedido, estoque baixado e Conta a Receber gerada com sucesso!
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 <?php elseif ($success === 'cancelado'): ?>
 <div class="alert alert-warning alert-dismissible fade show">
     <i class="fas fa-ban me-2"></i> Pedido cancelado com sucesso.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<?php endif; ?>
+
+<?php
+$erros = [
+    'save_failed'      => 'Nao foi possivel finalizar a expedicao do pedido.',
+    'expedition_failed'=> 'Nao foi possivel concluir todo o ciclo de expedicao. Tente novamente; etapas ja processadas nao serao duplicadas.',
+    'stock_failed'     => 'Falha ao baixar o estoque. Verifique os produtos e tente novamente.',
+    'financial_failed' => 'O estoque foi processado, mas a Conta a Receber nao pôde ser gerada. Tente novamente.',
+    'status_invalido'  => 'O status atual nao permite expedir este pedido.',
+];
+?>
+<?php if ($error !== '' && isset($erros[$error])): ?>
+<div class="alert alert-danger alert-dismissible fade show">
+    <i class="fas fa-exclamation-circle me-2"></i><?= $esc($erros[$error]) ?>
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 <?php endif; ?>
@@ -217,5 +234,16 @@ $formas = ['dinheiro' => 'Dinheiro', 'pix' => 'PIX', 'cartao_credito' => 'Cartã
             </div>
             <?php endif; ?>
         </div>
+        <?php if (!empty($pedido->conta_receber_id)): ?>
+        <div class="info-card">
+            <h6 class="fw-bold mb-2"><i class="fas fa-file-invoice-dollar me-2 text-primary"></i>Financeiro</h6>
+            <p class="text-muted small mb-3">Conta a Receber gerada automaticamente na expedicao.</p>
+            <a href="/financeiro/contas-a-receber/edit/<?= (int)$pedido->conta_receber_id ?>"
+               class="btn btn-outline-primary btn-sm w-100">
+                <i class="fas fa-external-link-alt me-1"></i>
+                Ver Conta a Receber #<?= (int)$pedido->conta_receber_id ?>
+            </a>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
