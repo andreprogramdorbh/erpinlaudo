@@ -561,8 +561,8 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::post("/manutencao/ordens/{id}/cancelar",           "ManutencaoController@cancelar");
     Router::post("/manutencao/ordens/{id}/enviar",             "ManutencaoController@enviarEmail");
     Router::get("/manutencao/ordens/{id}/imprimir",            "ManutencaoController@imprimir");
-    Router::post("/manutencao/ordens/{id}/troca/add",          "ManutencaoController@trocaAdd");
-    Router::post("/manutencao/ordens/{id}/troca/{tid}/delete", "ManutencaoController@trocaDelete");
+    Router::post("/manutencao/ordens/{id}/troca/add",          "ManutencaoController@addTroca");
+    Router::post("/manutencao/ordens/{id}/troca/{tid}/delete", "ManutencaoController@deleteTroca");
     // API: buscar equipamentos do cliente (AJAX)
     Router::get("/manutencao/api/equipamentos/{cliente_id}",   "ManutencaoController@apiEquipamentos");
     // API: buscar produtos para autocomplete (AJAX)
