@@ -278,12 +278,32 @@ function confirmDelete(id) {
                 observacoes:    obs,
             }),
         })
-        .then(r => r.json())
+        .then(function(r) {
+            // Se sessão expirou o middleware retorna 401 JSON; se voltou HTML é redirect não tratado
+            const ct = r.headers.get('Content-Type') || '';
+            if (ct.includes('application/json')) {
+                return r.json();
+            }
+            // Resposta não-JSON (ex: redirect para login devolveu HTML)
+            if (r.status === 401 || r.url.includes('/login')) {
+                return { success: false, _sessionExpired: true, message: 'Sessão expirada.' };
+            }
+            return r.text().then(function(t) {
+                throw new Error('Resposta inesperada do servidor (HTTP ' + r.status + ').');
+            });
+        })
         .then(data => {
+            if (data._sessionExpired) {
+                bootstrap.Modal.getInstance(document.getElementById('modalReceberManual')).hide();
+                if (confirm('Sua sessão expirou. Deseja ir para a página de login?')) {
+                    window.location.href = '/login';
+                }
+                return;
+            }
+
             bootstrap.Modal.getInstance(document.getElementById('modalReceberManual')).hide();
 
             if (data.success) {
-                // Feedback visual de sucesso
                 const toast = document.createElement('div');
                 toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3 shadow';
                 toast.style.zIndex = '9999';

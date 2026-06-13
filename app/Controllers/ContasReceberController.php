@@ -46,7 +46,8 @@ class ContasReceberController extends Controller
     private function getAsaasService(): AsaasService
     {
         if ($this->asaasService === null) {
-            $usuarioId = (int) (Auth::user()->id ?? 0);
+            $authUser  = Auth::user();
+            $usuarioId = $authUser ? (int) $authUser->id : 0;
             $apiKey    = null;
             $env       = null;
             if ($usuarioId > 0) {
