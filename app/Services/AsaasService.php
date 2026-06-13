@@ -446,6 +446,73 @@ class AsaasService
     }
 
     // ---------------------------------------------------------------
+    // WEBHOOKS
+    // ---------------------------------------------------------------
+
+    /**
+     * Lista os webhooks cadastrados na conta Asaas.
+     */
+    public function listarWebhooks(): array
+    {
+        try {
+            $response = $this->makeRequest('GET', '/webhooks');
+            return $response['data'] ?? [];
+        } catch (\Exception $e) {
+            $this->logAsaas('error', 'Erro ao listar webhooks', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Cria ou atualiza o webhook de notificações de pagamento.
+     * Se já existir um webhook com a mesma URL, atualiza-o; caso contrário, cria.
+     *
+     * @param string      $url       URL pública do endpoint (ex.: https://erp.inlaudo.com.br/api/webhooks/asaas)
+     * @param string      $nome      Nome descritivo do webhook
+     * @param array       $events    Lista de eventos (ex.: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])
+     * @param string|null $authToken Token de autenticação (opcional)
+     */
+    public function registrarWebhook(string $url, string $nome, array $events, ?string $authToken = null): array
+    {
+        $payload = [
+            'name'        => $nome,
+            'url'         => $url,
+            'email'       => '',
+            'enabled'     => true,
+            'interrupted' => false,
+            'apiVersion'  => 3,
+            'events'      => $events,
+        ];
+        if ($authToken !== null && $authToken !== '') {
+            $payload['authToken'] = $authToken;
+        }
+
+        // Verifica se já existe webhook com essa URL para atualizar ao invés de criar duplicado
+        $existentes = $this->listarWebhooks();
+        $existente  = null;
+        foreach ($existentes as $wh) {
+            if (($wh['url'] ?? '') === $url) {
+                $existente = $wh;
+                break;
+            }
+        }
+
+        try {
+            if ($existente && !empty($existente['id'])) {
+                $response = $this->makeRequest('PUT', '/webhooks/' . $existente['id'], $payload);
+                $this->logAsaas('info', 'Webhook Asaas atualizado', ['webhook_id' => $existente['id'], 'url' => $url]);
+            } else {
+                $response = $this->makeRequest('POST', '/webhooks', $payload);
+                $this->logAsaas('info', 'Webhook Asaas criado', ['webhook_id' => $response['id'] ?? null, 'url' => $url]);
+            }
+            return $response;
+        } catch (\Exception $e) {
+            $this->logAsaas('error', 'Erro ao registrar webhook', ['url' => $url, 'error' => $e->getMessage()]);
+            throw $e;
+        }
+    }
+
+    // ---------------------------------------------------------------
     // HTTP INTERNO
     // ---------------------------------------------------------------
 

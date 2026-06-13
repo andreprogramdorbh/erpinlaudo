@@ -199,6 +199,25 @@ class ContaReceber extends Model
         return $stmt->fetch(PDO::FETCH_OBJ);
     }
 
+    /**
+     * Retorna todas as contas abertas que possuem asaas_payment_id preenchido.
+     * Usado pelo sync admin para atualizar status via polling da API Asaas.
+     */
+    public function findAbertasComAsaasId(int $usuarioId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, asaas_payment_id, status, valor, descricao
+             FROM {$this->table}
+             WHERE usuario_id = :uid
+               AND status = 'aberta'
+               AND asaas_payment_id IS NOT NULL
+               AND asaas_payment_id <> ''
+             ORDER BY data_vencimento ASC"
+        );
+        $stmt->execute([':uid' => $usuarioId]);
+        return $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
+
     public function findByExternalReferenceAndUsuarioId(int $usuarioId, string $externalReference): object|false
     {
         $stmt = $this->pdo->prepare("SELECT id, status, asaas_payment_id FROM {$this->table} WHERE usuario_id = :usuario_id AND external_reference = :ref LIMIT 1");

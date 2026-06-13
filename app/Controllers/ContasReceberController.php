@@ -41,14 +41,120 @@ class ContasReceberController extends Controller
 
     /**
      * Retorna a instância do AsaasService, criando-a apenas quando necessário.
-     * Lança exceção se a chave não estiver configurada.
+     * Prioriza a API Key salva no banco (Integrações); fallback para env vars.
      */
     private function getAsaasService(): AsaasService
     {
         if ($this->asaasService === null) {
-            $this->asaasService = new AsaasService();
+            $usuarioId = (int) (Auth::user()->id ?? 0);
+            $apiKey    = null;
+            $env       = null;
+            if ($usuarioId > 0) {
+                $integracaoModel = new \App\Models\Integracao();
+                $config = $integracaoModel->findByProvider('asaas', $usuarioId);
+                if ($config && !empty($config->api_key)) {
+                    $apiKey = $config->api_key;
+                    $env    = $config->environment ?? 'sandbox';
+                }
+            }
+            $this->asaasService = new AsaasService($apiKey, $env);
         }
         return $this->asaasService;
+    }
+
+    // -----------------------------------------------------------------------
+    // POST /financeiro/contas-a-receber/sync-asaas
+    // Sincroniza o status de todas as contas abertas vinculadas ao Asaas,
+    // consultando a API do Asaas e atualizando o banco quando houver mudança.
+    // -----------------------------------------------------------------------
+    public function syncAsaas(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $user = Auth::user();
+        if (!$user || !Auth::can('edit_contas_receber')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+            return;
+        }
+
+        $usuarioId = (int) $user->id;
+
+        try {
+            $asaas = $this->getAsaasService();
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => 'Asaas não configurado: ' . $e->getMessage()]);
+            return;
+        }
+
+        $contas    = $this->model->findAbertasComAsaasId($usuarioId);
+        $atualizadas = 0;
+        $erros       = 0;
+        $detalhes    = [];
+
+        foreach ($contas as $conta) {
+            try {
+                $response = $asaas->makeRequestPublic('GET', '/payments/' . $conta->asaas_payment_id);
+                if (empty($response['status'])) {
+                    continue;
+                }
+
+                $novoStatus = AsaasService::mapearStatus($response['status']);
+                if ($novoStatus === $conta->status) {
+                    continue;
+                }
+
+                $dataRec = null;
+                foreach (['paymentDate', 'confirmedDate', 'clientPaymentDate'] as $field) {
+                    if (!empty($response[$field])) {
+                        $dataRec = substr((string) $response[$field], 0, 10);
+                        break;
+                    }
+                }
+
+                $this->model->update((int) $conta->id, [
+                    'status'           => $novoStatus,
+                    'data_recebimento' => $dataRec ?: ($novoStatus === 'recebida' ? date('Y-m-d') : null),
+                    'meio_pagamento'   => AsaasService::mapearMeioPagamento($response['billingType'] ?? 'UNDEFINED'),
+                ]);
+
+                AuditLogger::log('sync_asaas_status_atualizado', [
+                    'usuario_id'       => $usuarioId,
+                    'conta_id'         => (int) $conta->id,
+                    'status_anterior'  => $conta->status,
+                    'status_novo'      => $novoStatus,
+                    'asaas_payment_id' => $conta->asaas_payment_id,
+                    'asaas_status_raw' => $response['status'],
+                ]);
+
+                if ($novoStatus === 'recebida') {
+                    $svc = new \App\Services\ContaReceberRecorrenciaService();
+                    $svc->gerarProximaSeRecorrente($usuarioId, (int) $conta->id);
+                }
+
+                $atualizadas++;
+                $detalhes[] = [
+                    'conta_id'   => (int) $conta->id,
+                    'descricao'  => $conta->descricao ?? '',
+                    'status_novo'=> $novoStatus,
+                ];
+            } catch (\Throwable $e) {
+                $erros++;
+                $this->logger->warning('syncAsaas: erro ao consultar pagamento', [
+                    'conta_id'         => (int) $conta->id,
+                    'asaas_payment_id' => $conta->asaas_payment_id,
+                    'error'            => $e->getMessage(),
+                ]);
+            }
+        }
+
+        echo json_encode([
+            'success'     => true,
+            'verificadas' => count($contas),
+            'atualizadas' => $atualizadas,
+            'erros'       => $erros,
+            'detalhes'    => $detalhes,
+        ]);
     }
 
     /**

@@ -555,8 +555,117 @@ class IntegracaoController extends Controller
     }
 
     /**
-     * Webhook para o Asaas.
+     * Registra (cria ou atualiza) o webhook no painel Asaas via API.
+     * POST /integracao/asaas/registrar-webhook
      */
+    public function registrarWebhookAsaas(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!Auth::can('manage_settings')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+            return;
+        }
+
+        try {
+            $config = $this->integracaoModel->findByProvider('asaas');
+            if (!$config || empty($config->api_key)) {
+                throw new \Exception('Configure e salve a API Key antes de registrar o webhook.');
+            }
+
+            $webhookUrl = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br') . '/api/webhooks/asaas';
+            $authToken  = $config->webhook_token ?? '';
+
+            $asaas = new \App\Services\AsaasService($config->api_key, $config->environment ?? 'sandbox');
+
+            $events = [
+                'PAYMENT_CONFIRMED',
+                'PAYMENT_RECEIVED',
+                'PAYMENT_RECEIVED_IN_CASH',
+                'PAYMENT_OVERDUE',
+                'PAYMENT_DELETED',
+                'PAYMENT_REFUNDED',
+                'PAYMENT_PARTIALLY_REFUNDED',
+                'PAYMENT_CHARGEBACK_REQUESTED',
+                'PAYMENT_CHARGEBACK_DISPUTE',
+                'INVOICE_AUTHORIZED',
+                'INVOICE_CANCELED',
+                'INVOICE_ERROR',
+                'INVOICE_SYNCHRONIZED',
+            ];
+
+            $result = $asaas->registrarWebhook(
+                $webhookUrl,
+                'ERP InLaudo — Notificações',
+                $events,
+                $authToken !== '' ? $authToken : null
+            );
+
+            AuditLogger::log('asaas_webhook_registrado', [
+                'webhook_id'  => $result['id'] ?? null,
+                'webhook_url' => $webhookUrl,
+                'environment' => $config->environment,
+            ]);
+
+            echo json_encode([
+                'success'     => true,
+                'message'     => 'Webhook registrado com sucesso no Asaas!',
+                'webhook_id'  => $result['id'] ?? null,
+                'webhook_url' => $webhookUrl,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao registrar webhook Asaas: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Retorna os webhooks cadastrados no Asaas e indica se o webhook do ERP está ativo.
+     * GET /integracao/asaas/status-webhook
+     */
+    public function statusWebhookAsaas(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        if (!Auth::can('manage_settings')) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Não autorizado']);
+            return;
+        }
+
+        try {
+            $config = $this->integracaoModel->findByProvider('asaas');
+            if (!$config || empty($config->api_key)) {
+                echo json_encode(['success' => true, 'registrado' => false, 'motivo' => 'api_key_ausente']);
+                return;
+            }
+
+            $webhookUrl = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'erp.inlaudo.com.br') . '/api/webhooks/asaas';
+            $asaas      = new \App\Services\AsaasService($config->api_key, $config->environment ?? 'sandbox');
+            $webhooks   = $asaas->listarWebhooks();
+
+            $encontrado = null;
+            foreach ($webhooks as $wh) {
+                if (($wh['url'] ?? '') === $webhookUrl) {
+                    $encontrado = $wh;
+                    break;
+                }
+            }
+
+            echo json_encode([
+                'success'     => true,
+                'registrado'  => $encontrado !== null,
+                'ativo'       => $encontrado ? ($encontrado['enabled'] ?? false) : false,
+                'webhook_id'  => $encontrado['id'] ?? null,
+                'webhook_url' => $webhookUrl,
+                'total'       => count($webhooks),
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
     /**
      * Webhook para o Asaas.
      *

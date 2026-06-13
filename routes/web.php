@@ -300,6 +300,7 @@ Router::group(["middleware" => ["Auth"]], function () {
     });
     Router::group(["middleware" => ["Permission:edit_contas_receber"]], function () {
         Router::post("/financeiro/contas-a-receber/receber-manual/{id}", "ContasReceberController@receberManual");
+        Router::post("/financeiro/contas-a-receber/sync-asaas", "ContasReceberController@syncAsaas");
     });
 
     // ─── Contas Bancárias ─────────────────────────────────────────────────────
@@ -363,6 +364,8 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/integracao/asaas", "IntegracaoController@asaas");
         Router::post("/integracao/asaas/save", "IntegracaoController@saveAsaas");
         Router::post("/integracao/asaas/test", "IntegracaoController@testAsaas");
+        Router::post("/integracao/asaas/registrar-webhook", "IntegracaoController@registrarWebhookAsaas");
+        Router::get("/integracao/asaas/status-webhook", "IntegracaoController@statusWebhookAsaas");
 
         // Integração Cora — Boletos
         Router::get("/integracao/cora", "IntegracaoController@cora");

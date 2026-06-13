@@ -17,7 +17,13 @@
       "PowerShell(wc -l app\\\\Views\\\\layout\\\\erp_header.php, app\\\\Views\\\\layout\\\\erp_footer.php, app\\\\Views\\\\components\\\\form\\\\enterprise-form.php 2>&1)",
       "PowerShell(tail -20)",
       "Bash(git -C \"c:/xampp/htdocs/dashboard/erpinlaudo\" log --oneline --name-only -10 -- \"app/Views/layout/\" \"app/Views/components/\" \"app/Core/View.php\" \"public/assets/css/form-layout.css\")",
-      "Bash(git -C \"c:/xampp/htdocs/dashboard/erpinlaudo\" show --stat HEAD~5..HEAD)"
+      "Bash(git -C \"c:/xampp/htdocs/dashboard/erpinlaudo\" show --stat HEAD~5..HEAD)",
+      "Bash(xargs grep -l \"receberManual\\\\|receber.*manual\")",
+      "Bash(php -l app/Controllers/ContasReceberController.php)",
+      "Bash(php -l app/Controllers/IntegracaoController.php)",
+      "Bash(php -l app/Services/AsaasService.php)",
+      "Bash(php -l app/Models/ContaReceber.php)",
+      "Bash(php -l routes/web.php)"
     ]
   }
 }

@@ -4,6 +4,15 @@ use App\Core\UI;
 use App\Core\Auth;
 
 $actions = [];
+if (Auth::can('edit_contas_receber')) {
+    $actions[] = [
+        'text'       => 'Sincronizar Asaas',
+        'link'       => '#',
+        'icon'       => 'fas fa-sync-alt',
+        'class'      => 'btn-outline-secondary',
+        'attributes' => 'id="btnSyncAsaas" onclick="return false;"',
+    ];
+}
 if (Auth::can('create_contas_receber')) {
     $actions[] = [
         'text' => 'Nova Conta',
@@ -294,6 +303,49 @@ function confirmDelete(id) {
             btn.disabled  = false;
             btn.innerHTML = '<i class="fas fa-check-circle me-1"></i>Confirmar Recebimento';
         });
+    });
+})();
+
+// ── Sincronizar Asaas ────────────────────────────────────────────────────────
+(function () {
+    const btn = document.getElementById('btnSyncAsaas');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Sincronizando...';
+
+        fetch('/financeiro/contas-a-receber/sync-asaas', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                alert('Erro: ' + (data.error || 'Falha na sincronização'));
+                return;
+            }
+            const msg = data.atualizadas > 0
+                ? data.atualizadas + ' conta(s) atualizada(s) de ' + data.verificadas + ' verificadas.'
+                : 'Nenhuma atualização necessária. ' + data.verificadas + ' conta(s) verificada(s).';
+
+            const toast = document.createElement('div');
+            toast.className = 'alert alert-' + (data.atualizadas > 0 ? 'success' : 'info')
+                + ' alert-dismissible fade show position-fixed top-0 end-0 m-3 shadow';
+            toast.style.zIndex = '9999';
+            toast.innerHTML = '<i class="fas fa-sync-alt me-2"></i><strong>Sincronização concluída.</strong> '
+                + msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+            document.body.appendChild(toast);
+
+            if (data.atualizadas > 0) {
+                setTimeout(() => { toast.remove(); location.reload(); }, 2500);
+            } else {
+                setTimeout(() => toast.remove(), 4000);
+            }
+        })
+        .catch(err => alert('Erro de comunicação: ' + err.message))
+        .finally(() => { btn.disabled = false; btn.innerHTML = orig; });
     });
 })();
 </script>

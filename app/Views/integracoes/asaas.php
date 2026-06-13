@@ -95,26 +95,43 @@ $config = $config ?? null;
                                 <div class="col-md-12">
                                     <label class="form-label">URL de Notificação (Endpoint Público)</label>
                                     <div class="input-group">
-                                        <input type="text" 
-                                               class="form-control bg-light" 
-                                               value="<?php echo "https://" . $_SERVER['HTTP_HOST'] . "/api/webhooks/asaas"; ?>" 
+                                        <input type="text"
+                                               class="form-control bg-light"
+                                               id="webhookUrlDisplay"
+                                               value="<?php echo "https://" . $_SERVER['HTTP_HOST'] . "/api/webhooks/asaas"; ?>"
                                                readonly>
                                         <button class="btn btn-outline-secondary" type="button" id="copyUrlBtn">
                                             <i class="fas fa-copy"></i>
                                         </button>
                                     </div>
                                     <div class="form-text mt-2">
-                                        Copie esta URL e configure-a na seção de Webhooks do seu painel Asaas para receber notificações automáticas de pagamento.
+                                        Clique em <strong>Registrar Webhook Automaticamente</strong> para configurar no Asaas sem precisar acessar o painel deles.
                                     </div>
                                 </div>
                                 <div class="col-md-12">
                                     <label for="webhook_token" class="form-label">Token de Autenticação Webhook (Opcional)</label>
-                                    <input type="text" 
-                                           name="webhook_token" 
-                                           id="webhook_token" 
-                                           class="form-control" 
+                                    <input type="text"
+                                           name="webhook_token"
+                                           id="webhook_token"
+                                           class="form-control"
                                            placeholder="Token definido no painel do Asaas"
-                                           value="<?php echo $config->webhook_token ?? ''; ?>">
+                                           value="<?php echo htmlspecialchars($config->webhook_token ?? ''); ?>">
+                                    <div class="form-text">Se preenchido, o Asaas enviará este token no header de cada webhook — e o ERP o validará.</div>
+                                </div>
+                                <div class="col-md-12">
+                                    <div id="webhookStatusBox" class="alert d-none mb-2" role="alert"></div>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button type="button" id="btnVerificarWebhook" class="btn btn-outline-info btn-sm">
+                                            <i class="fas fa-search me-1"></i>Verificar Status do Webhook
+                                        </button>
+                                        <button type="button" id="btnRegistrarWebhook" class="btn btn-outline-success btn-sm">
+                                            <i class="fas fa-plug me-1"></i>Registrar Webhook Automaticamente
+                                        </button>
+                                    </div>
+                                    <div class="form-text mt-1 text-muted">
+                                        O registro automático cria/atualiza o webhook direto na API do Asaas — sem precisar do painel deles.
+                                        Salve as configurações antes de registrar.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -218,26 +235,87 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Conectado!',
-                    text: data.message
-                });
+                Swal.fire({ icon: 'success', title: 'Conectado!', text: data.message });
             } else {
                 throw new Error(data.error || 'Conexão falhou');
             }
         })
         .catch(error => {
-            Swal.fire({
-                icon: 'error',
-                title: 'Falha na Conexão',
-                text: error.message
-            });
+            Swal.fire({ icon: 'error', title: 'Falha na Conexão', text: error.message });
         })
         .finally(() => {
             this.disabled = false;
             this.innerHTML = originalHtml;
         });
     });
+
+    // Verificar Status do Webhook
+    const webhookStatusBox  = document.getElementById('webhookStatusBox');
+    const btnVerificar      = document.getElementById('btnVerificarWebhook');
+    const btnRegistrar      = document.getElementById('btnRegistrarWebhook');
+
+    function mostrarStatusWebhook(data) {
+        webhookStatusBox.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning', 'alert-info');
+        if (!data.success) {
+            webhookStatusBox.className = 'alert alert-danger mb-2';
+            webhookStatusBox.innerHTML = '<i class="fas fa-exclamation-circle me-1"></i>' + (data.error || 'Erro desconhecido');
+            return;
+        }
+        if (data.motivo === 'api_key_ausente') {
+            webhookStatusBox.className = 'alert alert-warning mb-2';
+            webhookStatusBox.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Salve a API Key antes de verificar o webhook.';
+            return;
+        }
+        if (data.registrado && data.ativo) {
+            webhookStatusBox.className = 'alert alert-success mb-2';
+            webhookStatusBox.innerHTML = '<i class="fas fa-check-circle me-1"></i><strong>Webhook registrado e ativo</strong> no Asaas. ID: <code>' + data.webhook_id + '</code>';
+        } else if (data.registrado && !data.ativo) {
+            webhookStatusBox.className = 'alert alert-warning mb-2';
+            webhookStatusBox.innerHTML = '<i class="fas fa-pause-circle me-1"></i>Webhook registrado mas <strong>inativo</strong>. Clique em Registrar para reativar.';
+        } else {
+            webhookStatusBox.className = 'alert alert-danger mb-2';
+            webhookStatusBox.innerHTML = '<i class="fas fa-times-circle me-1"></i><strong>Webhook NÃO está registrado</strong> no Asaas. Clique em "Registrar Webhook Automaticamente".';
+        }
+    }
+
+    btnVerificar.addEventListener('click', function() {
+        const orig = this.innerHTML;
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Verificando...';
+        fetch('/integracao/asaas/status-webhook')
+            .then(r => r.json())
+            .then(data => mostrarStatusWebhook(data))
+            .catch(() => mostrarStatusWebhook({ success: false, error: 'Erro ao verificar' }))
+            .finally(() => { this.disabled = false; this.innerHTML = orig; });
+    });
+
+    btnRegistrar.addEventListener('click', function() {
+        const orig = this.innerHTML;
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Registrando...';
+        fetch('/integracao/asaas/registrar-webhook', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({ icon: 'success', title: 'Webhook Registrado!', text: data.message });
+                    // Atualiza o status após registro
+                    fetch('/integracao/asaas/status-webhook')
+                        .then(r => r.json())
+                        .then(d => mostrarStatusWebhook(d));
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: data.error || 'Falha ao registrar webhook' });
+                }
+            })
+            .catch(() => Swal.fire({ icon: 'error', title: 'Erro', text: 'Falha na comunicação' }))
+            .finally(() => { this.disabled = false; this.innerHTML = orig; });
+    });
+
+    // Verifica status do webhook ao carregar a página (somente se config existir)
+    <?php if (!empty($config->api_key)): ?>
+    fetch('/integracao/asaas/status-webhook')
+        .then(r => r.json())
+        .then(data => mostrarStatusWebhook(data))
+        .catch(() => {});
+    <?php endif; ?>
 });
 </script>
