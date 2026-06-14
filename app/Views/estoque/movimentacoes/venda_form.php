@@ -57,33 +57,68 @@ $itens  = $pedido->itens ?? [];
     <div class="form-section">
         <div class="form-section-title"><i class="fas fa-user me-2"></i>Cliente</div>
         <div class="row g-3">
+            <?php $clientes = $clientes ?? []; ?>
+            <?php if (!empty($clientes)): ?>
+            <div class="col-12">
+                <label class="form-label fw-semibold text-primary">
+                    <i class="fas fa-search me-1"></i>Buscar Cliente Cadastrado
+                </label>
+                <select id="selectClienteVenda" class="form-select"
+                    style="border-color:#10b981;background-color:#f0fdf4;">
+                    <option value="">— Digite para buscar ou selecione um cliente cadastrado —</option>
+                    <?php foreach ($clientes as $c):
+                        $nome = htmlspecialchars($c->razao_social ?: $c->nome_fantasia ?: '', ENT_QUOTES, 'UTF-8');
+                        $cpf  = htmlspecialchars($c->cpf_cnpj ?? '', ENT_QUOTES, 'UTF-8');
+                        $tel  = htmlspecialchars($c->telefone ?? $c->celular ?? '', ENT_QUOTES, 'UTF-8');
+                        $eml  = htmlspecialchars($c->email ?? '', ENT_QUOTES, 'UTF-8');
+                        $end  = htmlspecialchars(trim(($c->endereco ?? '') . ($c->numero ? ', ' . $c->numero : '') . ($c->bairro ? ' - ' . $c->bairro : '') . ($c->cidade ? ', ' . $c->cidade : '')), ENT_QUOTES, 'UTF-8');
+                        $cid  = htmlspecialchars($c->cidade ?? '', ENT_QUOTES, 'UTF-8');
+                        $est  = htmlspecialchars($c->estado ?? '', ENT_QUOTES, 'UTF-8');
+                        $sel  = $isEdit && !empty($pedido->cliente_cpf_cnpj) && $pedido->cliente_cpf_cnpj === $c->cpf_cnpj ? 'selected' : '';
+                    ?>
+                    <option value="<?= (int)$c->id ?>" <?= $sel ?>
+                        data-nome="<?= $nome ?>"
+                        data-cpf="<?= $cpf ?>"
+                        data-tel="<?= $tel ?>"
+                        data-email="<?= $eml ?>"
+                        data-end="<?= $end ?>"
+                        data-cidade="<?= $cid ?>"
+                        data-estado="<?= $est ?>">
+                        <?= $nome ?> <?= $cpf ? '— ' . $cpf : '' ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="text-muted">Selecione um cliente para preencher os campos automaticamente, ou preencha manualmente abaixo.</small>
+            </div>
+            <?php endif; ?>
+
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Nome do Cliente <span class="text-danger">*</span></label>
-                <input type="text" name="cliente_nome" class="form-control" required
+                <input type="text" id="vendaClienteNome" name="cliente_nome" class="form-control" required
                     placeholder="Nome completo ou razão social"
                     value="<?= $esc($pedido->cliente_nome ?? '') ?>">
             </div>
             <div class="col-md-3">
                 <label class="form-label fw-semibold">CPF / CNPJ</label>
-                <input type="text" name="cliente_cpf_cnpj" class="form-control"
+                <input type="text" id="vendaClienteCpf" name="cliente_cpf_cnpj" class="form-control"
                     placeholder="000.000.000-00"
                     value="<?= $esc($pedido->cliente_cpf_cnpj ?? '') ?>">
             </div>
             <div class="col-md-3">
                 <label class="form-label fw-semibold">Telefone</label>
-                <input type="text" name="cliente_telefone" class="form-control"
+                <input type="text" id="vendaClienteTel" name="cliente_telefone" class="form-control"
                     placeholder="(00) 00000-0000"
                     value="<?= $esc($pedido->cliente_telefone ?? '') ?>">
             </div>
             <div class="col-md-4">
                 <label class="form-label fw-semibold">E-mail</label>
-                <input type="email" name="cliente_email" class="form-control"
+                <input type="email" id="vendaClienteEmail" name="cliente_email" class="form-control"
                     placeholder="cliente@email.com"
                     value="<?= $esc($pedido->cliente_email ?? '') ?>">
             </div>
             <div class="col-md-5">
                 <label class="form-label fw-semibold">Endereço de Entrega</label>
-                <input type="text" name="endereco_entrega" class="form-control"
+                <input type="text" id="vendaClienteEnd" name="endereco_entrega" class="form-control"
                     placeholder="Rua, número, bairro, cidade"
                     value="<?= $esc($pedido->endereco_entrega ?? '') ?>">
             </div>
@@ -336,5 +371,74 @@ function removerLinha(btn) {
     recalcularTotais();
 }
 
-document.addEventListener('DOMContentLoaded', recalcularTotais);
+document.addEventListener('DOMContentLoaded', function() {
+    recalcularTotais();
+
+    // ── Autocomplete de cliente cadastrado ──────────────────────────────────
+    const selCliente = document.getElementById('selectClienteVenda');
+    if (!selCliente) return;
+
+    // Busca por texto: filtrar opções do select conforme digitação
+    const buscaInput = document.createElement('input');
+    buscaInput.type = 'text';
+    buscaInput.className = 'form-control form-control-sm mb-1';
+    buscaInput.placeholder = '🔍 Digite nome, razão social ou CPF/CNPJ para filtrar...';
+    buscaInput.style.borderColor = '#10b981';
+    selCliente.parentNode.insertBefore(buscaInput, selCliente);
+
+    // Guardar todas as opções originais
+    const todasOpcoes = Array.from(selCliente.options);
+
+    buscaInput.addEventListener('input', function() {
+        const termo = this.value.toLowerCase().trim();
+        // Limpar e recriar opções filtradas
+        selCliente.innerHTML = '';
+        todasOpcoes.forEach(function(opt) {
+            if (!termo || opt.value === '' || opt.text.toLowerCase().includes(termo) ||
+                (opt.dataset.cpf || '').toLowerCase().includes(termo)) {
+                selCliente.appendChild(opt.cloneNode(true));
+            }
+        });
+        // Se só há uma opção além do placeholder, selecionar automaticamente
+        const opcoesFiltradas = Array.from(selCliente.options).filter(o => o.value !== '');
+        if (opcoesFiltradas.length === 1) {
+            selCliente.value = opcoesFiltradas[0].value;
+            selCliente.dispatchEvent(new Event('change'));
+        }
+    });
+
+    selCliente.addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        if (!opt || !opt.value) return;
+
+        const nome  = opt.dataset.nome  || '';
+        const cpf   = opt.dataset.cpf   || '';
+        const tel   = opt.dataset.tel   || '';
+        const email = opt.dataset.email || '';
+        const end   = opt.dataset.end   || '';
+
+        const nomeEl  = document.getElementById('vendaClienteNome');
+        const cpfEl   = document.getElementById('vendaClienteCpf');
+        const telEl   = document.getElementById('vendaClienteTel');
+        const emailEl = document.getElementById('vendaClienteEmail');
+        const endEl   = document.getElementById('vendaClienteEnd');
+
+        if (nomeEl)  nomeEl.value  = nome;
+        if (cpfEl)   cpfEl.value   = cpf;
+        if (telEl)   telEl.value   = tel;
+        if (emailEl) emailEl.value = email;
+        if (endEl)   endEl.value   = end;
+
+        // Feedback visual
+        [nomeEl, cpfEl, telEl, emailEl, endEl].forEach(function(el) {
+            if (!el) return;
+            el.style.borderColor = '#10b981';
+            el.style.backgroundColor = '#f0fdf4';
+            setTimeout(function() {
+                el.style.borderColor = '';
+                el.style.backgroundColor = '';
+            }, 2000);
+        });
+    });
+});
 </script>

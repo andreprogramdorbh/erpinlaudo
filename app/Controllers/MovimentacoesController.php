@@ -537,6 +537,7 @@ class MovimentacoesController extends Controller
     {
         $uid      = $this->uid();
         $produtos = $this->produtoModel->findByUsuarioId($uid);
+        $clientes = $this->clienteModel->findByUsuarioId($uid);
         $numero   = $this->pvModel->gerarNumero($uid);
 
         View::render('estoque/movimentacoes/venda_form', [
@@ -549,6 +550,7 @@ class MovimentacoesController extends Controller
             ],
             'pedido'     => null,
             'produtos'   => $produtos,
+            'clientes'   => $clientes,
             'numero'     => $numero,
         ]);
     }
@@ -607,7 +609,7 @@ class MovimentacoesController extends Controller
         }
 
         $produtos = $this->produtoModel->findByUsuarioId($uid);
-
+        $clientes = $this->clienteModel->findByUsuarioId($uid);
         View::render('estoque/movimentacoes/venda_form', [
             '_layout'    => 'erp',
             'title'      => 'Editar Pedido de Venda #' . $pedido->numero,
@@ -618,6 +620,7 @@ class MovimentacoesController extends Controller
             ],
             'pedido'     => $pedido,
             'produtos'   => $produtos,
+            'clientes'   => $clientes,
             'numero'     => $pedido->numero,
         ]);
     }
