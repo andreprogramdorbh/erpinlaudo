@@ -540,18 +540,31 @@ class MovimentacoesController extends Controller
         $clientes = $this->clienteModel->findByUsuarioId($uid);
         $numero   = $this->pvModel->gerarNumero($uid);
 
+        // JSON para autocomplete de produto na view
+        $produtosJson = array_map(fn($p) => [
+            'id'      => (int)$p->id,
+            'codigo'  => $p->codigo ?? '',
+            'nome'    => $p->nome ?? '',
+            'tipo'    => $p->tipo ?? 'produto',
+            'unidade' => $p->unidade_medida ?? 'UN',
+            'preco'   => (float)($p->preco_venda ?? 0),
+            'custo'   => (float)($p->preco_custo ?? 0),
+        ], $produtos);
+
         View::render('estoque/movimentacoes/venda_form', [
-            '_layout'    => 'erp',
-            'title'      => 'Novo Pedido de Venda',
-            'breadcrumb' => [
+            '_layout'       => 'erp',
+            'title'         => 'Novo Pedido de Venda',
+            'breadcrumb'    => [
                 'Estoque'          => '/estoque/produtos',
                 'Pedidos de Venda' => '/estoque/vendas',
                 0                  => 'Novo',
             ],
-            'pedido'     => null,
-            'produtos'   => $produtos,
-            'clientes'   => $clientes,
-            'numero'     => $numero,
+            'pedido'        => null,
+            'produtos'      => $produtos,
+            'clientes'      => $clientes,
+            'numero'        => $numero,
+            'produtosJsonStr' => json_encode($produtosJson, JSON_UNESCAPED_UNICODE),
+            'parcelasSalvas'  => [],
         ]);
     }
 
@@ -579,6 +592,9 @@ class MovimentacoesController extends Controller
         ]), $itens);
 
         if ($pedidoId) {
+            // Processar parcelas do parcelamento
+            $this->_salvarParcelasPedidoVenda($pedidoId, $uid, $data, $numero);
+
             // Se status = entregue, conclui estoque e financeiro
             if ($finalizarExpedicao) {
                 $pedido = $this->pvModel->findById($pedidoId);
@@ -610,18 +626,37 @@ class MovimentacoesController extends Controller
 
         $produtos = $this->produtoModel->findByUsuarioId($uid);
         $clientes = $this->clienteModel->findByUsuarioId($uid);
+
+        // JSON para autocomplete de produto na view
+        $produtosJson = array_map(fn($p) => [
+            'id'      => (int)$p->id,
+            'codigo'  => $p->codigo ?? '',
+            'nome'    => $p->nome ?? '',
+            'tipo'    => $p->tipo ?? 'produto',
+            'unidade' => $p->unidade_medida ?? 'UN',
+            'preco'   => (float)($p->preco_venda ?? 0),
+            'custo'   => (float)($p->preco_custo ?? 0),
+        ], $produtos);
+
+        // Buscar parcelas salvas deste pedido
+        $parcelasSalvas = $this->contaReceberModel->findByGrupoParcelas(
+            $uid, 'PV-' . $pedido->numero
+        ) ?: [];
+
         View::render('estoque/movimentacoes/venda_form', [
-            '_layout'    => 'erp',
-            'title'      => 'Editar Pedido de Venda #' . $pedido->numero,
-            'breadcrumb' => [
+            '_layout'        => 'erp',
+            'title'          => 'Editar Pedido de Venda #' . $pedido->numero,
+            'breadcrumb'     => [
                 'Estoque'          => '/estoque/produtos',
                 'Pedidos de Venda' => '/estoque/vendas',
                 0                  => '#' . $pedido->numero,
             ],
-            'pedido'     => $pedido,
-            'produtos'   => $produtos,
-            'clientes'   => $clientes,
-            'numero'     => $pedido->numero,
+            'pedido'         => $pedido,
+            'produtos'       => $produtos,
+            'clientes'       => $clientes,
+            'numero'         => $pedido->numero,
+            'produtosJsonStr'  => json_encode($produtosJson, JSON_UNESCAPED_UNICODE),
+            'parcelasSalvas'   => $parcelasSalvas,
         ]);
     }
 
@@ -648,6 +683,11 @@ class MovimentacoesController extends Controller
             'status'     => $finalizarExpedicao ? 'confirmado' : ($data['status'] ?? $pedido->status),
         ]);
         $ok = $this->pvModel->update($id, $dadosPedido, $itens);
+
+        if ($ok) {
+            // Reprocessar parcelas (apaga as antigas e recria)
+            $this->_salvarParcelasPedidoVenda($id, $uid, $data, $pedido->numero);
+        }
 
         if ($ok && $finalizarExpedicao) {
             $pedidoAtualizado = $this->pvModel->findById($id);
@@ -907,6 +947,68 @@ class MovimentacoesController extends Controller
             }
         }
         return true;
+    }
+
+    /**
+     * Salva as parcelas do parcelamento do pedido de venda como Contas a Receber.
+     * Remove as parcelas antigas do grupo antes de recriar.
+     */
+    private function _salvarParcelasPedidoVenda(int $pedidoId, int $uid, array $data, string $numero): void
+    {
+        $valores     = $_POST['parcela_valor']     ?? [];
+        $formas      = $_POST['parcela_forma']     ?? [];
+        $vencimentos = $_POST['parcela_vencimento'] ?? [];
+        $descricoes  = $_POST['parcela_descricao'] ?? [];
+
+        if (empty($valores)) {
+            return;
+        }
+
+        $grupoParcelas = 'PV-' . $numero;
+        $clienteNome   = $data['cliente_nome'] ?? '';
+        $clienteId     = !empty($data['cliente_id']) ? (int)$data['cliente_id'] : null;
+        $totalParcelas = count($valores);
+
+        // Remover parcelas antigas deste grupo (que ainda estão abertas)
+        try {
+            $parcelasAntigas = $this->contaReceberModel->findByGrupoParcelas($uid, $grupoParcelas);
+            foreach ($parcelasAntigas as $antiga) {
+                if (in_array($antiga->status ?? '', ['aberta', 'pendente'], true)) {
+                    // Cancela a parcela antiga antes de recriar
+                    $this->contaReceberModel->cancel((int)$antiga->id);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignora erros na limpeza — não bloqueia a criação
+        }
+
+        foreach ($valores as $i => $valorRaw) {
+            $valor = (float) str_replace(['.', ','], ['', '.'], $valorRaw);
+            if ($valor <= 0) {
+                continue;
+            }
+            $vencimento = $vencimentos[$i] ?? date('Y-m-d', strtotime('+30 days'));
+            $forma      = $formas[$i] ?? 'pix';
+            $descricao  = !empty($descricoes[$i])
+                ? $descricoes[$i]
+                : 'Parcela ' . ($i + 1) . '/' . $totalParcelas . ' — PV ' . $numero;
+
+            $this->contaReceberModel->create([
+                'usuario_id'         => $uid,
+                'cliente_id'         => $clienteId,
+                'descricao'          => $descricao . ' — ' . $clienteNome,
+                'valor'              => $valor,
+                'data_vencimento'    => $vencimento,
+                'status'             => 'aberta',
+                'meio_pagamento'     => $forma,
+                'observacoes'        => 'Gerada automaticamente pelo Pedido de Venda ' . $numero . '.',
+                'external_reference' => 'pedido_venda:' . $uid . ':' . $pedidoId . ':parcela:' . ($i + 1),
+                'numero_parcela'     => $i + 1,
+                'total_parcelas'     => $totalParcelas,
+                'grupo_parcelas'     => $grupoParcelas,
+                'recorrente'         => 0,
+            ]);
+        }
     }
 
     private function _garantirContaReceberPedido(object $pedido, int $uid): int|false

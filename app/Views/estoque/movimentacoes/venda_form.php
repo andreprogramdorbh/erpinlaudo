@@ -5,6 +5,25 @@ $action = $isEdit
     ? '/estoque/vendas/' . (int)$pedido->id . '/update'
     : '/estoque/vendas';
 $itens  = $pedido->itens ?? [];
+$produtos = $produtos ?? [];
+
+// Montar JSON de produtos para o autocomplete JS
+$produtosJs = [];
+foreach ($produtos as $p) {
+    $produtosJs[] = [
+        'id'     => (int)$p->id,
+        'codigo' => $p->codigo ?? '',
+        'nome'   => $p->nome ?? '',
+        'tipo'   => $p->tipo ?? '',
+        'unidade'=> $p->unidade_medida ?? 'UN',
+        'preco'  => (float)($p->preco_venda ?? 0),
+        'custo'  => (float)($p->preco_custo ?? 0),
+    ];
+}
+$produtosJsonStr = json_encode($produtosJs, JSON_UNESCAPED_UNICODE);
+
+// Parcelas salvas (para edição)
+$parcelasSalvas = $pedido->parcelas ?? [];
 ?>
 <style>
 .form-section { background:#fff; border-radius:12px; padding:24px; box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:20px; }
@@ -16,6 +35,15 @@ $itens  = $pedido->itens ?? [];
 .btn-rm { background:none; border:none; color:#ef4444; padding:4px 8px; cursor:pointer; }
 .btn-rm:hover { color:#b91c1c; }
 .total-bar { background:#f8fafc; border-radius:10px; padding:16px 20px; }
+/* Autocomplete produto */
+.prod-autocomplete-wrap { position:relative; }
+.prod-autocomplete-wrap .prod-suggestions { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #d1d5db; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.1); z-index:1000; max-height:220px; overflow-y:auto; display:none; }
+.prod-suggestions .prod-item { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid #f3f4f6; }
+.prod-suggestions .prod-item:hover { background:#f0fdf4; }
+.prod-suggestions .prod-item .prod-codigo { font-size:11px; color:#6b7280; }
+/* Parcelamento */
+.parcela-row { background:#f8fafc; border-radius:8px; padding:10px 14px; margin-bottom:8px; }
+.parcela-row:nth-child(even) { background:#f0fdf4; }
 </style>
 
 <div class="d-flex align-items-center gap-3 mb-4">
@@ -153,12 +181,15 @@ $itens  = $pedido->itens ?? [];
                     <?php foreach ($itens as $item): ?>
                     <tr class="linha-item">
                         <td>
-                            <input type="hidden" name="item_produto_id[]" value="<?= (int)($item->produto_id ?? 0) ?>">
-                            <input type="text" name="item_descricao[]" class="form-control form-control-sm"
-                                placeholder="Descrição" required
-                                value="<?= $esc($item->descricao ?? $item->produto_nome ?? '') ?>">
+                            <input type="hidden" name="item_produto_id[]" class="item-produto-id" value="<?= (int)($item->produto_id ?? 0) ?>">
+                            <div class="prod-autocomplete-wrap">
+                                <input type="text" name="item_descricao[]" class="form-control form-control-sm item-busca-prod"
+                                    placeholder="Digite para buscar produto/serviço..." required autocomplete="off"
+                                    value="<?= $esc($item->descricao ?? $item->produto_nome ?? '') ?>">
+                                <div class="prod-suggestions"></div>
+                            </div>
                         </td>
-                        <td><input type="text" name="item_unidade[]" class="form-control form-control-sm" value="<?= $esc($item->unidade ?? 'UN') ?>" style="width:60px"></td>
+                        <td><input type="text" name="item_unidade[]" class="form-control form-control-sm item-unidade" value="<?= $esc($item->unidade ?? 'UN') ?>" style="width:60px"></td>
                         <td><input type="text" name="item_quantidade[]" class="form-control form-control-sm item-qty" value="<?= number_format((float)($item->quantidade ?? 1), 3, ',', '') ?>" oninput="recalcularLinha(this)"></td>
                         <td><input type="text" name="item_preco_unitario[]" class="form-control form-control-sm item-preco" value="<?= number_format((float)($item->preco_unitario ?? 0), 2, ',', '.') ?>" oninput="recalcularLinha(this)"></td>
                         <td><input type="text" name="item_preco_custo[]" class="form-control form-control-sm item-custo" value="<?= number_format((float)($item->preco_custo ?? 0), 2, ',', '.') ?>" oninput="recalcularLinha(this)"></td>
@@ -171,10 +202,14 @@ $itens  = $pedido->itens ?? [];
                     <?php else: ?>
                     <tr class="linha-item">
                         <td>
-                            <input type="hidden" name="item_produto_id[]" value="">
-                            <input type="text" name="item_descricao[]" class="form-control form-control-sm" placeholder="Descrição" required>
+                            <input type="hidden" name="item_produto_id[]" class="item-produto-id" value="">
+                            <div class="prod-autocomplete-wrap">
+                                <input type="text" name="item_descricao[]" class="form-control form-control-sm item-busca-prod"
+                                    placeholder="Digite para buscar produto/serviço..." required autocomplete="off">
+                                <div class="prod-suggestions"></div>
+                            </div>
                         </td>
-                        <td><input type="text" name="item_unidade[]" class="form-control form-control-sm" value="UN" style="width:60px"></td>
+                        <td><input type="text" name="item_unidade[]" class="form-control form-control-sm item-unidade" value="UN" style="width:60px"></td>
                         <td><input type="text" name="item_quantidade[]" class="form-control form-control-sm item-qty" value="1" oninput="recalcularLinha(this)"></td>
                         <td><input type="text" name="item_preco_unitario[]" class="form-control form-control-sm item-preco" value="0,00" oninput="recalcularLinha(this)"></td>
                         <td><input type="text" name="item_preco_custo[]" class="form-control form-control-sm item-custo" value="0,00" oninput="recalcularLinha(this)"></td>
@@ -251,6 +286,112 @@ $itens  = $pedido->itens ?? [];
         </div>
     </div>
 
+    <!-- PARCELAMENTO -->
+    <div class="form-section" id="secaoParcelamento">
+        <div class="form-section-title"><i class="fas fa-credit-card me-2"></i>Parcelamento
+            <span class="text-muted fw-normal ms-2" style="font-size:11px;text-transform:none;">Defina as parcelas — cada uma gera uma entrada em Contas a Receber</span>
+        </div>
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-auto">
+                <label class="form-label fw-semibold mb-1">Número de Parcelas</label>
+                <input type="number" id="numParcelas" class="form-control" min="1" max="60" value="1" style="width:100px">
+            </div>
+            <div class="col-auto">
+                <label class="form-label fw-semibold mb-1">1ª Data de Vencimento</label>
+                <input type="date" id="primeiroVencimento" class="form-control" value="<?= date('Y-m-d', strtotime('+30 days')) ?>">
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-outline-success btn-sm" onclick="gerarParcelas()">
+                    <i class="fas fa-magic me-1"></i> Gerar Parcelas
+                </button>
+            </div>
+            <div class="col-auto">
+                <small class="text-muted">Intervalo: 30 dias entre parcelas. Ajuste as datas individualmente se necessário.</small>
+            </div>
+        </div>
+
+        <div id="listaParcelas">
+            <?php if (!empty($parcelasSalvas)): ?>
+            <?php foreach ($parcelasSalvas as $i => $parc): ?>
+            <div class="parcela-row row g-2 align-items-center">
+                <div class="col-auto"><span class="badge bg-secondary"><?= (int)($parc->numero_parcela ?? $i+1) ?>ª</span></div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" style="font-size:11px">Valor (R$)</label>
+                    <input type="text" name="parcela_valor[]" class="form-control form-control-sm parcela-valor"
+                        value="<?= number_format((float)($parc->valor ?? 0), 2, ',', '.') ?>" oninput="validarParcelas()">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" style="font-size:11px">Forma de Pagamento</label>
+                    <select name="parcela_forma[]" class="form-select form-select-sm">
+                        <?php
+                        $formasParcela = ['pix'=>'PIX','boleto'=>'Boleto','dinheiro'=>'Dinheiro','cartao_credito'=>'Cartão Crédito','cartao_debito'=>'Cartão Débito','transferencia'=>'Transferência','cheque'=>'Cheque'];
+                        foreach ($formasParcela as $fv => $fl):
+                        ?>
+                        <option value="<?= $fv ?>" <?= ($parc->meio_pagamento ?? '') === $fv ? 'selected' : '' ?>><?= $fl ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" style="font-size:11px">Vencimento</label>
+                    <input type="date" name="parcela_vencimento[]" class="form-control form-control-sm"
+                        value="<?= $esc($parc->data_vencimento ?? '') ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-0" style="font-size:11px">Descrição (opcional)</label>
+                    <input type="text" name="parcela_descricao[]" class="form-control form-control-sm"
+                        value="<?= $esc($parc->descricao ?? '') ?>" placeholder="Ex: Entrada, Parcela 1...">
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn-rm mt-3" onclick="removerParcela(this)"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <?php endforeach; ?>
+            <?php else: ?>
+            <!-- Parcela padrão inicial -->
+            <div class="parcela-row row g-2 align-items-center">
+                <div class="col-auto"><span class="badge bg-secondary">1ª</span></div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" style="font-size:11px">Valor (R$)</label>
+                    <input type="text" name="parcela_valor[]" class="form-control form-control-sm parcela-valor" value="0,00" oninput="validarParcelas()">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" style="font-size:11px">Forma de Pagamento</label>
+                    <select name="parcela_forma[]" class="form-select form-select-sm">
+                        <option value="pix">PIX</option>
+                        <option value="boleto">Boleto</option>
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="cartao_credito">Cartão Crédito</option>
+                        <option value="cartao_debito">Cartão Débito</option>
+                        <option value="transferencia">Transferência</option>
+                        <option value="cheque">Cheque</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-0" style="font-size:11px">Vencimento</label>
+                    <input type="date" name="parcela_vencimento[]" class="form-control form-control-sm"
+                        value="<?= date('Y-m-d', strtotime('+30 days')) ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-0" style="font-size:11px">Descrição (opcional)</label>
+                    <input type="text" name="parcela_descricao[]" class="form-control form-control-sm" placeholder="Ex: Entrada, Parcela 1...">
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn-rm mt-3" onclick="removerParcela(this)"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <div id="alertaParcelas" class="alert alert-warning mt-2 py-2 d-none" style="font-size:13px">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            <span id="alertaParcelasTexto"></span>
+        </div>
+
+        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" onclick="adicionarParcela()">
+            <i class="fas fa-plus me-1"></i> Adicionar Parcela Manualmente
+        </button>
+    </div>
+
     <!-- TOTAIS -->
     <div class="total-bar mb-4">
         <div class="row">
@@ -292,11 +433,62 @@ $itens  = $pedido->itens ?? [];
 </form>
 
 <script>
+const PRODUTOS_ESTOQUE = <?= $produtosJsonStr ?? '[]' ?>;
+
 function parseBR(v) {
     return parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
 }
 function fmtBR(v) {
     return v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ── Autocomplete de produto por linha ──────────────────────────────────────
+function initProdAutoComplete(input) {
+    const wrap = input.closest('.prod-autocomplete-wrap');
+    const sugg = wrap.querySelector('.prod-suggestions');
+
+    input.addEventListener('input', function() {
+        const q = this.value.toLowerCase().trim();
+        sugg.innerHTML = '';
+        if (!q) { sugg.style.display = 'none'; return; }
+        const matches = PRODUTOS_ESTOQUE.filter(p =>
+            p.nome.toLowerCase().includes(q) ||
+            p.codigo.toLowerCase().includes(q) ||
+            (p.tipo || '').toLowerCase().includes(q)
+        ).slice(0, 15);
+        if (!matches.length) { sugg.style.display = 'none'; return; }
+        matches.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'prod-item';
+            div.innerHTML = `<strong>${p.nome}</strong> <span class="prod-codigo">[${p.codigo}] ${p.tipo}</span>`;
+            div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                preencherLinhaProduto(input, p);
+                sugg.style.display = 'none';
+            });
+            sugg.appendChild(div);
+        });
+        sugg.style.display = 'block';
+    });
+
+    input.addEventListener('blur', function() {
+        setTimeout(() => { sugg.style.display = 'none'; }, 150);
+    });
+    input.addEventListener('focus', function() {
+        if (this.value.trim()) this.dispatchEvent(new Event('input'));
+    });
+}
+
+function preencherLinhaProduto(input, p) {
+    const tr = input.closest('tr');
+    input.value = p.nome;
+    tr.querySelector('.item-produto-id').value = p.id;
+    tr.querySelector('.item-unidade').value    = p.unidade || 'UN';
+    const precoEl = tr.querySelector('.item-preco');
+    const custoEl = tr.querySelector('.item-custo');
+    precoEl.value = fmtBR(p.preco);
+    custoEl.value = fmtBR(p.custo);
+    recalcularLinha(precoEl);
 }
 
 function recalcularLinha(el) {
@@ -341,6 +533,12 @@ function recalcularTotais() {
     document.getElementById('hValorTotal').value      = total.toFixed(2);
     document.getElementById('hValorCustoTotal').value = custoTotal.toFixed(2);
     document.getElementById('hMargemTotal').value     = margem.toFixed(2);
+
+    // Atualizar parcela única se só houver 1 parcela e valor 0
+    const parcelasValor = document.querySelectorAll('input[name="parcela_valor[]"]');
+    if (parcelasValor.length === 1 && parseBR(parcelasValor[0].value) === 0) {
+        parcelasValor[0].value = fmtBR(total);
+    }
 }
 
 function adicionarLinha() {
@@ -349,10 +547,14 @@ function adicionarLinha() {
     tr.className = 'linha-item';
     tr.innerHTML = `
         <td>
-            <input type="hidden" name="item_produto_id[]" value="">
-            <input type="text" name="item_descricao[]" class="form-control form-control-sm" placeholder="Descrição" required>
+            <input type="hidden" name="item_produto_id[]" class="item-produto-id" value="">
+            <div class="prod-autocomplete-wrap">
+                <input type="text" name="item_descricao[]" class="form-control form-control-sm item-busca-prod"
+                    placeholder="Digite para buscar produto/serviço..." required autocomplete="off">
+                <div class="prod-suggestions"></div>
+            </div>
         </td>
-        <td><input type="text" name="item_unidade[]" class="form-control form-control-sm" value="UN" style="width:60px"></td>
+        <td><input type="text" name="item_unidade[]" class="form-control form-control-sm item-unidade" value="UN" style="width:60px"></td>
         <td><input type="text" name="item_quantidade[]" class="form-control form-control-sm item-qty" value="1" oninput="recalcularLinha(this)"></td>
         <td><input type="text" name="item_preco_unitario[]" class="form-control form-control-sm item-preco" value="0,00" oninput="recalcularLinha(this)"></td>
         <td><input type="text" name="item_preco_custo[]" class="form-control form-control-sm item-custo" value="0,00" oninput="recalcularLinha(this)"></td>
@@ -362,6 +564,8 @@ function adicionarLinha() {
         <td><button type="button" class="btn-rm" onclick="removerLinha(this)"><i class="fas fa-times"></i></button></td>
     `;
     tbody.appendChild(tr);
+    // Inicializar autocomplete na nova linha
+    initProdAutoComplete(tr.querySelector('.item-busca-prod'));
 }
 
 function removerLinha(btn) {
@@ -371,14 +575,139 @@ function removerLinha(btn) {
     recalcularTotais();
 }
 
+// ── Parcelamento ───────────────────────────────────────────────────────────
+function _parcelasFormasHtml(selecionada) {
+    const formas = {pix:'PIX',boleto:'Boleto',dinheiro:'Dinheiro',cartao_credito:'Cartão Crédito',cartao_debito:'Cartão Débito',transferencia:'Transferência',cheque:'Cheque'};
+    return Object.entries(formas).map(([v,l]) =>
+        `<option value="${v}"${v===selecionada?' selected':''}>${l}</option>`
+    ).join('');
+}
+
+function _addDays(dateStr, days) {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+function gerarParcelas() {
+    const n = parseInt(document.getElementById('numParcelas').value) || 1;
+    const primeiroVenc = document.getElementById('primeiroVencimento').value;
+    if (!primeiroVenc) { alert('Informe a 1ª data de vencimento.'); return; }
+
+    // Calcular valor total do pedido
+    const totalEl = document.getElementById('hValorTotal');
+    const total = parseFloat(totalEl ? totalEl.value : 0) || 0;
+    const valorParcela = total > 0 ? (total / n) : 0;
+
+    const lista = document.getElementById('listaParcelas');
+    lista.innerHTML = '';
+
+    for (let i = 0; i < n; i++) {
+        const venc = _addDays(primeiroVenc, i * 30);
+        // Ajuste centavos na última parcela
+        let val = valorParcela;
+        if (i === n - 1 && total > 0) {
+            const soma = Math.round(valorParcela * (n - 1) * 100) / 100;
+            val = Math.round((total - soma) * 100) / 100;
+        }
+        const div = document.createElement('div');
+        div.className = 'parcela-row row g-2 align-items-center';
+        div.innerHTML = `
+            <div class="col-auto"><span class="badge bg-secondary">${i+1}ª</span></div>
+            <div class="col-md-2">
+                <label class="form-label mb-0" style="font-size:11px">Valor (R$)</label>
+                <input type="text" name="parcela_valor[]" class="form-control form-control-sm parcela-valor"
+                    value="${fmtBR(val)}" oninput="validarParcelas()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0" style="font-size:11px">Forma de Pagamento</label>
+                <select name="parcela_forma[]" class="form-select form-select-sm">${_parcelasFormasHtml('pix')}</select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-0" style="font-size:11px">Vencimento</label>
+                <input type="date" name="parcela_vencimento[]" class="form-control form-control-sm" value="${venc}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label mb-0" style="font-size:11px">Descrição (opcional)</label>
+                <input type="text" name="parcela_descricao[]" class="form-control form-control-sm"
+                    placeholder="Ex: Parcela ${i+1}/${n}" value="Parcela ${i+1}/${n}">
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn-rm mt-3" onclick="removerParcela(this)"><i class="fas fa-times"></i></button>
+            </div>
+        `;
+        lista.appendChild(div);
+    }
+    validarParcelas();
+}
+
+function adicionarParcela() {
+    const lista = document.getElementById('listaParcelas');
+    const n = lista.querySelectorAll('.parcela-row').length + 1;
+    const div = document.createElement('div');
+    div.className = 'parcela-row row g-2 align-items-center';
+    div.innerHTML = `
+        <div class="col-auto"><span class="badge bg-secondary">${n}ª</span></div>
+        <div class="col-md-2">
+            <label class="form-label mb-0" style="font-size:11px">Valor (R$)</label>
+            <input type="text" name="parcela_valor[]" class="form-control form-control-sm parcela-valor" value="0,00" oninput="validarParcelas()">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label mb-0" style="font-size:11px">Forma de Pagamento</label>
+            <select name="parcela_forma[]" class="form-select form-select-sm">${_parcelasFormasHtml('pix')}</select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label mb-0" style="font-size:11px">Vencimento</label>
+            <input type="date" name="parcela_vencimento[]" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label mb-0" style="font-size:11px">Descrição (opcional)</label>
+            <input type="text" name="parcela_descricao[]" class="form-control form-control-sm" placeholder="Ex: Entrada, Parcela...">
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn-rm mt-3" onclick="removerParcela(this)"><i class="fas fa-times"></i></button>
+        </div>
+    `;
+    lista.appendChild(div);
+    validarParcelas();
+}
+
+function removerParcela(btn) {
+    const lista = document.getElementById('listaParcelas');
+    if (lista.querySelectorAll('.parcela-row').length <= 1) { alert('Deve haver ao menos uma parcela.'); return; }
+    btn.closest('.parcela-row').remove();
+    validarParcelas();
+}
+
+function validarParcelas() {
+    const totalEl = document.getElementById('hValorTotal');
+    const total = parseFloat(totalEl ? totalEl.value : 0) || 0;
+    if (total <= 0) return;
+    let somaParcelas = 0;
+    document.querySelectorAll('input[name="parcela_valor[]"]').forEach(el => {
+        somaParcelas += parseBR(el.value);
+    });
+    const diff = Math.abs(total - somaParcelas);
+    const alerta = document.getElementById('alertaParcelas');
+    const alertaTxt = document.getElementById('alertaParcelasTexto');
+    if (diff > 0.02) {
+        alertaTxt.textContent = `Soma das parcelas (R$ ${fmtBR(somaParcelas)}) difere do total do pedido (R$ ${fmtBR(total)}). Diferença: R$ ${fmtBR(diff)}.`;
+        alerta.classList.remove('d-none');
+    } else {
+        alerta.classList.add('d-none');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     recalcularTotais();
+
+    // Inicializar autocomplete em todas as linhas existentes
+    document.querySelectorAll('.item-busca-prod').forEach(initProdAutoComplete);
 
     // ── Autocomplete de cliente cadastrado ──────────────────────────────────
     const selCliente = document.getElementById('selectClienteVenda');
     if (!selCliente) return;
 
-    // Busca por texto: filtrar opções do select conforme digitação
     const buscaInput = document.createElement('input');
     buscaInput.type = 'text';
     buscaInput.className = 'form-control form-control-sm mb-1';
@@ -386,12 +715,10 @@ document.addEventListener('DOMContentLoaded', function() {
     buscaInput.style.borderColor = '#10b981';
     selCliente.parentNode.insertBefore(buscaInput, selCliente);
 
-    // Guardar todas as opções originais
     const todasOpcoes = Array.from(selCliente.options);
 
     buscaInput.addEventListener('input', function() {
         const termo = this.value.toLowerCase().trim();
-        // Limpar e recriar opções filtradas
         selCliente.innerHTML = '';
         todasOpcoes.forEach(function(opt) {
             if (!termo || opt.value === '' || opt.text.toLowerCase().includes(termo) ||
@@ -399,7 +726,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 selCliente.appendChild(opt.cloneNode(true));
             }
         });
-        // Se só há uma opção além do placeholder, selecionar automaticamente
         const opcoesFiltradas = Array.from(selCliente.options).filter(o => o.value !== '');
         if (opcoesFiltradas.length === 1) {
             selCliente.value = opcoesFiltradas[0].value;
@@ -410,34 +736,21 @@ document.addEventListener('DOMContentLoaded', function() {
     selCliente.addEventListener('change', function() {
         const opt = this.options[this.selectedIndex];
         if (!opt || !opt.value) return;
-
-        const nome  = opt.dataset.nome  || '';
-        const cpf   = opt.dataset.cpf   || '';
-        const tel   = opt.dataset.tel   || '';
-        const email = opt.dataset.email || '';
-        const end   = opt.dataset.end   || '';
-
         const nomeEl  = document.getElementById('vendaClienteNome');
         const cpfEl   = document.getElementById('vendaClienteCpf');
         const telEl   = document.getElementById('vendaClienteTel');
         const emailEl = document.getElementById('vendaClienteEmail');
         const endEl   = document.getElementById('vendaClienteEnd');
-
-        if (nomeEl)  nomeEl.value  = nome;
-        if (cpfEl)   cpfEl.value   = cpf;
-        if (telEl)   telEl.value   = tel;
-        if (emailEl) emailEl.value = email;
-        if (endEl)   endEl.value   = end;
-
-        // Feedback visual
+        if (nomeEl)  nomeEl.value  = opt.dataset.nome  || '';
+        if (cpfEl)   cpfEl.value   = opt.dataset.cpf   || '';
+        if (telEl)   telEl.value   = opt.dataset.tel   || '';
+        if (emailEl) emailEl.value = opt.dataset.email || '';
+        if (endEl)   endEl.value   = opt.dataset.end   || '';
         [nomeEl, cpfEl, telEl, emailEl, endEl].forEach(function(el) {
             if (!el) return;
             el.style.borderColor = '#10b981';
             el.style.backgroundColor = '#f0fdf4';
-            setTimeout(function() {
-                el.style.borderColor = '';
-                el.style.backgroundColor = '';
-            }, 2000);
+            setTimeout(function() { el.style.borderColor = ''; el.style.backgroundColor = ''; }, 2000);
         });
     });
 });
