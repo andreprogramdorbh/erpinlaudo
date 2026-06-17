@@ -157,6 +157,44 @@ if (empty($_SESSION['csrf_token'])) {
 
 /*
 |--------------------------------------------------------------------------
+| Servir arquivos de /storage/ diretamente (uploads: logos, imagens, etc.)
+| O .htaccess redireciona tudo para public/, então /storage/* não é
+| encontrado como arquivo estático. Este handler intercepta antes do Router.
+|--------------------------------------------------------------------------
+*/
+(function () {
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+    if ($uri !== null && strncmp($uri, '/storage/', 9) === 0) {
+        $relPath = ltrim($uri, '/');
+        $absPath = BASE_PATH . '/' . $relPath;
+        // Segurança: impedir path traversal
+        $realBase    = realpath(BASE_PATH . '/storage');
+        $realRequest = realpath($absPath);
+        if ($realRequest !== false && $realBase !== false && strncmp($realRequest, $realBase, strlen($realBase)) === 0 && is_file($realRequest)) {
+            $ext  = strtolower(pathinfo($realRequest, PATHINFO_EXTENSION));
+            $mime = match ($ext) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'png'         => 'image/png',
+                'gif'         => 'image/gif',
+                'webp'        => 'image/webp',
+                'svg'         => 'image/svg+xml',
+                'pdf'         => 'application/pdf',
+                default       => 'application/octet-stream',
+            };
+            header('Content-Type: ' . $mime);
+            header('Content-Length: ' . filesize($realRequest));
+            header('Cache-Control: public, max-age=86400');
+            readfile($realRequest);
+            exit();
+        }
+        // Arquivo não encontrado em storage
+        http_response_code(404);
+        exit();
+    }
+})();
+
+/*
+|--------------------------------------------------------------------------
 | Rotas
 |--------------------------------------------------------------------------
 */
