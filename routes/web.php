@@ -444,6 +444,7 @@ Router::group(["middleware" => ["Auth"]], function () {
         Router::get("/estoque/vendas/{id}/faturar",                    "MovimentacoesController@vendaFaturarForm");
         Router::post("/estoque/vendas/{id}/faturar",                   "MovimentacoesController@vendaFaturar");
         Router::post("/estoque/vendas/{id}/abrir",                     "MovimentacoesController@vendaAbrir");
+        Router::get("/estoque/vendas/{id}/imprimir",                    "MovimentacoesController@vendaImprimir");
     });
 
     // ===== Módulo CRM =====

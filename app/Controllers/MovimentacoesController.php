@@ -1375,4 +1375,34 @@ class MovimentacoesController extends Controller
         header('Location: /estoque/vendas/' . $id . ($ok ? '?success=aberto' : '?error=save_failed'));
         exit;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEDIDO DE VENDA — Imprimir / Relatório
+    // GET /estoque/vendas/{id}/imprimir
+    // ═══════════════════════════════════════════════════════════════════════
+    public function vendaImprimir(int $id): void
+    {
+        $uid    = $this->uid();
+        $pedido = $this->pvModel->findById($id);
+        if (!$pedido || ($pedido->usuario_id != $uid && !$this->isAdmin())) {
+            http_response_code(403);
+            echo 'Sem permissão.';
+            return;
+        }
+
+        // Busca parcelas/contas a receber vinculadas ao pedido via grupo_parcelas
+        $grupoParcelas = 'PV-' . $pedido->numero;
+        $parcelas      = $this->contaReceberModel->findByGrupoParcelas($uid, $grupoParcelas);
+
+        // Dados da empresa
+        $empresa = (new \App\Models\EmpresaConfig())->findByUsuarioId($uid);
+
+        View::render('estoque/movimentacoes/venda_print', [
+            '_layout'  => 'default',
+            'title'    => 'Pedido de Venda ' . $pedido->numero,
+            'pedido'   => $pedido,
+            'parcelas' => $parcelas,
+            'empresa'  => $empresa,
+        ]);
+    }
 }

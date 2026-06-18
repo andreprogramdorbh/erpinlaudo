@@ -96,6 +96,9 @@ $erros = [
             </button>
         </form>
         <?php endif; ?>
+        <a href="/estoque/vendas/<?= (int)$pedido->id ?>/imprimir" target="_blank" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-print me-1"></i> Imprimir
+        </a>
         <a href="/estoque/vendas" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Voltar
         </a>
