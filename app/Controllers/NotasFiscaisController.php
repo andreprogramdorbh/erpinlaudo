@@ -11,6 +11,8 @@ use App\Models\NotaFiscal;
 use App\Models\NotaFiscalAnexo;
 use App\Models\NotaFiscalImportacao;
 use App\Models\Cliente;
+use App\Models\ContaReceber;
+use App\Models\ConfigNfs;
 use App\Services\AsaasService;
 
 class NotasFiscaisController extends Controller
@@ -164,6 +166,167 @@ class NotasFiscaisController extends Controller
             echo json_encode([
                 'success' => false,
                 'message' => 'Erro ao consultar Asaas: ' . $e->getMessage(),
+            ]);
+        }
+        exit();
+    }
+
+    // ---------------------------------------------------------------
+    // POST /faturamento/notas-fiscais/reemitir-asaas/{id}
+    // Recria a NF no Asaas (erro_emissao → nova emissão com mesmo payload)
+    // Retorna JSON: success, asaas_invoice_id, asaas_status, asaas_status_label, message
+    // ---------------------------------------------------------------
+    public function reemitirAsaas($id): void
+    {
+        ob_start();
+        try {
+            $usuarioId = Auth::user()->id;
+            $nota      = $this->model->findById((int)$id);
+
+            if (!$nota || (int)$nota->usuario_id !== (int)$usuarioId) {
+                ob_end_clean();
+                http_response_code(404);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'NF não encontrada.']);
+                exit();
+            }
+
+            if (($nota->origem_emissao ?? 'manual') !== 'asaas') {
+                ob_end_clean();
+                http_response_code(422);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Apenas NFs originadas no Asaas podem ser reemitidas por este fluxo.']);
+                exit();
+            }
+
+            if (($nota->status ?? '') !== 'erro_emissao') {
+                ob_end_clean();
+                http_response_code(422);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Apenas NFs com status "Erro de Emissão" podem ser reemitidas.']);
+                exit();
+            }
+
+            // Carrega configurações de NFS-e do tenant
+            $configNfsModel = new ConfigNfs();
+            $configNfs      = $configNfsModel->findByUsuarioId($usuarioId);
+
+            $asaas       = $this->getAsaasService();
+            $dataHoje    = date('Y-m-d');
+            $valor       = (float)($nota->valor_total ?? 0);
+            $descricao   = $nota->servico_descricao ?? ($configNfs->service_description ?? 'SERVIÇOS PRESTADOS');
+
+            // Monta taxes
+            $taxes = ['retainIss' => (bool)($configNfs->retain_iss ?? false)];
+            foreach (['iss' => 'iss_aliquota', 'pis' => 'pis_aliquota', 'cofins' => 'cofins_aliquota',
+                      'csll' => 'csll_aliquota', 'inss' => 'inss_aliquota', 'ir' => 'ir_aliquota'] as $k => $field) {
+                $v = (float)($configNfs->$field ?? 0);
+                if ($v > 0) { $taxes[$k] = $v; }
+            }
+
+            // Payload base
+            $payload = [
+                'serviceDescription'   => $configNfs->service_description ?? $descricao,
+                'observations'         => $configNfs->observations
+                                         ?? ('NF-s reemitida — Referência: ' . $descricao),
+                'value'                => $valor,
+                'deductions'           => (float)($configNfs->deductions ?? 0),
+                'effectiveDate'        => $dataHoje,
+                'municipalServiceName' => $configNfs->municipal_service_name ?? 'Serviços de Saúde / Radiologia',
+                'taxes'                => $taxes,
+                'externalReference'    => 'reemissao|nf:' . (int)$id . '|u:' . $usuarioId,
+            ];
+
+            // Código de serviço municipal (prioridade: ID > code armazenado na NF > config)
+            if (!empty($nota->servico_id_asaas)) {
+                $payload['municipalServiceId'] = $nota->servico_id_asaas;
+            } elseif (!empty($nota->servico_codigo)) {
+                $payload['municipalServiceCode'] = $nota->servico_codigo;
+            } elseif (!empty($configNfs->municipal_service_id)) {
+                $payload['municipalServiceId'] = $configNfs->municipal_service_id;
+            } elseif (!empty($configNfs->municipal_service_code)) {
+                $payload['municipalServiceCode'] = $configNfs->municipal_service_code;
+            }
+
+            // CNAE
+            if (!empty($configNfs->cnae)) {
+                $payload['cnae'] = preg_replace('/\D/', '', (string)$configNfs->cnae);
+            }
+
+            // Série da NF
+            if (!empty($nota->serie)) {
+                $payload['serie'] = $nota->serie;
+            } elseif (!empty($configNfs->serie_nf)) {
+                $payload['serie'] = $configNfs->serie_nf;
+            }
+
+            // Vínculo: cobrança Asaas (payment) → prioridade máxima
+            $asaasPaymentId = null;
+            if (!empty($nota->conta_receber_id)) {
+                $crModel = new ContaReceber();
+                $cr      = $crModel->findById((int)$nota->conta_receber_id);
+                if ($cr && !empty($cr->asaas_payment_id)) {
+                    $asaasPaymentId = $cr->asaas_payment_id;
+                }
+            }
+
+            if ($asaasPaymentId) {
+                $payload['payment'] = $asaasPaymentId;
+            } else {
+                // Tenta localizar o customer no Asaas pelo CPF/CNPJ do cliente
+                $cliente = $this->clienteModel->findById((int)$nota->cliente_id);
+                if ($cliente && !empty($cliente->cpf_cnpj)) {
+                    $doc = preg_replace('/\D/', '', (string)$cliente->cpf_cnpj);
+                    if ($doc !== '') {
+                        $clienteAsaas = $asaas->buscarCliente($doc);
+                        if (!empty($clienteAsaas['id'])) {
+                            $payload['customer'] = $clienteAsaas['id'];
+                        }
+                    }
+                }
+            }
+
+            // Cria nova NF no Asaas
+            $response       = $asaas->agendarNotaFiscal($payload);
+            $novoInvoiceId  = $response['id']     ?? null;
+            $asaasStatus    = $response['status']  ?? 'SCHEDULED';
+            $pdfUrl         = $response['pdfUrl']  ?? $response['invoiceUrl'] ?? null;
+            $numeroNf       = $response['number']  ?? null;
+            $statusBanco    = AsaasService::mapearStatusNfsParaBanco($asaasStatus);
+
+            $this->model->update((int)$id, [
+                'asaas_invoice_id'  => $novoInvoiceId,
+                'asaas_status'      => $asaasStatus,
+                'asaas_error_desc'  => null,
+                'status'            => $statusBanco,
+                'asaas_pdf_url'     => $pdfUrl,
+                'numero_nf'         => $numeroNf ? (string)$numeroNf : ($nota->numero_nf ?? ''),
+                'data_emissao'      => $dataHoje,
+            ]);
+
+            AuditLogger::log('reemitir_nf_asaas', [
+                'nota_id'           => (int)$id,
+                'novo_invoice_id'   => $novoInvoiceId,
+                'asaas_status'      => $asaasStatus,
+            ]);
+
+            ob_end_clean();
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success'           => true,
+                'asaas_invoice_id'  => $novoInvoiceId,
+                'asaas_status'      => $asaasStatus,
+                'asaas_status_label'=> AsaasService::mapearStatusNfs($asaasStatus),
+                'message'           => 'NF reemitida com sucesso no Asaas.',
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao reemitir NF no Asaas: ' . $e->getMessage(), ['nota_id' => $id]);
+            ob_end_clean();
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Erro ao reemitir: ' . $e->getMessage(),
             ]);
         }
         exit();

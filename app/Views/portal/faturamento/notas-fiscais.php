@@ -41,6 +41,7 @@ function exibirNumeroNf(object $nota): string {
     <?php $msgs = [
         'nf_emitida'    => 'NF-s emitida com sucesso via Asaas! Ela aparecer&aacute; na lista abaixo.',
         'nf_ja_emitida' => 'J&aacute; existe uma NF-s emitida para esta conta.',
+        'nf_reemitida'  => 'NF-s reemitida com sucesso! Aguarde a autoriza&ccedil;&atilde;o da prefeitura.',
     ]; ?>
     <div class="portal-alert portal-alert-success mb-3">
         <i class="fa fa-check-circle me-2"></i>
@@ -84,7 +85,7 @@ function exibirNumeroNf(object $nota): string {
             </div>
             <div class="portal-filter-field">
                 <label class="portal-filter-label"><i class="fa fa-tag me-1"></i>Status</label>
-                <select name="status" class="portal-filter-input">
+                <select name="status" class="portal-filter-input" onchange="this.form.submit()">
                     <option value="">Todos</option>
                     <option value="emitida"       <?php echo ($filtros['status'] ?? '') === 'emitida'       ? 'selected' : ''; ?>>Emitida</option>
                     <option value="emitida_asaas" <?php echo ($filtros['status'] ?? '') === 'emitida_asaas' ? 'selected' : ''; ?>>Emitida (Asaas)</option>
@@ -105,6 +106,61 @@ function exibirNumeroNf(object $nota): string {
         </div>
     </form>
 </div>
+
+<?php
+// ── Banner de filtro ativo ────────────────────────────────────────────────────
+$statusLabelMap = [
+    'emitida'       => ['label' => 'Emitida',              'cls' => 'portal-badge-success'],
+    'emitida_asaas' => ['label' => 'Emitida (Asaas)',      'cls' => 'portal-badge-success'],
+    'importada'     => ['label' => 'Emitida Manualmente',  'cls' => 'portal-badge-info'],
+    'agendada'      => ['label' => 'Agendada',             'cls' => 'portal-badge-warning'],
+    'cancelada'     => ['label' => 'Cancelada',            'cls' => 'portal-badge-secondary'],
+    'erro_emissao'  => ['label' => 'Erro na emissão',      'cls' => 'portal-badge-error'],
+];
+$filtroStatusPortal = $filtros['status'] ?? '';
+$filtroQPortal      = trim($filtros['pesquisa'] ?? '');
+$filtroDIPortal     = trim($filtros['data_inicio'] ?? '');
+$filtroDFPortal     = trim($filtros['data_fim'] ?? '');
+$temFiltroPortal    = $filtroStatusPortal !== '' || $filtroQPortal !== '' || $filtroDIPortal !== '' || $filtroDFPortal !== '';
+
+if ($temFiltroPortal):
+    $partesPortal = [];
+    if ($filtroStatusPortal !== '' && isset($statusLabelMap[$filtroStatusPortal])) {
+        $sl = $statusLabelMap[$filtroStatusPortal];
+        $partesPortal[] = '<span class="portal-badge ' . $sl['cls'] . '">' . $sl['label'] . '</span>';
+    }
+    if ($filtroQPortal !== '') {
+        $partesPortal[] = '<span class="portal-badge portal-badge-secondary"><i class="fa fa-search me-1"></i>' . htmlspecialchars($filtroQPortal) . '</span>';
+    }
+    if ($filtroDIPortal !== '') {
+        $partesPortal[] = '<span class="portal-badge portal-badge-secondary">De: ' . date('d/m/Y', strtotime($filtroDIPortal)) . '</span>';
+    }
+    if ($filtroDFPortal !== '') {
+        $partesPortal[] = '<span class="portal-badge portal-badge-secondary">Até: ' . date('d/m/Y', strtotime($filtroDFPortal)) . '</span>';
+    }
+?>
+<div class="portal-filter-active-bar mb-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="portal-filter-active-label"><i class="fa fa-filter me-1"></i>Filtrando:</span>
+        <?php echo implode(' ', $partesPortal); ?>
+        <span class="portal-muted-small">(<?php echo count($notas ?? []); ?> resultado<?php echo count($notas ?? []) !== 1 ? 's' : ''; ?>)</span>
+    </div>
+    <a href="/portal/faturamento/notas-fiscais" class="portal-btn portal-btn-outline portal-btn-sm">
+        <i class="fa fa-times me-1"></i>Limpar
+    </a>
+</div>
+<?php
+    if ($filtroStatusPortal === 'erro_emissao' && !empty($notas)):
+?>
+<div class="portal-alert portal-alert-danger mb-3">
+    <i class="fa fa-exclamation-triangle me-2"></i>
+    <strong><?php echo count($notas); ?> nota<?php echo count($notas) !== 1 ? 's' : ''; ?> com erro de emissão.</strong>
+    Clique em <strong>Reemitir</strong> na nota desejada para solicitar uma nova emissão via Asaas.
+</div>
+<?php
+    endif;
+endif;
+?>
 
 <?php if (empty($notas)): ?>
     <div class="portal-empty-state">
@@ -224,9 +280,19 @@ function exibirNumeroNf(object $nota): string {
                                         <i class="fa fa-hourglass-half me-1"></i>Aguardando emiss&atilde;o
                                     </span>
                                 <?php elseif (($nota->status ?? '') === 'erro_emissao'): ?>
-                                    <span class="nf-status-msg nf-status-error">
-                                        <i class="fa fa-exclamation-triangle me-1"></i>Erro na emiss&atilde;o
-                                    </span>
+                                    <?php if (!empty($nota->conta_receber_id)): ?>
+                                        <button type="button"
+                                                class="portal-btn portal-btn-danger portal-btn-sm btn-reemitir-nf"
+                                                data-nf-id="<?php echo (int)$nota->id; ?>"
+                                                data-valor="R$ <?php echo number_format((float)$nota->valor_total, 2, ',', '.'); ?>"
+                                                data-descricao="<?php echo htmlspecialchars($nota->servico_descricao ?? 'Servi&ccedil;os Prestados'); ?>">
+                                            <i class="fa fa-redo me-1"></i> Reemitir
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="nf-status-msg nf-status-error">
+                                            <i class="fa fa-exclamation-triangle me-1"></i>Erro — contate o suporte
+                                        </span>
+                                    <?php endif; ?>
                                 <?php elseif (($nota->status ?? '') === 'cancelada'): ?>
                                     <span class="nf-status-msg nf-status-cancelada">
                                         <i class="fa fa-ban me-1"></i>Cancelada
@@ -360,6 +426,35 @@ function exibirNumeroNf(object $nota): string {
 
 <?php endif; ?>
 
+<!-- Modal Reemitir NF-s (para NFs com erro_emissao) -->
+<div id="modalReemitirNf" class="portal-modal-overlay" style="display:none;">
+    <div class="portal-modal-box" style="max-width:440px;">
+        <div class="p-4">
+            <div class="d-flex align-items-center mb-3">
+                <i class="fa fa-redo text-danger fa-lg me-2"></i>
+                <h5 class="mb-0 fw-bold">Reemitir Nota Fiscal</h5>
+            </div>
+            <p class="text-muted small mb-3">Uma nova NF-s ser&aacute; criada no Asaas com os mesmos dados da emiss&atilde;o anterior.</p>
+            <div class="portal-conta-card p-3 mb-3" style="background:#fff5f5;border:1px solid #fecaca;">
+                <div class="fw-semibold mb-1" id="reemitirNfDescricao">&mdash;</div>
+                <div class="fw-bold text-success" id="reemitirNfValor">&mdash;</div>
+            </div>
+            <div id="reemitirNfLoadingMsg" style="display:none;" class="text-center text-muted small py-2">
+                <i class="fa fa-spinner fa-spin me-1"></i> Reemitindo nota fiscal...
+            </div>
+            <div id="reemitirNfErroMsg" class="portal-alert portal-alert-danger mt-2" style="display:none;"></div>
+        </div>
+        <div class="d-flex gap-2 px-4 pb-4">
+            <button type="button" id="btnCancelarReemitirNf" class="portal-btn portal-btn-outline flex-fill">
+                <i class="fa fa-times me-1"></i> Cancelar
+            </button>
+            <button type="button" id="btnConfirmarReemitirNf" class="portal-btn portal-btn-primary flex-fill">
+                <i class="fa fa-redo me-1"></i> Confirmar Reemiss&atilde;o
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Emitir NF-s (para NFs pendentes de recebimento manual) -->
 <div id="modalEmitirNfsNf" class="portal-modal-overlay" style="display:none;">
     <div class="portal-modal-box" style="max-width:440px;">
@@ -392,6 +487,65 @@ function exibirNumeroNf(object $nota): string {
 </div>
 
 <script>
+// ── Reemitir NF-s (erro_emissao) ─────────────────────────────────────────────
+(function(){
+    var reemitirNfIdAtual = null;
+    document.querySelectorAll('.btn-reemitir-nf').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            reemitirNfIdAtual = btn.dataset.nfId;
+            document.getElementById('reemitirNfDescricao').textContent = btn.dataset.descricao || 'Serviços Prestados';
+            document.getElementById('reemitirNfValor').textContent = btn.dataset.valor || '';
+            document.getElementById('reemitirNfErroMsg').style.display = 'none';
+            document.getElementById('reemitirNfLoadingMsg').style.display = 'none';
+            document.getElementById('btnConfirmarReemitirNf').disabled = false;
+            document.getElementById('btnConfirmarReemitirNf').innerHTML = '<i class="fa fa-redo me-1"></i> Confirmar Reemissão';
+            document.getElementById('modalReemitirNf').style.display = 'flex';
+        });
+    });
+    document.getElementById('btnCancelarReemitirNf').addEventListener('click', function(){
+        document.getElementById('modalReemitirNf').style.display = 'none';
+        reemitirNfIdAtual = null;
+    });
+    document.getElementById('btnConfirmarReemitirNf').addEventListener('click', function(){
+        if (!reemitirNfIdAtual) return;
+        var btn     = this;
+        var loading = document.getElementById('reemitirNfLoadingMsg');
+        var erroEl  = document.getElementById('reemitirNfErroMsg');
+        btn.disabled = true;
+        loading.style.display = 'block';
+        erroEl.style.display  = 'none';
+        btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Reemitindo...';
+        fetch('/portal/faturamento/reemitir-nf/' + reemitirNfIdAtual, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            loading.style.display = 'none';
+            if (d.success) {
+                document.getElementById('modalReemitirNf').style.display = 'none';
+                setTimeout(function(){
+                    window.location.href = d.redirect || '/portal/faturamento/notas-fiscais?success=nf_reemitida';
+                }, 600);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-redo me-1"></i> Confirmar Reemissão';
+                erroEl.textContent = d.error || 'Erro ao reemitir. Tente novamente.';
+                erroEl.style.display = 'block';
+            }
+        })
+        .catch(function(){
+            loading.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa fa-redo me-1"></i> Confirmar Reemissão';
+            erroEl.textContent = 'Erro de conexão. Tente novamente.';
+            erroEl.style.display = 'block';
+        });
+    });
+})();
+
+// ── Emitir NF-s (pendente) ────────────────────────────────────────────────────
 (function(){
     var nfsNfContaIdAtual = null;
     document.querySelectorAll('.btn-emitir-nfs-nf').forEach(function(btn){
@@ -464,6 +618,10 @@ function exibirNumeroNf(object $nota): string {
 .portal-badge-primary{background:#ede9fe;color:#5b21b6}
 .portal-badge-secondary{background:#f1f5f9;color:#475569}
 .portal-badge-error{background:#fee2e2;color:#991b1b}
+/* Banner de filtro ativo */
+.portal-filter-active-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;background:#f8fafc;border:1px solid var(--portal-border);border-radius:8px;padding:.5rem .75rem}
+.portal-filter-active-label{font-size:.75rem;font-weight:700;color:var(--portal-muted);white-space:nowrap}
+.portal-muted-small{font-size:.75rem;color:var(--portal-muted)}
 /* Mensagens de status na coluna Downloads */
 .nf-status-msg{display:inline-flex;align-items:center;font-size:.78rem;padding:.2rem .5rem;border-radius:4px;font-weight:500}
 .nf-status-error{background:#fee2e2;color:#991b1b}

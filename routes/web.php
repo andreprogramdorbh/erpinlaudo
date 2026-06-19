@@ -65,6 +65,7 @@ Router::group(["middleware" => ["PortalCliente"]], function () {
     // Faturamento
     Router::get("/portal/faturamento/notas-fiscais", "PortalFaturamentoController@notasFiscais");
     Router::post("/portal/faturamento/emitir-nfs/{id}", "PortalFaturamentoController@emitirNfs");
+    Router::post("/portal/faturamento/reemitir-nf/{id}", "PortalFaturamentoController@reemitirNf");
     Router::get("/portal/faturamento/nota-fiscal/pdf/{id}", "PortalFaturamentoController@downloadPdf");
     Router::get("/portal/faturamento/nota-fiscal/xml/{id}", "PortalFaturamentoController@downloadXml");
     Router::get("/portal/faturamento/nota-fiscal/anexo/{id}", "PortalFaturamentoController@downloadAnexo");
@@ -347,6 +348,7 @@ Router::group(["middleware" => ["Auth"]], function () {
     Router::group(["middleware" => ["Permission:edit_notas_fiscais"]], function () {
         Router::get("/faturamento/notas-fiscais/edit/{id}", "NotasFiscaisController@edit");
         Router::post("/faturamento/notas-fiscais/update/{id}", "NotasFiscaisController@update");
+        Router::post("/faturamento/notas-fiscais/reemitir-asaas/{id}", "NotasFiscaisController@reemitirAsaas");
         Router::get("/faturamento/notas-fiscais/anexos/download/{id}", "NotasFiscaisController@downloadAnexo");
         Router::post("/faturamento/notas-fiscais/anexos/upload", "NotasFiscaisController@uploadAnexo");
         Router::post("/faturamento/notas-fiscais/anexos/delete/{id}", "NotasFiscaisController@deleteAnexo");

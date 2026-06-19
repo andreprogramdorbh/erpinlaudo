@@ -601,6 +601,136 @@ class PortalFaturamentoController extends Controller
         }
     }
 
+    // POST /portal/faturamento/reemitir-nf/{id}
+    // Reemite uma NF-s que está com status erro_emissao, criando nova no Asaas
+    public function reemitirNf(int $nfId): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            $portal    = $this->getPortalCliente();
+            $clienteId = (int)$portal->cliente_id;
+            $tenantId  = (int)$portal->tenant_id;
+
+            $nota = $this->notaFiscalModel->findById($nfId);
+
+            if (!$nota || (int)$nota->cliente_id !== $clienteId || (int)$nota->usuario_id !== $tenantId) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Nota fiscal não encontrada ou sem permissão.']);
+                return;
+            }
+
+            if (($nota->status ?? '') !== 'erro_emissao') {
+                http_response_code(422);
+                echo json_encode(['success' => false, 'error' => 'Apenas notas com erro de emissão podem ser reemitidas.']);
+                return;
+            }
+
+            if (empty($nota->conta_receber_id)) {
+                http_response_code(422);
+                echo json_encode(['success' => false, 'error' => 'Esta nota não possui conta a receber vinculada. Contate o suporte para reemissão.']);
+                return;
+            }
+
+            $conta = $this->contaReceberModel->findById((int)$nota->conta_receber_id);
+            if (!$conta || (int)$conta->cliente_id !== $clienteId) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Conta a receber não encontrada.']);
+                return;
+            }
+
+            $asaas = $this->getAsaasService($tenantId);
+            if (!$asaas) {
+                http_response_code(503);
+                echo json_encode(['success' => false, 'error' => 'Integração Asaas não configurada. Contate o suporte.']);
+                return;
+            }
+
+            $configNfs  = $this->configNfsModel->findByUsuarioId($tenantId);
+            $dataHoje   = date('Y-m-d');
+            $valor      = (float)$conta->valor;
+            $descricao  = $nota->servico_descricao ?? $conta->descricao ?? 'Serviços Prestados';
+
+            $taxes = ['retainIss' => (bool)($configNfs->retain_iss ?? false)];
+            foreach (['iss' => 'iss_aliquota', 'pis' => 'pis_aliquota', 'cofins' => 'cofins_aliquota',
+                      'csll' => 'csll_aliquota', 'inss' => 'inss_aliquota', 'ir' => 'ir_aliquota'] as $k => $field) {
+                $v = (float)($configNfs->$field ?? 0);
+                if ($v > 0) { $taxes[$k] = $v; }
+            }
+
+            $payload = [
+                'serviceDescription'   => $configNfs->service_description ?? $descricao,
+                'observations'         => $configNfs->observations ?? ('NF-s reemitida via portal. Referência: ' . $descricao),
+                'value'                => $valor,
+                'deductions'           => (float)($configNfs->deductions ?? 0),
+                'effectiveDate'        => $dataHoje,
+                'municipalServiceName' => $configNfs->municipal_service_name ?? 'Serviços de Saúde / Radiologia',
+                'taxes'                => $taxes,
+                'externalReference'    => 'portal|reemissao|nf:' . $nfId . '|cr:' . (int)$nota->conta_receber_id . '|u:' . $tenantId,
+            ];
+
+            if (!empty($configNfs->municipal_service_id)) {
+                $payload['municipalServiceId'] = $configNfs->municipal_service_id;
+            } elseif (!empty($configNfs->municipal_service_code)) {
+                $payload['municipalServiceCode'] = $configNfs->municipal_service_code;
+            }
+            if (!empty($configNfs->cnae)) {
+                $payload['cnae'] = preg_replace('/\D/', '', (string)$configNfs->cnae);
+            }
+            if (!empty($configNfs->serie_nf)) {
+                $payload['serie'] = $configNfs->serie_nf;
+            }
+
+            if (!empty($conta->asaas_payment_id)) {
+                $payload['payment'] = $conta->asaas_payment_id;
+            } else {
+                $documento    = AsaasService::formatarDocumento($portal->cpf_cnpj ?? '');
+                $asaasCliente = $asaas->buscarCliente($documento, $portal->email_principal ?? null);
+                if (!empty($asaasCliente['id'])) {
+                    $payload['customer'] = $asaasCliente['id'];
+                }
+            }
+
+            $response      = $asaas->agendarNotaFiscal($payload);
+            $novoInvoiceId = $response['id']     ?? null;
+            $asaasStatus   = $response['status']  ?? 'SCHEDULED';
+            $pdfUrl        = $response['pdfUrl']  ?? $response['invoiceUrl'] ?? null;
+            $numeroNf      = $response['number']  ?? null;
+            $statusBanco   = AsaasService::mapearStatusNfsParaBanco($asaasStatus);
+
+            $this->notaFiscalModel->update($nfId, [
+                'asaas_invoice_id' => $novoInvoiceId,
+                'asaas_status'     => $asaasStatus,
+                'asaas_error_desc' => null,
+                'status'           => $statusBanco,
+                'asaas_pdf_url'    => $pdfUrl,
+                'numero_nf'        => $numeroNf ? (string)$numeroNf : ($nota->numero_nf ?? ''),
+                'data_emissao'     => $dataHoje,
+            ]);
+
+            $this->logger->info('[Portal] NF-s reemitida via Asaas', [
+                'portal_id'        => $portal->id,
+                'nf_id'            => $nfId,
+                'novo_invoice_id'  => $novoInvoiceId,
+                'asaas_status'     => $asaasStatus,
+            ]);
+
+            echo json_encode([
+                'success'       => true,
+                'asaas_status'  => $asaasStatus,
+                'redirect'      => '/portal/faturamento/notas-fiscais?success=nf_reemitida',
+                'message'       => 'NF-s reemitida com sucesso!',
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->logger->error('[Portal] RuntimeException ao reemitir NF-s: ' . $e->getMessage(), ['nf_id' => $nfId]);
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => 'Erro ao reemitir NF-s: ' . $e->getMessage()]);
+        } catch (\Exception $e) {
+            $this->logger->error('[Portal] Exceção ao reemitir NF-s: ' . $e->getMessage(), ['nf_id' => $nfId]);
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => 'Erro interno. Tente novamente ou contate o suporte.']);
+        }
+    }
+
     // GET /portal/faturamento/nota-fiscal/pdf/{id}
     public function downloadPdf(int $id): void
     {
