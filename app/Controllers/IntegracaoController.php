@@ -1090,9 +1090,14 @@ class IntegracaoController extends Controller
                     if ($pdfUrl) {
                         $updateData['asaas_pdf_url'] = $pdfUrl;
                     }
+                    if ($xmlUrl) {
+                        $updateData['asaas_xml_url'] = $xmlUrl;
+                    }
                     if ($numeroNf && empty($nota->numero_nf)) {
                         $updateData['numero_nf'] = (string)$numeroNf;
                     }
+                    // Limpa eventual erro anterior ao ser autorizada
+                    $updateData['asaas_error_desc'] = null;
 
                     $notaModel->update((int)$nota->id, $updateData);
 
@@ -1169,8 +1174,9 @@ class IntegracaoController extends Controller
 
                     if ($nota) {
                         $notaModel->update((int)$nota->id, [
-                            'asaas_status' => 'ERROR',
-                            'status'       => 'erro_emissao',
+                            'asaas_status'    => 'ERROR',
+                            'status'          => 'erro_emissao',
+                            'asaas_error_desc'=> $errorDesc,
                         ]);
                         $this->logger->warning('Webhook Asaas: NFS-e com erro', [
                             'nota_id'    => $nota->id,

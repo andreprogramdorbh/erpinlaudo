@@ -177,13 +177,13 @@ class NotaFiscal extends Model
         $sql = "INSERT INTO {$this->table}
                 (usuario_id, cliente_id, numero_nf, serie, valor_total, data_emissao,
                  status, xml_path, asaas_invoice_id, origem_emissao, conta_receber_id,
-                 asaas_pdf_url, asaas_status, servico_descricao, servico_codigo,
-                 servico_id_asaas, observacoes_nf)
+                 asaas_pdf_url, asaas_xml_url, asaas_status, asaas_error_desc,
+                 servico_descricao, servico_codigo, servico_id_asaas, observacoes_nf)
                 VALUES
                 (:usuario_id, :cliente_id, :numero_nf, :serie, :valor_total, :data_emissao,
                  :status, :xml_path, :asaas_invoice_id, :origem_emissao, :conta_receber_id,
-                 :asaas_pdf_url, :asaas_status, :servico_descricao, :servico_codigo,
-                 :servico_id_asaas, :observacoes_nf)";
+                 :asaas_pdf_url, :asaas_xml_url, :asaas_status, :asaas_error_desc,
+                 :servico_descricao, :servico_codigo, :servico_id_asaas, :observacoes_nf)";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':usuario_id',       (int)$data['usuario_id'], PDO::PARAM_INT);
@@ -195,7 +195,8 @@ class NotaFiscal extends Model
         $stmt->bindValue(':status',           $data['status'] ?? 'rascunho');
 
         // Campos nullable
-        $nullable = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_status',
+        $nullable = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_xml_url',
+                     'asaas_status', 'asaas_error_desc',
                      'servico_descricao', 'servico_codigo', 'servico_id_asaas', 'observacoes_nf'];
         foreach ($nullable as $f) {
             $v = $data[$f] ?? null;
@@ -236,7 +237,9 @@ class NotaFiscal extends Model
             'origem_emissao',
             'conta_receber_id',
             'asaas_pdf_url',
+            'asaas_xml_url',
             'asaas_status',
+            'asaas_error_desc',
             'servico_descricao',
             'servico_codigo',
             'servico_id_asaas',
@@ -256,7 +259,8 @@ class NotaFiscal extends Model
             $updateFields[] = "{$field} = :{$field}";
             $value = $data[$field];
 
-            $nullableFields = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_status',
+            $nullableFields = ['xml_path', 'asaas_invoice_id', 'asaas_pdf_url', 'asaas_xml_url',
+                               'asaas_status', 'asaas_error_desc',
                                'servico_descricao', 'servico_codigo', 'servico_id_asaas',
                                'observacoes_nf', 'conta_receber_id', 'portal_liberada_em'];
 

@@ -335,6 +335,8 @@ Router::group(["middleware" => ["Auth"]], function () {
     // Notas Fiscais (Faturamento)
     Router::group(["middleware" => ["Permission:view_notas_fiscais"]], function () {
         Router::get("/faturamento/notas-fiscais", "NotasFiscaisController@index");
+        Router::get("/faturamento/notas-fiscais/show/{id}", "NotasFiscaisController@show");
+        Router::post("/faturamento/notas-fiscais/consultar-asaas/{id}", "NotasFiscaisController@consultarAsaas");
     });
 
     Router::group(["middleware" => ["Permission:create_notas_fiscais"]], function () {

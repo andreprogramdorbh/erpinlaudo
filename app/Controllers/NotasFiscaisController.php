@@ -11,6 +11,7 @@ use App\Models\NotaFiscal;
 use App\Models\NotaFiscalAnexo;
 use App\Models\NotaFiscalImportacao;
 use App\Models\Cliente;
+use App\Services\AsaasService;
 
 class NotasFiscaisController extends Controller
 {
@@ -19,14 +20,153 @@ class NotasFiscaisController extends Controller
     private NotaFiscalImportacao $importModel;
     private Cliente $clienteModel;
     private Logger $logger;
+    private ?AsaasService $asaasService = null;
 
     public function __construct()
     {
-        $this->model       = new NotaFiscal();
-        $this->anexoModel  = new NotaFiscalAnexo();
-        $this->importModel = new NotaFiscalImportacao();
+        $this->model        = new NotaFiscal();
+        $this->anexoModel   = new NotaFiscalAnexo();
+        $this->importModel  = new NotaFiscalImportacao();
         $this->clienteModel = new Cliente();
-        $this->logger      = new Logger();
+        $this->logger       = new Logger();
+    }
+
+    private function getAsaasService(): AsaasService
+    {
+        if ($this->asaasService === null) {
+            $authUser  = Auth::user();
+            $usuarioId = $authUser ? (int)$authUser->id : 0;
+            $apiKey    = null;
+            $env       = null;
+            if ($usuarioId > 0) {
+                $integracaoModel = new \App\Models\Integracao();
+                $config = $integracaoModel->findByProvider('asaas', $usuarioId);
+                if ($config && !empty($config->api_key)) {
+                    $apiKey = $config->api_key;
+                    $env    = $config->environment ?? 'sandbox';
+                }
+            }
+            $this->asaasService = new AsaasService($apiKey, $env);
+        }
+        return $this->asaasService;
+    }
+
+    // ---------------------------------------------------------------
+    // GET /faturamento/notas-fiscais/show/{id}
+    // Visualiza detalhes da NF com PDF/XML do Asaas e histórico de erros
+    // ---------------------------------------------------------------
+    public function show($id): void
+    {
+        $usuarioId = Auth::user()->id;
+        $nota      = $this->model->findById((int)$id);
+
+        if (!$nota || (int)$nota->usuario_id !== (int)$usuarioId) {
+            header('Location: /faturamento/notas-fiscais?error=not_found');
+            exit();
+        }
+
+        $anexos = $this->anexoModel->findByNotaId((int)$id, $usuarioId);
+
+        View::render('notas_fiscais/show', [
+            '_layout'    => 'erp',
+            'title'      => 'NF ' . ($nota->numero_nf ? '#' . $nota->numero_nf : '#' . $id),
+            'breadcrumb' => [
+                'Faturamento'    => '/faturamento/notas-fiscais',
+                'Notas Fiscais'  => '/faturamento/notas-fiscais',
+                0                => 'Visualizar NF',
+            ],
+            'nota'   => $nota,
+            'anexos' => $anexos,
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // POST /faturamento/notas-fiscais/consultar-asaas/{id}
+    // Consulta o status atual da NF no Asaas e atualiza o banco
+    // Retorna JSON: success, asaas_status, pdf_url, xml_url, error_desc
+    // ---------------------------------------------------------------
+    public function consultarAsaas($id): void
+    {
+        ob_start();
+        try {
+            $usuarioId = Auth::user()->id;
+            $nota      = $this->model->findById((int)$id);
+
+            if (!$nota || (int)$nota->usuario_id !== (int)$usuarioId) {
+                ob_end_clean();
+                http_response_code(404);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'NF não encontrada.']);
+                exit();
+            }
+
+            if (empty($nota->asaas_invoice_id)) {
+                ob_end_clean();
+                http_response_code(422);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Esta NF não possui ID Asaas vinculado.']);
+                exit();
+            }
+
+            $asaas   = $this->getAsaasService();
+            $invoice = $asaas->consultarNotaFiscal((string)$nota->asaas_invoice_id);
+
+            $asaasStatus = (string)($invoice['status'] ?? '');
+            $pdfUrl      = $invoice['pdfUrl']      ?? $invoice['invoiceUrl'] ?? null;
+            $xmlUrl      = $invoice['xmlUrl']       ?? null;
+            $numero      = $invoice['number']       ?? null;
+            $errorDesc   = $invoice['observations'] ?? null;
+
+            $updateData = [];
+            if ($asaasStatus !== '') {
+                $updateData['asaas_status'] = $asaasStatus;
+                $updateData['status']       = AsaasService::mapearStatusNfsParaBanco($asaasStatus);
+            }
+            if ($pdfUrl) {
+                $updateData['asaas_pdf_url'] = $pdfUrl;
+            }
+            if ($xmlUrl) {
+                $updateData['asaas_xml_url'] = $xmlUrl;
+            }
+            if ($numero !== null && $numero !== '' && empty($nota->numero_nf)) {
+                $updateData['numero_nf'] = (string)$numero;
+            }
+            $updateData['asaas_error_desc'] = $errorDesc;
+
+            if (!empty($updateData)) {
+                $this->model->update((int)$id, $updateData);
+            }
+
+            AuditLogger::log('asaas_consultar_nf', [
+                'nota_id'      => (int)$id,
+                'invoice_id'   => $nota->asaas_invoice_id,
+                'asaas_status' => $asaasStatus,
+            ]);
+
+            ob_end_clean();
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success'           => true,
+                'asaas_status'      => $asaasStatus,
+                'asaas_status_label'=> AsaasService::mapearStatusNfs($asaasStatus),
+                'status'            => $updateData['status'] ?? $nota->status,
+                'pdf_url'           => $pdfUrl,
+                'xml_url'           => $xmlUrl,
+                'numero_nf'         => $numero ?: $nota->numero_nf,
+                'error_desc'        => $errorDesc,
+                'message'           => 'Status atualizado com sucesso.',
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Erro ao consultar NF no Asaas: ' . $e->getMessage(), ['nota_id' => $id]);
+            ob_end_clean();
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Erro ao consultar Asaas: ' . $e->getMessage(),
+            ]);
+        }
+        exit();
     }
 
     public function index(): void
