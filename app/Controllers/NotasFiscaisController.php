@@ -199,11 +199,14 @@ class NotasFiscaisController extends Controller
                 exit();
             }
 
-            if (($nota->status ?? '') !== 'erro_emissao') {
+            $isErroLocal  = ($nota->status ?? '') === 'erro_emissao';
+            $isErroAsaas  = strtoupper((string)($nota->asaas_status ?? '')) === 'ERROR';
+
+            if (!$isErroLocal && !$isErroAsaas) {
                 ob_end_clean();
                 http_response_code(422);
                 header('Content-Type: application/json; charset=utf-8');
-                echo json_encode(['success' => false, 'message' => 'Apenas NFs com status "Erro de Emissão" podem ser reemitidas.']);
+                echo json_encode(['success' => false, 'message' => 'Apenas NFs com erro de emissão no Asaas podem ser reemitidas.']);
                 exit();
             }
 

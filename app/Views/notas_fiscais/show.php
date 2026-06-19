@@ -188,6 +188,21 @@ if ($asaasStatus !== null && $asaasStatus !== '') {
                 </div>
                 <?php endif; ?>
 
+                <?php if ($asaasStatus === 'ERROR' && $origemEmissao === 'asaas' && Auth::can('edit_notas_fiscais')): ?>
+                <div class="border border-warning rounded p-3 mb-3" style="background:#fffbeb">
+                    <p class="mb-2 small fw-bold text-warning-emphasis">
+                        <i class="fas fa-redo-alt me-1"></i>Reemitir esta Nota Fiscal
+                    </p>
+                    <p class="mb-3 small text-muted">
+                        Uma nova NF-s será criada no Asaas com os mesmos dados de serviço.
+                        O registro será atualizado com o novo ID gerado.
+                    </p>
+                    <button type="button" class="btn btn-warning fw-bold w-100" id="btnReemitirShow" data-id="<?php echo $id; ?>">
+                        <i class="fas fa-redo-alt me-2"></i>Reemitir NF no Asaas
+                    </button>
+                </div>
+                <?php endif; ?>
+
                 <dl class="row mb-0 small">
                     <dt class="col-5 text-muted">ID Asaas</dt>
                     <dd class="col-7"><code><?php echo htmlspecialchars($invoiceId); ?></code></dd>
@@ -313,7 +328,58 @@ function consultarAsaas(id, reloadOnSuccess) {
     });
 }
 
-// Botão "Atualizar" no card de status
+// ── Botão "Reemitir NF" ──────────────────────────────────────────────────────
+const btnReemitirShow = document.getElementById('btnReemitirShow');
+if (btnReemitirShow) {
+    btnReemitirShow.addEventListener('click', function () {
+        if (!confirm('Confirmar reemissão desta NF no Asaas?\n\nUma nova NF-s será criada com os mesmos dados de serviço.')) return;
+
+        const id   = this.dataset.id;
+        const orig = this.innerHTML;
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Reemitindo...';
+
+        fetch('/faturamento/notas-fiscais/reemitir-asaas/' + id, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+        .then(function (r) {
+            const ct = r.headers.get('Content-Type') || '';
+            if (ct.includes('application/json')) return r.json();
+            if (r.status === 401) return { success: false, _sessionExpired: true };
+            throw new Error('HTTP ' + r.status);
+        })
+        .then(function (data) {
+            if (data._sessionExpired) {
+                if (confirm('Sessão expirada. Ir para login?')) window.location.href = '/login';
+                return;
+            }
+            if (data.success) {
+                showToast(
+                    '<i class="fas fa-redo-alt me-1"></i> NF reemitida! Status: <strong>'
+                    + (data.asaas_status_label || data.asaas_status || '—') + '</strong>',
+                    'success'
+                );
+                setTimeout(function () { location.reload(); }, 2500);
+            } else {
+                showToast('<i class="fas fa-exclamation-triangle me-1"></i> ' + (data.message || 'Erro ao reemitir.'), 'danger');
+                if (btnReemitirShow) {
+                    btnReemitirShow.disabled = false;
+                    btnReemitirShow.innerHTML = orig;
+                }
+            }
+        })
+        .catch(function (err) {
+            showToast('<i class="fas fa-exclamation-circle me-1"></i> Erro de comunicação: ' + err.message, 'danger');
+            if (btnReemitirShow) {
+                btnReemitirShow.disabled = false;
+                btnReemitirShow.innerHTML = orig;
+            }
+        });
+    });
+}
+
+// ── Botão "Atualizar" no card de status ──────────────────────────────────────
 const btnAtualizar = document.getElementById('btnConsultarAsaas');
 if (btnAtualizar) {
     btnAtualizar.addEventListener('click', function() {
